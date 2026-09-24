@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: nabi_dental
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d nabi_dental"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    entrypoint: ["sh", "/app/docker/entrypoint.sh"]
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      SKIP_DB_SETUP: "0"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/nabi_dental
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
