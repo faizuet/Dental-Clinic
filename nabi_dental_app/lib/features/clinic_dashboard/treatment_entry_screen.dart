@@ -144,39 +144,13 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   }
 
   Future<void> _addPatient() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final ok = await showAppDialog<bool>(
+    final result = await showDialog<({String name, String phone})>(
       context: context,
-      title: 'Add patient',
-      icon: Icons.person_add_alt_1_rounded,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: name,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(labelText: 'Patient name'),
-            autofocus: true,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'Phone number'),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-      ],
+      builder: (context) => const _AddPatientDialog(),
     );
-    final trimmed = name.text.trim();
-    final phoneValue = phone.text.trim();
-    name.dispose();
-    phone.dispose();
-    if (ok != true || trimmed.length < 2) {
+    final trimmed = result?.name ?? '';
+    final phoneValue = result?.phone ?? '';
+    if (result == null || trimmed.length < 2) {
       return;
     }
     try {
@@ -731,6 +705,79 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+class _AddPatientDialog extends StatefulWidget {
+  const _AddPatientDialog();
+
+  @override
+  State<_AddPatientDialog> createState() => _AddPatientDialogState();
+}
+
+class _AddPatientDialogState extends State<_AddPatientDialog> {
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final inset = size.width < 360 ? 16.0 : 24.0;
+    return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(horizontal: inset, vertical: 24),
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: AppColors.purpleSoft, borderRadius: BorderRadius.circular(AppRadii.md)),
+            child: const Icon(Icons.person_add_alt_1_rounded, color: AppColors.purple),
+          ),
+          const SizedBox(height: 14),
+          const Text('Add patient', maxLines: 2, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+      content: SizedBox(
+        width: size.width < 480 ? size.width - inset * 2 : 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _name,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Patient name'),
+                autofocus: true,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _phone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Phone number'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, (name: _name.text.trim(), phone: _phone.text.trim())),
+          child: const Text('Save'),
+        ),
       ],
     );
   }
