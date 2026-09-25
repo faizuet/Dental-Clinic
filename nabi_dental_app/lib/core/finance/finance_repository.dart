@@ -66,6 +66,8 @@ class ConstructionTotals {
     required this.spent,
     required this.purchaseCount,
     required this.byCategory,
+    required this.byMaterial,
+    required this.bySupplier,
     required this.recent,
     required this.monthly,
     required this.topMaterials,
@@ -75,6 +77,8 @@ class ConstructionTotals {
   final String spent;
   final int purchaseCount;
   final List<NamedAmount> byCategory;
+  final List<NamedAmount> byMaterial;
+  final List<NamedAmount> bySupplier;
   final List<ConstructionPurchase> recent;
   final List<NamedAmount> monthly;
   final List<NamedAmount> topMaterials;
@@ -360,8 +364,13 @@ class FinanceRepository {
       spent: moneyFromDouble(inRange.fold(0, (sum, item) => sum + moneyToDouble(item.amount))),
       purchaseCount: inRange.length,
       byCategory: _namedTotals(inRange, (item) => item.categoryName ?? 'Other'),
-      recent: inRange.take(5).toList(),
-      monthly: _monthlyTotals(all),
+      byMaterial: _materialSpend(inRange),
+      bySupplier: _namedTotals(inRange, (item) {
+        final supplier = item.supplier?.trim() ?? '';
+        return supplier.isEmpty ? 'Unspecified' : supplier;
+      }),
+      recent: inRange.take(8).toList(),
+      monthly: _monthlyTotals(inRange.isEmpty ? all : inRange),
       topMaterials: _namedTotals(inRange, (item) => item.materialName ?? 'Material').take(5).toList(),
       range: range,
     );
@@ -786,6 +795,10 @@ class FinanceRepository {
     return _export('/api/v1/reports/home/export', range, format);
   }
 
+  Future<ResponseBytes> exportConstruction({required DateRange range, required String format}) {
+    return _export('/api/v1/reports/construction/export', range, format);
+  }
+
   Future<void> pushPending() async {
     final pending = await _db.pendingChanges();
     if (pending.isEmpty) {
@@ -842,7 +855,11 @@ class FinanceRepository {
       'to_date': range.toIso,
       'format': format,
     });
-    final name = format == 'xlsx' ? 'nabi-report.xlsx' : 'nabi-report.pdf';
+    final stamp = DateTime.now();
+    final tag =
+        '${stamp.year}${stamp.month.toString().padLeft(2, '0')}${stamp.day.toString().padLeft(2, '0')}-'
+        '${stamp.hour.toString().padLeft(2, '0')}${stamp.minute.toString().padLeft(2, '0')}';
+    final name = format == 'xlsx' ? 'nabi-report-$tag.xlsx' : 'nabi-report-$tag.pdf';
     return ResponseBytes(
       bytes: response.data ?? <int>[],
       filename: name,
@@ -1037,6 +1054,27 @@ class FinanceRepository {
   }
 
   double _sum(List<MoneyEntry> entries) => entries.fold(0, (sum, entry) => sum + moneyToDouble(entry.amount));
+
+  List<NamedAmount> _materialSpend(List<ConstructionPurchase> items) {
+    final quantities = <String, double>{};
+    final amounts = <String, double>{};
+    final units = <String, String>{};
+    for (final item in items) {
+      final name = item.materialName ?? 'Material';
+      quantities[name] = (quantities[name] ?? 0) + moneyToDouble(item.quantity);
+      amounts[name] = (amounts[name] ?? 0) + moneyToDouble(item.amount);
+      units[name] = item.unit;
+    }
+    final ranked = amounts.entries.map((entry) {
+      final qty = formatQuantity(moneyFromDouble(quantities[entry.key] ?? 0));
+      return NamedAmount(
+        name: '$qty ${units[entry.key]} · ${entry.key}',
+        amount: moneyFromDouble(entry.value),
+      );
+    }).toList()
+      ..sort((a, b) => moneyToDouble(b.amount).compareTo(moneyToDouble(a.amount)));
+    return ranked;
+  }
 
   List<NamedAmount> _namedTotals(List<ConstructionPurchase> items, String Function(ConstructionPurchase item) nameOf) {
     final totals = <String, double>{};

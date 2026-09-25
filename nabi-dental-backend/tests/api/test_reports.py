@@ -41,6 +41,59 @@ async def test_clinic_report_and_exports(client):
 
 
 @pytest.mark.asyncio
+async def test_construction_report_and_exports(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    categories = (await client.get("/api/v1/construction-material-categories", headers=headers)).json()["items"]
+    structure_id = next(item["id"] for item in categories if item["name"] == "Structure")
+    materials = (
+        await client.get(
+            "/api/v1/construction-materials",
+            headers=headers,
+            params={"category_id": structure_id, "page_size": 100},
+        )
+    ).json()["items"]
+    cement = next(item for item in materials if item["name"] == "Cement")
+    created = await client.post(
+        "/api/v1/construction-purchases",
+        headers=headers,
+        json={
+            "material_id": cement["id"],
+            "purchase_date": "2026-09-24",
+            "quantity": "10",
+            "unit_price": "1450.00",
+            "supplier": "Local kiln",
+        },
+    )
+    assert created.status_code == 201, created.text
+    report = await client.get(
+        "/api/v1/reports/construction",
+        headers=headers,
+        params={"from_date": "2026-09-01", "to_date": "2026-09-30", "group_by": "month"},
+    )
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["total_expenses"] == "14500.00"
+    assert body["purchase_count"] == 1
+    assert body["expenses_by_category"][0]["name"] == "Structure"
+    assert body["purchases"][0]["material_name"] == "Cement"
+    pdf = await client.get(
+        "/api/v1/reports/construction/export",
+        headers=headers,
+        params={"from_date": "2026-09-01", "to_date": "2026-09-30", "format": "pdf"},
+    )
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"].startswith("application/pdf")
+    xlsx = await client.get(
+        "/api/v1/reports/construction/export",
+        headers=headers,
+        params={"from_date": "2026-09-01", "to_date": "2026-09-30", "format": "xlsx"},
+    )
+    assert xlsx.status_code == 200
+    assert "spreadsheetml" in xlsx.headers["content-type"]
+
+
+@pytest.mark.asyncio
 async def test_settings_update(client):
     tokens = await login(client)
     headers = auth_header(tokens)

@@ -1,107 +1,412 @@
 from datetime import datetime, timezone
 from io import BytesIO
 
+from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.schemas.report import ClinicReport, HomeReport
+from app.schemas.report import ClinicReport, ConstructionReport, HomeReport, NamedAmount
 from app.utils.dates import serialize_datetime
-from app.utils.money import format_money
+from app.utils.money import format_money, format_quantity
+
+PURPLE = colors.HexColor("#7C3AED")
+PURPLE_SOFT = colors.HexColor("#F3E8FF")
+TEAL = colors.HexColor("#0F766E")
+TEXT = colors.HexColor("#1F2937")
+MUTED = colors.HexColor("#6B7280")
+BORDER = colors.HexColor("#E5E7EB")
+ROW_ALT = colors.HexColor("#FAF7FF")
+WHITE = colors.white
 
 
 def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, title=f"{clinic_name} clinic report")
-    styles = getSampleStyleSheet()
+    generated = _generated_label()
+    title = "Clinic Expense Report"
     story = [
-        Paragraph(clinic_name, styles["Title"]),
-        Paragraph("Clinic Finance Report", styles["Heading2"]),
-        Paragraph(
-            f"Period: {report.period.from_date} to {report.period.to_date} (inclusive)",
-            styles["Normal"],
-        ),
-        Paragraph(f"Generated: {serialize_datetime(datetime.now(timezone.utc))}", styles["Normal"]),
-        Spacer(1, 12),
-        _summary_table(
+        *_summary_block(
             [
-                ["Currency", report.currency],
-                ["Total income", format_money(report.total_income)],
-                ["Total clinic expenses", format_money(report.total_expenses)],
-                ["Profit / loss", format_money(report.profit)],
+                ("Currency", report.currency),
+                ("Income entries", str(report.income_count)),
+                ("Expense entries", str(report.expense_count)),
+                ("Total income", _money(report.total_income, report.currency)),
+                ("Total expenses", _money(report.total_expenses, report.currency)),
+                ("Profit / loss", _money(report.profit, report.currency)),
             ]
         ),
-        Spacer(1, 16),
-        Paragraph("Income by treatment", styles["Heading3"]),
-        _named_table(report.income_by_treatment),
-        Spacer(1, 12),
-        Paragraph("Expenses by category", styles["Heading3"]),
-        _named_table(report.expenses_by_category),
+        *_named_section("Income by treatment", report.income_by_treatment, report.currency),
+        *_named_section("Expenses by category", report.expenses_by_category, report.currency),
+        *_chart_section("Expense mix", report.expenses_by_category),
+        *_line_section(
+            "Income transactions",
+            ["Date", "Treatment", "Notes", "Amount"],
+            [
+                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                for item in report.income_lines
+            ],
+            [72, 150, 170, 80],
+            [3],
+        ),
+        *_line_section(
+            "Clinic expenses",
+            ["Date", "Category", "Notes", "Amount"],
+            [
+                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                for item in report.expense_lines
+            ],
+            [72, 150, 170, 80],
+            [3],
+        ),
+        *_timeline_section(report.timeline, report.currency, include_income=True),
     ]
-    doc.build(story)
-    return buffer.getvalue()
+    return _build(
+        story,
+        clinic_name=clinic_name,
+        title=title,
+        generated=generated,
+        period=_period_label(report.period.from_date, report.period.to_date),
+        accent=PURPLE,
+    )
 
 
 def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, title=f"{clinic_name} home report")
-    styles = getSampleStyleSheet()
+    generated = _generated_label()
+    title = "Home Expense Report"
+    used = f"{report.percentage_used:.2f}%" if report.percentage_used is not None else "n/a"
     story = [
-        Paragraph(clinic_name, styles["Title"]),
-        Paragraph("Home Finance Report", styles["Heading2"]),
-        Paragraph(
-            f"Period: {report.period.from_date} to {report.period.to_date} (inclusive)",
-            styles["Normal"],
-        ),
-        Paragraph(f"Generated: {serialize_datetime(datetime.now(timezone.utc))}", styles["Normal"]),
-        Spacer(1, 12),
-        _summary_table(
+        *_summary_block(
             [
-                ["Currency", report.currency],
-                ["Total spending", format_money(report.total_expenses)],
-                ["Budget", format_money(report.budget)],
-                ["Remaining", format_money(report.remaining)],
-                ["Percentage used", report.percentage_used if report.percentage_used is not None else "n/a"],
+                ("Currency", report.currency),
+                ("Transactions", str(report.expense_count)),
+                ("Total spending", _money(report.total_expenses, report.currency)),
+                ("Budget", _money(report.budget, report.currency)),
+                ("Remaining", _money(report.remaining, report.currency)),
+                ("Budget used", used),
             ]
         ),
-        Spacer(1, 16),
-        Paragraph("Spending by category", styles["Heading3"]),
-        _named_table(report.expenses_by_category),
+        *_named_section("Spending by category", report.expenses_by_category, report.currency),
+        *_chart_section("Category mix", report.expenses_by_category),
+        *_line_section(
+            "Home expenses",
+            ["Date", "Category", "Notes", "Amount"],
+            [
+                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                for item in report.expense_lines
+            ],
+            [72, 150, 170, 80],
+            [3],
+        ),
+        *_timeline_section(report.timeline, report.currency, include_income=False),
     ]
-    doc.build(story)
+    return _build(
+        story,
+        clinic_name=clinic_name,
+        title=title,
+        generated=generated,
+        period=_period_label(report.period.from_date, report.period.to_date),
+        accent=PURPLE,
+    )
+
+
+def render_construction_pdf(report: ConstructionReport, *, clinic_name: str) -> bytes:
+    generated = _generated_label()
+    title = "Construction Expense Report"
+    material_rows = [
+        [
+            item.name,
+            format_quantity(item.quantity),
+            item.unit,
+            _money(item.amount, report.currency),
+        ]
+        for item in report.spending_by_material
+    ]
+    purchase_rows = [
+        [
+            str(item.purchase_date),
+            item.material_name,
+            item.category_name,
+            f"{format_quantity(item.quantity)} {item.unit}",
+            _money(item.unit_price, report.currency),
+            _money(item.amount, report.currency),
+            item.supplier or "—",
+        ]
+        for item in report.purchases
+    ]
+    story = [
+        *_summary_block(
+            [
+                ("Currency", report.currency),
+                ("Purchases", str(report.purchase_count)),
+                ("Total construction spend", _money(report.total_expenses, report.currency)),
+                ("Categories used", str(len(report.expenses_by_category))),
+                ("Suppliers", str(len(report.expenses_by_supplier))),
+                ("Highest category", report.top_categories[0].name if report.top_categories else "—"),
+            ]
+        ),
+        *_named_section("Expenses by material category", report.expenses_by_category, report.currency),
+        *_chart_section("Category mix", report.expenses_by_category),
+        *_named_section("Highest-cost materials", report.top_materials, report.currency),
+        *_named_section("Supplier spending", report.expenses_by_supplier, report.currency),
+        *_line_section(
+            "Material-wise quantity and cost",
+            ["Material", "Quantity", "Unit", "Total"],
+            material_rows,
+            [190, 80, 70, 132],
+            [3],
+        ),
+        *_line_section(
+            "Purchase history",
+            ["Date", "Material", "Category", "Qty", "Unit price", "Total", "Supplier"],
+            purchase_rows,
+            [62, 88, 72, 58, 70, 70, 72],
+            [4, 5],
+        ),
+        *_timeline_section(report.timeline, report.currency, include_income=False),
+    ]
+    return _build(
+        story,
+        clinic_name=clinic_name,
+        title=title,
+        generated=generated,
+        period=_period_label(report.period.from_date, report.period.to_date),
+        accent=TEAL,
+    )
+
+
+def _build(story, *, clinic_name: str, title: str, generated: str, period: str, accent) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        title=f"{clinic_name} {title}",
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=24 * mm,
+        bottomMargin=16 * mm,
+    )
+
+    def _page(canvas, document):
+        _draw_chrome(
+            canvas,
+            document,
+            clinic_name=clinic_name,
+            title=title,
+            generated=generated,
+            period=period,
+            accent=accent,
+        )
+
+    heading = [
+        Paragraph(title, _styles()["reportTitle"]),
+        Paragraph(period, _styles()["meta"]),
+        Paragraph(f"Generated {generated}", _styles()["meta"]),
+        Spacer(1, 10),
+    ]
+    doc.build(heading + story, onFirstPage=_page, onLaterPages=_page)
     return buffer.getvalue()
 
 
-def _summary_table(rows: list[list[str]]) -> Table:
-    table = Table(rows, colWidths=[200, 250])
+def _draw_chrome(canvas, doc, *, clinic_name: str, title: str, generated: str, period: str, accent) -> None:
+    width, height = A4
+    canvas.saveState()
+    canvas.setFillColor(accent)
+    canvas.rect(0, height - 52, width, 52, fill=1, stroke=0)
+    canvas.setFillColor(WHITE)
+    canvas.circle(28, height - 26, 11, fill=1, stroke=0)
+    canvas.setFillColor(accent)
+    canvas.setFont("Helvetica-Bold", 10)
+    canvas.drawCentredString(28, height - 30, "N")
+    canvas.setFillColor(WHITE)
+    canvas.setFont("Helvetica-Bold", 11)
+    canvas.drawString(46, height - 20, clinic_name)
+    canvas.setFont("Helvetica", 8)
+    canvas.drawString(46, height - 34, f"{title}  ·  {period}")
+    canvas.setFillColor(PURPLE_SOFT)
+    canvas.rect(0, 0, width, 28, fill=1, stroke=0)
+    canvas.setFillColor(MUTED)
+    canvas.setFont("Helvetica", 8)
+    canvas.drawString(18 * mm, 11, f"{clinic_name}  ·  {generated}")
+    canvas.drawRightString(width - 18 * mm, 11, f"Page {doc.page}")
+    canvas.restoreState()
+
+
+def _period_label(from_date, to_date) -> str:
+    return f"{from_date} to {to_date} (inclusive)"
+
+
+def _summary_block(rows: list[tuple[str, str]]) -> list:
+    styles = _styles()
+    table_data = [[Paragraph(label, styles["cell"]), Paragraph(value, styles["value"])] for label, value in rows]
+    table = Table(table_data, colWidths=[200, 272])
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#F3E8FF")),
-                ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-                ("FONTSIZE", (0, 0), (-1, -1), 10),
-                ("PADDING", (0, 0), (-1, -1), 6),
+                ("BACKGROUND", (0, 0), (0, -1), PURPLE_SOFT),
+                ("BACKGROUND", (1, 0), (1, -1), WHITE),
+                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
             ]
         )
     )
-    return table
+    return [
+        Paragraph("Financial summary", styles["section"]),
+        table,
+        Spacer(1, 14),
+    ]
 
 
-def _named_table(items) -> Table:
-    data = [["Name", "Amount"]] + [[item.name, format_money(item.amount)] for item in items]
-    if len(data) == 1:
-        data.append(["None", "0.00"])
-    table = Table(data, colWidths=[300, 150])
-    table.setStyle(
-        TableStyle(
+def _named_section(title: str, items: list[NamedAmount], currency: str) -> list:
+    rows = [[item.name, _money(item.amount, currency)] for item in items]
+    return _line_section(title, ["Name", "Amount"], rows, [352, 120], [1])
+
+
+def _line_section(
+    title: str,
+    headers: list[str],
+    rows: list[list[str]],
+    widths: list[float],
+    amount_cols: list[int],
+) -> list:
+    styles = _styles()
+    data = [[Paragraph(header, styles["headerCell"]) for header in headers]]
+    if not rows:
+        data.append([Paragraph("No records in this period.", styles["cell"])] + [""] * (len(headers) - 1))
+    else:
+        for row in rows:
+            styled = []
+            for index, value in enumerate(row):
+                style = styles["value"] if index in amount_cols else styles["cell"]
+                styled.append(Paragraph(str(value), style))
+            data.append(styled)
+    table = Table(data, colWidths=widths, repeatRows=1)
+    commands = [
+        ("BACKGROUND", (0, 0), (-1, 0), PURPLE),
+        ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("ALIGN", (0, 1), (-1, -1), "LEFT"),
+    ]
+    for index in amount_cols:
+        commands.append(("ALIGN", (index, 1), (index, -1), "RIGHT"))
+    for row_index in range(1, len(data)):
+        if row_index % 2 == 0:
+            commands.append(("BACKGROUND", (0, row_index), (-1, row_index), ROW_ALT))
+    table.setStyle(TableStyle(commands))
+    return [KeepTogether([Paragraph(title, styles["section"])]), table, Spacer(1, 12)]
+
+
+def _chart_section(title: str, items: list[NamedAmount]) -> list:
+    if not items:
+        return []
+    styles = _styles()
+    top = items[:6]
+    total = sum((item.amount for item in top), start=top[0].amount * 0)
+    width = 470
+    row_h = 16
+    height = 18 + row_h * len(top)
+    drawing = Drawing(width, height)
+    for index, item in enumerate(top):
+        y = height - 16 - (index * row_h)
+        ratio = float(item.amount / total) if total else 0
+        bar_w = max(8, (width - 170) * min(ratio, 1))
+        drawing.add(String(0, y + 3, item.name[:22], fontName="Helvetica", fontSize=8, fillColor=TEXT))
+        drawing.add(Rect(130, y + 2, bar_w, 9, fillColor=PURPLE, strokeColor=None))
+    return [Paragraph(title, styles["section"]), drawing, Spacer(1, 10)]
+
+
+def _timeline_section(points, currency: str, *, include_income: bool) -> list:
+    if include_income:
+        rows = [
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#7C3AED")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("PADDING", (0, 0), (-1, -1), 6),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E5E7EB")),
+                item.period,
+                _money(item.income, currency) if item.income is not None else "—",
+                _money(item.expenses, currency) if item.expenses is not None else "—",
+                _money(item.profit, currency) if item.profit is not None else "—",
             ]
-        )
-    )
-    return table
+            for item in points
+        ]
+        return _line_section("Period summary", ["Period", "Income", "Expenses", "Profit"], rows, [140, 110, 110, 112], [1, 2, 3])
+    rows = [[item.period, _money(item.expenses, currency) if item.expenses is not None else "—"] for item in points]
+    return _line_section("Monthly / period spending", ["Period", "Amount"], rows, [280, 192], [1])
+
+
+def _money(value, currency: str) -> str:
+    return f"{currency} {format_money(value)}"
+
+
+def _generated_label() -> str:
+    return serialize_datetime(datetime.now(timezone.utc)).replace("T", " ").replace("Z", " UTC")
+
+
+def _styles():
+    base = getSampleStyleSheet()
+    return {
+        "reportTitle": ParagraphStyle(
+            "ReportTitle",
+            parent=base["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=16,
+            textColor=TEXT,
+            spaceAfter=2,
+            leading=20,
+        ),
+        "section": ParagraphStyle(
+            "Section",
+            parent=base["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=11,
+            textColor=PURPLE,
+            spaceBefore=4,
+            spaceAfter=6,
+        ),
+        "meta": ParagraphStyle("Meta", parent=base["Normal"], fontSize=8, textColor=MUTED),
+        "cell": ParagraphStyle(
+            "Cell",
+            parent=base["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=11,
+            textColor=TEXT,
+            alignment=TA_LEFT,
+        ),
+        "value": ParagraphStyle(
+            "Value",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            leading=11,
+            textColor=TEXT,
+            alignment=TA_RIGHT,
+        ),
+        "headerCell": ParagraphStyle(
+            "HeaderCell",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8,
+            textColor=WHITE,
+            leading=11,
+        ),
+        "summaryLabel": ParagraphStyle("SummaryLabel", parent=base["Normal"], fontSize=8, textColor=MUTED),
+        "summaryValue": ParagraphStyle(
+            "SummaryValue",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            textColor=TEXT,
+        ),
+    }

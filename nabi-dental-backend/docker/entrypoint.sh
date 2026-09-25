@@ -2,6 +2,7 @@
 set -e
 
 if [ "${SKIP_DB_SETUP:-0}" != "1" ]; then
+  python -c "from app.core.config import database_target, settings; print('entrypoint db', database_target(settings.DATABASE_URL), flush=True)"
   alembic upgrade head
   python -m app.db.seed
 fi

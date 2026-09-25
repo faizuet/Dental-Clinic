@@ -5,7 +5,7 @@ from fastapi.responses import Response
 
 from app.api.deps import CurrentUser, DBSession
 from app.core.constants import ExportFormat, GroupBy
-from app.schemas.report import ClinicReport, HomeReport
+from app.schemas.report import ClinicReport, ConstructionReport, HomeReport
 from app.services.report_service import ReportService
 from app.utils.dates import today_in_timezone, year_bounds
 
@@ -46,6 +46,18 @@ async def home_report(
     return await ReportService(session).home_report(user, from_date=start, to_date=end, group_by=group_by)
 
 
+@router.get("/construction", response_model=ConstructionReport)
+async def construction_report(
+    user: CurrentUser,
+    session: DBSession,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    group_by: GroupBy = GroupBy.MONTH,
+):
+    start, end = _range(user, from_date, to_date)
+    return await ReportService(session).construction_report(user, from_date=start, to_date=end, group_by=group_by)
+
+
 @router.get("/clinic/export")
 async def export_clinic_report(
     user: CurrentUser,
@@ -77,6 +89,26 @@ async def export_home_report(
 ):
     start, end = _range(user, from_date, to_date)
     content, filename, media_type = await ReportService(session).export_home(
+        user, from_date=start, to_date=end, group_by=group_by, fmt=format
+    )
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/construction/export")
+async def export_construction_report(
+    user: CurrentUser,
+    session: DBSession,
+    from_date: date | None = None,
+    to_date: date | None = None,
+    group_by: GroupBy = GroupBy.MONTH,
+    format: ExportFormat = ExportFormat.PDF,
+):
+    start, end = _range(user, from_date, to_date)
+    content, filename, media_type = await ReportService(session).export_construction(
         user, from_date=start, to_date=end, group_by=group_by, fmt=format
     )
     return Response(

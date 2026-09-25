@@ -1,8 +1,48 @@
 from decimal import Decimal
 from functools import lru_cache
+from urllib.parse import urlparse
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine.url import make_url
+
+
+def normalize_database_url(value: str) -> str:
+    url = (value or "").strip().strip('"').strip("'")
+    if not url:
+        raise ValueError("DATABASE_URL is empty.")
+    if "${{" in url or url.startswith("${"):
+        raise ValueError(
+            "DATABASE_URL was not interpolated. On Railway, add it with "
+            "Add Variable → Variable Reference → Postgres → DATABASE_PRIVATE_URL. "
+            "Do not leave the raw ${{Postgres.DATABASE_PRIVATE_URL}} text unresolved."
+        )
+
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if "sslmode=" in url and "ssl=" not in url:
+        url = url.replace("sslmode=require", "ssl=require").replace(
+            "sslmode=prefer", "ssl=require"
+        )
+
+    try:
+        parsed = make_url(url)
+    except Exception as exc:
+        host = url.split("@")[-1] if "@" in url else "unparseable"
+        raise ValueError(f"DATABASE_URL is not a valid Postgres URL ({host}).") from exc
+    if parsed.drivername not in {"postgresql+asyncpg", "postgresql"}:
+        raise ValueError("DATABASE_URL must be a Postgres URL.")
+    return url
+
+
+def database_target(url: str) -> str:
+    parsed = urlparse(url)
+    host = parsed.hostname or "?"
+    port = f":{parsed.port}" if parsed.port else ""
+    db = (parsed.path or "/").lstrip("/") or "?"
+    return f"{parsed.scheme}://{host}{port}/{db}"
 
 
 class Settings(BaseSettings):
@@ -62,14 +102,7 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def async_database_url(cls, value: str) -> str:
-        url = value.strip()
-        if url.startswith("postgres://"):
-            url = "postgresql://" + url[len("postgres://") :]
-        if url.startswith("postgresql://") and "+asyncpg" not in url:
-            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        if "sslmode=" in url and "ssl=" not in url:
-            url = url.replace("sslmode=require", "ssl=require").replace("sslmode=prefer", "ssl=require")
-        return url
+        return normalize_database_url(value)
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -72,6 +72,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       appRoute('/construction/purchases', () => const ConstructionPurchaseScreen()),
       appRoute('/construction/purchases/history', () => const ConstructionHistoryScreen()),
       appRoute('/construction/materials', () => const ConstructionMaterialsScreen()),
+      appRoute('/construction/reports', () => const ConstructionReportsScreen()),
       appRoute('/settings', () => const SettingsScreen()),
       appRoute('/settings/profile', () => const ProfileScreen()),
       appRoute('/settings/catalogs', () => const CatalogsScreen()),
