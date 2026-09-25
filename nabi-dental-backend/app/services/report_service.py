@@ -4,9 +4,11 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exports.pdf import render_clinic_pdf, render_construction_pdf, render_home_pdf
+from app.exports.pdf import render_clinic_pdf, render_construction_pdf, render_home_pdf, render_treatment_pdf
 from app.exports.xlsx import render_clinic_xlsx, render_construction_xlsx, render_home_xlsx
 from app.models import ClinicExpense, ConstructionPurchase, HomeExpense, TreatmentTransaction, User
+from app.services.treatment_service import TreatmentService
+from app.utils.treatment_details import clinical_summary, tooth_label
 from app.repositories.totals import TotalsRepository, _date_bucket
 from app.schemas.report import (
     ClinicReport,
@@ -56,13 +58,14 @@ class ReportService:
             profit=parse_money(income - expenses),
             income_count=len(income_lines),
             expense_count=len(expense_lines),
+            patient_count=await self.totals.clinic_patient_count(user.clinic_id, from_date, to_date),
             income_by_treatment=[
                 NamedAmount(id=str(row[0]), name=row[1], amount=parse_money(row[2])) for row in income_rows
             ],
             expenses_by_category=[
                 NamedAmount(id=str(row[0]), name=row[1], amount=parse_money(row[2])) for row in expense_rows
             ],
-            income_lines=[_line(row) for row in income_lines],
+            income_lines=[_income_line(row) for row in income_lines],
             expense_lines=[_line(row) for row in expense_lines],
             timeline=timeline,
         )
@@ -180,6 +183,24 @@ class ReportService:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+    async def export_treatment(self, user: User, transaction_id) -> tuple[bytes, str]:
+        service = TreatmentService(self.session)
+        record = await service.get_transaction(user, transaction_id)
+        visit = service.serialize_transaction(record)
+        image_paths = [
+            (item.label, item.stored_path)
+            for item in record.attachments
+            if item.deleted_at is None
+        ]
+        content = render_treatment_pdf(
+            visit,
+            clinic_name=user.clinic.name,
+            currency=user.clinic.currency,
+            image_paths=image_paths,
+        )
+        filename = _export_filename(user.clinic.name, record.transaction_date, record.transaction_date, "pdf", kind="treatment")
+        return content, filename
+
     async def _clinic_timeline(
         self, clinic_id, from_date: date, to_date: date, group_by: str
     ) -> list[TimelinePoint]:
@@ -263,6 +284,23 @@ class ReportService:
 
 def _line(row) -> ReportLine:
     return ReportLine(entry_date=row[0], name=row[1], detail=row[2], amount=parse_money(row[3]))
+
+
+def _income_line(row) -> ReportLine:
+    details = row[7] if len(row) > 7 and isinstance(row[7], dict) else {}
+    sub_treatment = row[6] if len(row) > 6 else None
+    summary = clinical_summary(details, sub_treatment)
+    return ReportLine(
+        entry_date=row[0],
+        name=row[1],
+        detail=summary or row[2],
+        amount=parse_money(row[3]),
+        serial_no=row[4] if len(row) > 4 else None,
+        patient_name=row[5] if len(row) > 5 else None,
+        sub_treatment=sub_treatment,
+        tooth=tooth_label(details),
+        details_text=summary,
+    )
 
 
 def _export_filename(clinic_name: str, from_date: date, to_date: date, fmt: str, kind: str = "clinic") -> str:

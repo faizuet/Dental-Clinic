@@ -5,9 +5,11 @@ from app.models.construction import ConstructionMaterial, ConstructionMaterialCa
 from app.models.home_budget import HomeBudget
 from app.models.home_expense import HomeExpense
 from app.models.home_expense_category import HomeExpenseCategory
+from app.models.patient import Patient
 from app.models.refresh_token import RefreshToken
 from app.models.sync_change import SyncChange
 from app.models.treatment import Treatment
+from app.models.treatment_attachment import TreatmentAttachment
 from app.models.treatment_category import TreatmentCategory
 from app.models.treatment_transaction import TreatmentTransaction
 from app.models.user import User
@@ -16,9 +18,11 @@ __all__ = [
     "Clinic",
     "User",
     "RefreshToken",
+    "Patient",
     "TreatmentCategory",
     "Treatment",
     "TreatmentTransaction",
+    "TreatmentAttachment",
     "ClinicExpenseCategory",
     "ClinicExpense",
     "HomeExpenseCategory",

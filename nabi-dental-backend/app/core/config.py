@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     AVATAR_MAX_BYTES: int = 2_000_000
     AVATAR_MIN_PX: int = 64
     AVATAR_MAX_PX: int = 4096
+    XRAY_MAX_BYTES: int = 5_000_000
+    XRAY_MIN_PX: int = 64
+    XRAY_MAX_PX: int = 8192
 
     @field_validator("DEFAULT_CURRENCY")
     @classmethod

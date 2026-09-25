@@ -2,8 +2,9 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 
-from app.models import Treatment, TreatmentCategory, TreatmentTransaction
+from app.models import Patient, Treatment, TreatmentAttachment, TreatmentCategory, TreatmentTransaction
 from app.repositories.base import BaseRepository, apply_sort
 
 
@@ -128,6 +129,65 @@ class TreatmentRepository(BaseRepository):
         )
 
 
+def _visit_options():
+    return (
+        selectinload(TreatmentTransaction.patient),
+        selectinload(TreatmentTransaction.treatment).selectinload(Treatment.category),
+        selectinload(TreatmentTransaction.attachments),
+    )
+
+
+class PatientRepository(BaseRepository):
+    def _base(self, clinic_id: UUID, *, include_deleted: bool = False):
+        stmt = select(Patient).where(Patient.clinic_id == clinic_id)
+        if not include_deleted:
+            stmt = stmt.where(Patient.deleted_at.is_(None))
+        return stmt
+
+    async def get(self, clinic_id: UUID, patient_id: UUID) -> Patient | None:
+        return await self.session.scalar(self._base(clinic_id, include_deleted=True).where(Patient.id == patient_id))
+
+    async def list_filtered(
+        self,
+        clinic_id: UUID,
+        *,
+        search: str | None,
+        page: int,
+        page_size: int,
+        sort: str | None,
+    ) -> tuple[list[Patient], int]:
+        stmt = self._base(clinic_id)
+        if search and search.strip():
+            pattern = f"%{search.strip()}%"
+            stmt = stmt.where(or_(Patient.name.ilike(pattern), Patient.phone.ilike(pattern)))
+        stmt = apply_sort(stmt, Patient, sort, "name", {"name", "created_at", "updated_at"})
+        items, total = await self.paginate(stmt, page=page, page_size=page_size)
+        return list(items), total
+
+
+class TreatmentAttachmentRepository(BaseRepository):
+    async def get(self, clinic_id: UUID, attachment_id: UUID) -> TreatmentAttachment | None:
+        return await self.session.scalar(
+            select(TreatmentAttachment).where(
+                TreatmentAttachment.clinic_id == clinic_id,
+                TreatmentAttachment.id == attachment_id,
+            )
+        )
+
+    async def live_count(self, transaction_id: UUID) -> int:
+        return int(
+            await self.session.scalar(
+                select(func.count())
+                .select_from(TreatmentAttachment)
+                .where(
+                    TreatmentAttachment.transaction_id == transaction_id,
+                    TreatmentAttachment.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
+
+
 class TreatmentTransactionRepository(BaseRepository):
     def _base(self, clinic_id: UUID, *, include_deleted: bool = False):
         stmt = select(TreatmentTransaction).where(TreatmentTransaction.clinic_id == clinic_id)
@@ -139,6 +199,21 @@ class TreatmentTransactionRepository(BaseRepository):
         return await self.session.scalar(
             self._base(clinic_id, include_deleted=True).where(TreatmentTransaction.id == transaction_id)
         )
+
+    async def get_loaded(self, clinic_id: UUID, transaction_id: UUID) -> TreatmentTransaction | None:
+        return await self.session.scalar(
+            self._base(clinic_id, include_deleted=True)
+            .options(*_visit_options())
+            .where(TreatmentTransaction.id == transaction_id)
+        )
+
+    async def next_serial(self, clinic_id: UUID) -> int:
+        current = await self.session.scalar(
+            select(func.coalesce(func.max(TreatmentTransaction.serial_no), 0)).where(
+                TreatmentTransaction.clinic_id == clinic_id
+            )
+        )
+        return int(current or 0) + 1
 
     async def list_filtered(
         self,
@@ -152,24 +227,30 @@ class TreatmentTransactionRepository(BaseRepository):
         page: int,
         page_size: int,
         sort: str | None,
+        patient_id: UUID | None = None,
     ) -> tuple[list[TreatmentTransaction], int]:
-        stmt = self._base(clinic_id)
+        stmt = self._base(clinic_id).options(*_visit_options())
         if from_date:
             stmt = stmt.where(TreatmentTransaction.transaction_date >= from_date)
         if to_date:
             stmt = stmt.where(TreatmentTransaction.transaction_date <= to_date)
         if treatment_id:
             stmt = stmt.where(TreatmentTransaction.treatment_id == treatment_id)
+        if patient_id:
+            stmt = stmt.where(TreatmentTransaction.patient_id == patient_id)
         if category_id or search:
             stmt = stmt.join(Treatment, Treatment.id == TreatmentTransaction.treatment_id)
         if category_id:
             stmt = stmt.where(Treatment.category_id == category_id)
         if search:
             pattern = f"%{search}%"
+            stmt = stmt.outerjoin(Patient, Patient.id == TreatmentTransaction.patient_id)
             stmt = stmt.where(
                 or_(
                     TreatmentTransaction.notes.ilike(pattern),
+                    TreatmentTransaction.sub_treatment.ilike(pattern),
                     Treatment.name.ilike(pattern),
+                    Patient.name.ilike(pattern),
                 )
             )
         stmt = apply_sort(
@@ -177,7 +258,7 @@ class TreatmentTransactionRepository(BaseRepository):
             TreatmentTransaction,
             sort,
             "-transaction_date",
-            {"transaction_date", "amount", "created_at", "quantity"},
+            {"transaction_date", "amount", "created_at", "quantity", "serial_no"},
         )
         items, total = await self.paginate(stmt, page=page, page_size=page_size)
         return list(items), total

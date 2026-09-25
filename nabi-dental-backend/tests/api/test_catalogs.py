@@ -11,7 +11,7 @@ async def test_seeded_catalogs_and_duplicate_names(client):
     headers = auth_header(tokens)
     treatments = await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})
     assert treatments.status_code == 200
-    assert treatments.json()["total"] == 23
+    assert treatments.json()["total"] == 26
     categories = await client.get("/api/v1/treatment-categories", headers=headers, params={"page_size": 50})
     assert categories.json()["total"] == 11
     clinic_cats = await client.get("/api/v1/clinic-expense-categories", headers=headers)

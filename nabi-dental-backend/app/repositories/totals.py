@@ -15,7 +15,9 @@ from app.models import (
     ConstructionPurchase,
     HomeExpense,
     HomeExpenseCategory,
+    Patient,
     Treatment,
+    TreatmentCategory,
     TreatmentTransaction,
 )
 from app.repositories.base import BaseRepository
@@ -178,17 +180,36 @@ class TotalsRepository(BaseRepository):
                 Treatment.name,
                 TreatmentTransaction.notes,
                 TreatmentTransaction.amount,
+                TreatmentTransaction.serial_no,
+                Patient.name,
+                TreatmentTransaction.sub_treatment,
+                TreatmentTransaction.details,
+                TreatmentCategory.name,
             )
             .join(Treatment, Treatment.id == TreatmentTransaction.treatment_id)
+            .outerjoin(TreatmentCategory, TreatmentCategory.id == Treatment.category_id)
+            .outerjoin(Patient, Patient.id == TreatmentTransaction.patient_id)
             .where(
                 TreatmentTransaction.clinic_id == clinic_id,
                 TreatmentTransaction.deleted_at.is_(None),
                 TreatmentTransaction.transaction_date >= from_date,
                 TreatmentTransaction.transaction_date <= to_date,
             )
-            .order_by(TreatmentTransaction.transaction_date, Treatment.name)
+            .order_by(TreatmentTransaction.serial_no, TreatmentTransaction.transaction_date, Treatment.name)
         )
         return (await self.session.execute(stmt)).all()
+
+    async def clinic_patient_count(self, clinic_id: UUID, from_date: date, to_date: date) -> int:
+        value = await self.session.scalar(
+            select(func.count(func.distinct(TreatmentTransaction.patient_id))).where(
+                TreatmentTransaction.clinic_id == clinic_id,
+                TreatmentTransaction.deleted_at.is_(None),
+                TreatmentTransaction.patient_id.is_not(None),
+                TreatmentTransaction.transaction_date >= from_date,
+                TreatmentTransaction.transaction_date <= to_date,
+            )
+        )
+        return int(value or 0)
 
     async def clinic_expense_lines(self, clinic_id: UUID, from_date: date, to_date: date) -> Sequence[tuple]:
         stmt = (

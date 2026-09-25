@@ -10,6 +10,7 @@ import '../features/clinic_dashboard/clinic_dashboard_screen.dart';
 import '../features/clinic_dashboard/expense_entry_screen.dart';
 import '../features/clinic_dashboard/history_screen.dart';
 import '../features/clinic_dashboard/reports_screen.dart';
+import '../features/clinic_dashboard/treatment_detail_screen.dart';
 import '../features/clinic_dashboard/treatment_entry_screen.dart';
 import '../features/construction/construction_dashboard_screen.dart';
 import '../features/construction/construction_history_screen.dart';
@@ -60,6 +61,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       appRoute('/clinic', () => const ClinicDashboardScreen()),
       appRoute('/clinic/income', () => const TreatmentEntryScreen()),
       appRoute('/clinic/income/history', () => const TreatmentHistoryScreen()),
+      GoRoute(
+        path: '/clinic/income/:id',
+        pageBuilder: (context, state) => buildAppPage(state, TreatmentDetailScreen(id: state.pathParameters['id']!)),
+      ),
       appRoute('/clinic/expenses', () => const ClinicExpenseEntryScreen()),
       appRoute('/clinic/expenses/history', () => const ClinicExpenseHistoryScreen()),
       appRoute('/clinic/reports', () => const ClinicReportsScreen()),

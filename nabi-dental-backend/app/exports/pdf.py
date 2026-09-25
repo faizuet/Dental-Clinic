@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.lib import colors
@@ -7,9 +8,11 @@ from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.schemas.report import ClinicReport, ConstructionReport, HomeReport, NamedAmount
+from app.schemas.treatment_transaction import TreatmentTransactionRead
+from app.utils.treatment_details import clinical_summary, tooth_label
 from app.utils.dates import serialize_datetime
 from app.utils.money import format_money, format_quantity
 
@@ -25,15 +28,16 @@ WHITE = colors.white
 
 def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
     generated = _generated_label()
-    title = "Clinic Expense Report"
+    title = "Clinic Treatment Report"
     story = [
         *_summary_block(
             [
                 ("Currency", report.currency),
-                ("Income entries", str(report.income_count)),
+                ("Patients treated", str(report.patient_count)),
+                ("Treatments", str(report.income_count)),
                 ("Expense entries", str(report.expense_count)),
-                ("Total income", _money(report.total_income, report.currency)),
-                ("Total expenses", _money(report.total_expenses, report.currency)),
+                ("Total treatment income", _money(report.total_income, report.currency)),
+                ("Total clinic expenses", _money(report.total_expenses, report.currency)),
                 ("Profit / loss", _money(report.profit, report.currency)),
             ]
         ),
@@ -41,14 +45,23 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
         *_named_section("Expenses by category", report.expenses_by_category, report.currency),
         *_chart_section("Expense mix", report.expenses_by_category),
         *_line_section(
-            "Income transactions",
-            ["Date", "Treatment", "Notes", "Amount"],
+            "Treatment records",
+            ["Sr.", "Patient", "Date", "Treatment", "Sub-treatment", "Tooth / teeth", "Details", "Fee"],
             [
-                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                [
+                    str(item.serial_no or "—"),
+                    item.patient_name or "Walk-in",
+                    str(item.entry_date),
+                    item.name,
+                    item.sub_treatment or "—",
+                    item.tooth or "—",
+                    item.details_text or item.detail or "—",
+                    _money(item.amount, report.currency),
+                ]
                 for item in report.income_lines
             ],
-            [72, 150, 170, 80],
-            [3],
+            [28, 70, 52, 62, 58, 58, 80, 64],
+            [7],
         ),
         *_line_section(
             "Clinic expenses",
@@ -70,6 +83,105 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
         period=_period_label(report.period.from_date, report.period.to_date),
         accent=PURPLE,
     )
+
+
+def render_treatment_pdf(
+    visit: TreatmentTransactionRead,
+    *,
+    clinic_name: str,
+    currency: str,
+    image_paths: list[tuple[str, str]] | None = None,
+) -> bytes:
+    generated = _generated_label()
+    title = "Patient Treatment Record"
+    details = visit.details or {}
+    tooth = tooth_label(details) or "—"
+    summary = clinical_summary(details, visit.sub_treatment) or "—"
+    info_rows = [
+        ("Sr. No.", str(visit.serial_no or "—")),
+        ("Patient", visit.patient_name or "Walk-in"),
+        ("Treatment date", str(visit.transaction_date)),
+        ("Main treatment", visit.treatment_name or visit.category_name or "Treatment"),
+        ("Sub-treatment", visit.sub_treatment or "—"),
+        ("Fee", _money(visit.amount, currency)),
+    ]
+    dental_rows = [
+        ("Tooth / teeth", tooth),
+        ("Canals", str(details["canals"]) if details.get("canals") else "—"),
+        ("Length", f"{details['length_mm']} mm" if details.get("length_mm") else "—"),
+        ("Material", str(details["material"]) if details.get("material") else "—"),
+        ("Units", str(details["units"]) if details.get("units") else "—"),
+        ("Arch / type", str(details.get("arch") or details.get("denture_type") or "—").replace("_", " ").title()),
+        ("Scope", str(details.get("scope") or "—").replace("_", " ").title()),
+        ("Clinical details", summary),
+    ]
+    dental_rows = [row for row in dental_rows if row[1] not in {"—", "—".title()} or row[0] in {"Tooth / teeth", "Clinical details"}]
+    story = [
+        *_kv_section("Patient information", info_rows),
+        *_kv_section("Dental information", dental_rows),
+        *_kv_section("Treatment notes", [("Notes", visit.notes or "No notes recorded.")]),
+    ]
+    images = _treatment_images(image_paths or [])
+    if images:
+        story.append(Paragraph("X-ray images", _styles()["section"]))
+        story.extend(images)
+    else:
+        story.extend(_kv_section("X-ray images", [("Attachments", "No X-ray attached.")]))
+    return _build(
+        story,
+        clinic_name=clinic_name,
+        title=title,
+        generated=generated,
+        period=str(visit.transaction_date),
+        accent=PURPLE,
+    )
+
+
+def _kv_section(title: str, rows: list[tuple[str, str]]) -> list:
+    styles = _styles()
+    table = Table(
+        [[Paragraph(label, styles["cell"]), Paragraph(value, styles["cell"])] for label, value in rows],
+        colWidths=[140, 332],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), PURPLE_SOFT),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+            ]
+        )
+    )
+    return [Paragraph(title, styles["section"]), table, Spacer(1, 12)]
+
+
+def _treatment_images(image_paths: list[tuple[str, str]]) -> list:
+    styles = _styles()
+    blocks = []
+    for label, path in image_paths:
+        file_path = Path(path)
+        if not file_path.is_file():
+            continue
+        try:
+            image = Image(str(file_path))
+            image.drawWidth, image.drawHeight = _fit_image(image.imageWidth, image.imageHeight, 420, 260)
+            caption = Paragraph((label or "X-ray").replace("_", " ").title(), styles["meta"])
+            blocks.extend([KeepTogether([caption, image]), Spacer(1, 10)])
+        except Exception:
+            continue
+    return blocks
+
+
+def _fit_image(width: float, height: float, max_w: float, max_h: float) -> tuple[float, float]:
+    if width <= 0 or height <= 0:
+        return max_w, max_h / 2
+    ratio = min(max_w / width, max_h / height)
+    return width * ratio, height * ratio
 
 
 def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:

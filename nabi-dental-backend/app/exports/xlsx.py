@@ -25,15 +25,16 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
     workbook = Workbook()
     summary = workbook.active
     summary.title = "Summary"
-    _write_header(summary, clinic_name, "Clinic Expense Report", report.period.from_date, report.period.to_date, report.currency)
+    _write_header(summary, clinic_name, "Clinic Treatment Report", report.period.from_date, report.period.to_date, report.currency)
     _write_kv(
         summary,
         7,
         [
-            ("Total income", format_money(report.total_income)),
+            ("Total treatment income", format_money(report.total_income)),
             ("Total clinic expenses", format_money(report.total_expenses)),
             ("Profit / loss", format_money(report.profit)),
-            ("Income entries", report.income_count),
+            ("Patients treated", report.patient_count),
+            ("Treatments", report.income_count),
             ("Expense entries", report.expense_count),
         ],
     )
@@ -41,10 +42,22 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
     _write_named_sheet(workbook, "Expenses by category", ["Category", "Amount"], [(item.name, item.amount) for item in report.expenses_by_category])
     _write_table_sheet(
         workbook,
-        "Income transactions",
-        ["Date", "Treatment", "Notes", "Amount"],
-        [[str(item.entry_date), item.name, item.detail or "", item.amount] for item in report.income_lines],
-        money_cols={4},
+        "Treatment records",
+        ["Sr.", "Patient", "Date", "Treatment", "Sub-treatment", "Tooth / teeth", "Details", "Fee"],
+        [
+            [
+                item.serial_no or "",
+                item.patient_name or "Walk-in",
+                str(item.entry_date),
+                item.name,
+                item.sub_treatment or "",
+                item.tooth or "",
+                item.details_text or item.detail or "",
+                item.amount,
+            ]
+            for item in report.income_lines
+        ],
+        money_cols={8},
     )
     _write_table_sheet(
         workbook,

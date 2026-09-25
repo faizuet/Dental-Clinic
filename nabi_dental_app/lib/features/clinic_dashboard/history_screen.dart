@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/dental/tooth_catalog.dart';
+import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
-import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
@@ -23,6 +25,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
     required this.deletePath,
     required this.updatePath,
     required this.loader,
+    this.onOpen,
   });
 
   final String title;
@@ -32,6 +35,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String Function(String id) deletePath;
   final String Function(String id) updatePath;
   final Future<List<MoneyEntry>> Function(FinanceRepository repo, {DateRange? range, String? search}) loader;
+  final void Function(BuildContext context, MoneyEntry entry)? onOpen;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -309,9 +313,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               itemCount: _items.length,
                               itemBuilder: (context, index) {
                                 final item = _items[index];
-                                final notes = item.notes == null || item.notes!.isEmpty ? '' : ' · ${item.notes}';
+                                final detail = item.detailsText ?? clinicalSummary(item.details, subTreatment: item.subTreatment);
+                                final subtitle = [
+                                  if (item.serialNo != null) '#${item.serialNo}',
+                                  if (item.patientName != null) item.patientName,
+                                  item.date,
+                                  if (detail.isNotEmpty) detail,
+                                  if (item.notes != null && item.notes!.isNotEmpty) item.notes,
+                                ].join(' · ');
                                 return Card(
-                                  child: Padding(
+                                  child: InkWell(
+                                    onTap: widget.onOpen == null ? null : () => widget.onOpen!(context, item),
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Padding(
                                     padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,8 +345,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                                   ),
                                                   const SizedBox(height: 4),
                                                   Text(
-                                                    '${item.date}$notes',
-                                                    maxLines: 2,
+                                                    subtitle,
+                                                    maxLines: 3,
                                                     overflow: TextOverflow.ellipsis,
                                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
                                                   ),
@@ -352,6 +366,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                         OverflowBar(
                                           alignment: MainAxisAlignment.end,
                                           children: [
+                                            if (widget.onOpen != null)
+                                              TextButton.icon(
+                                                onPressed: () => widget.onOpen!(context, item),
+                                                icon: const Icon(Icons.visibility_outlined, size: 18),
+                                                label: const Text('View'),
+                                              ),
                                             TextButton.icon(
                                               onPressed: () => _edit(item),
                                               icon: const Icon(Icons.edit_outlined, size: 18),
@@ -366,6 +386,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                         ),
                                       ],
                                     ),
+                                  ),
                                   ),
                                 );
                               },
@@ -386,13 +407,14 @@ class TreatmentHistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HistoryScreen(
-      title: 'Income history',
+      title: 'Treatment history',
       backTo: '/clinic',
       collection: 'treatment_transactions',
       entityType: 'treatment_transaction',
       deletePath: (id) => '/api/v1/treatment-transactions/$id',
       updatePath: (id) => '/api/v1/treatment-transactions/$id',
       loader: (repo, {range, search}) => repo.incomeHistory(range: range, search: search),
+      onOpen: (context, entry) => context.push('/clinic/income/${entry.id}'),
     );
   }
 }

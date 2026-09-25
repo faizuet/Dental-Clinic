@@ -61,6 +61,86 @@ class CatalogItem {
       };
 }
 
+Map<String, dynamic> jsonMap(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map) {
+    return Map<String, dynamic>.from(value);
+  }
+  return {};
+}
+
+List<Map<String, dynamic>> jsonMapList(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+  return [
+    for (final item in value)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
+}
+
+class PatientRecord {
+  const PatientRecord({
+    required this.id,
+    required this.name,
+    this.phone,
+    this.notes,
+    this.version = 1,
+  });
+
+  final String id;
+  final String name;
+  final String? phone;
+  final String? notes;
+  final int version;
+
+  factory PatientRecord.fromJson(Map<String, dynamic> json) {
+    return PatientRecord(
+      id: json['id'].toString(),
+      name: json['name']?.toString() ?? 'Patient',
+      phone: jsonText(json['phone']),
+      notes: jsonText(json['notes']),
+      version: jsonInt(json['version'], fallback: 1),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'phone': phone,
+        'notes': notes,
+        'version': version,
+      };
+}
+
+class TreatmentAttachment {
+  const TreatmentAttachment({
+    required this.id,
+    required this.transactionId,
+    this.label = 'other',
+    this.originalName,
+    this.byteSize = 0,
+  });
+
+  final String id;
+  final String transactionId;
+  final String label;
+  final String? originalName;
+  final int byteSize;
+
+  factory TreatmentAttachment.fromJson(Map<String, dynamic> json) {
+    return TreatmentAttachment(
+      id: json['id'].toString(),
+      transactionId: json['transaction_id'].toString(),
+      label: jsonText(json['label']) ?? 'other',
+      originalName: jsonText(json['original_name']),
+      byteSize: jsonInt(json['byte_size']),
+    );
+  }
+}
+
 class MoneyEntry {
   const MoneyEntry({
     required this.id,
@@ -71,6 +151,13 @@ class MoneyEntry {
     this.quantity = 1,
     this.notes,
     this.version = 1,
+    this.patientId,
+    this.patientName,
+    this.serialNo,
+    this.subTreatment,
+    this.details = const {},
+    this.detailsText,
+    this.attachments = const [],
   });
 
   final String id;
@@ -81,6 +168,13 @@ class MoneyEntry {
   final int quantity;
   final String? notes;
   final int version;
+  final String? patientId;
+  final String? patientName;
+  final int? serialNo;
+  final String? subTreatment;
+  final Map<String, dynamic> details;
+  final String? detailsText;
+  final List<TreatmentAttachment> attachments;
 
   factory MoneyEntry.fromJson(Map<String, dynamic> json) {
     return MoneyEntry(
@@ -92,6 +186,15 @@ class MoneyEntry {
       quantity: jsonInt(json['quantity'], fallback: 1),
       notes: jsonText(json['notes']),
       version: jsonInt(json['version'], fallback: 1),
+      patientId: jsonText(json['patient_id']),
+      patientName: jsonText(json['patient_name']),
+      serialNo: json['serial_no'] == null ? null : jsonInt(json['serial_no']),
+      subTreatment: jsonText(json['sub_treatment']),
+      details: jsonMap(json['details']),
+      detailsText: jsonText(json['details_text']),
+      attachments: [
+        for (final item in jsonMapList(json['attachments'])) TreatmentAttachment.fromJson(item),
+      ],
     );
   }
 
@@ -106,6 +209,12 @@ class MoneyEntry {
         'quantity': quantity,
         'notes': notes,
         'version': version,
+        'patient_id': patientId,
+        'patient_name': patientName,
+        'serial_no': serialNo,
+        'sub_treatment': subTreatment,
+        'details': details,
+        'details_text': detailsText,
       };
 }
 

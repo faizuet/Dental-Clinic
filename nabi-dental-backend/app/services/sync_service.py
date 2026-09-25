@@ -18,6 +18,7 @@ from app.models import (
     HomeBudget,
     HomeExpense,
     HomeExpenseCategory,
+    Patient,
     Treatment,
     TreatmentCategory,
     TreatmentTransaction,
@@ -53,11 +54,13 @@ from app.schemas.construction import (
 from app.schemas.sync import SyncChangeIn, SyncPushRequest, SyncPushResponse, SyncPushResult
 from app.schemas.treatment import TreatmentCreate, TreatmentRead, TreatmentUpdate
 from app.schemas.treatment_category import TreatmentCategoryCreate, TreatmentCategoryRead, TreatmentCategoryUpdate
+from app.schemas.patient import PatientCreate, PatientRead, PatientUpdate
 from app.schemas.treatment_transaction import (
     TreatmentTransactionCreate,
     TreatmentTransactionRead,
     TreatmentTransactionUpdate,
 )
+from app.services.treatment_service import serialize_transaction
 from app.services.clinic_expense_service import ClinicExpenseService
 from app.services.construction_service import ConstructionService
 from app.services.home_expense_service import HomeExpenseService
@@ -68,6 +71,7 @@ ENTITY_KEYS = {
     SyncEntity.TREATMENT_CATEGORY: "treatment_categories",
     SyncEntity.TREATMENT: "treatments",
     SyncEntity.TREATMENT_TRANSACTION: "treatment_transactions",
+    SyncEntity.PATIENT: "patients",
     SyncEntity.CLINIC_EXPENSE_CATEGORY: "clinic_expense_categories",
     SyncEntity.CLINIC_EXPENSE: "clinic_expenses",
     SyncEntity.HOME_EXPENSE_CATEGORY: "home_expense_categories",
@@ -82,6 +86,7 @@ READERS = {
     SyncEntity.TREATMENT_CATEGORY: TreatmentCategoryRead,
     SyncEntity.TREATMENT: TreatmentRead,
     SyncEntity.TREATMENT_TRANSACTION: TreatmentTransactionRead,
+    SyncEntity.PATIENT: PatientRead,
     SyncEntity.CLINIC_EXPENSE_CATEGORY: ClinicExpenseCategoryRead,
     SyncEntity.CLINIC_EXPENSE: ClinicExpenseRead,
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategoryRead,
@@ -96,6 +101,7 @@ MODELS = {
     SyncEntity.TREATMENT_CATEGORY: TreatmentCategory,
     SyncEntity.TREATMENT: Treatment,
     SyncEntity.TREATMENT_TRANSACTION: TreatmentTransaction,
+    SyncEntity.PATIENT: Patient,
     SyncEntity.CLINIC_EXPENSE_CATEGORY: ClinicExpenseCategory,
     SyncEntity.CLINIC_EXPENSE: ClinicExpense,
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategory,
@@ -237,6 +243,8 @@ class SyncService:
             return await self._mut_treatment(user, change, data)
         if entity == SyncEntity.TREATMENT_TRANSACTION:
             return await self._mut_tx(user, change, data)
+        if entity == SyncEntity.PATIENT:
+            return await self._mut_patient(user, change, data)
         if entity == SyncEntity.CLINIC_EXPENSE_CATEGORY:
             return await self._mut_clinic_category(user, change, data)
         if entity == SyncEntity.CLINIC_EXPENSE:
@@ -274,6 +282,15 @@ class SyncService:
         if change.operation == SyncOperation.UPDATE:
             return await self.treatments.update_treatment(user, change.entity_id, TreatmentUpdate.model_validate(data))
         return await self.treatments.delete_treatment(user, change.entity_id, change.base_version or 1)
+
+    async def _mut_patient(self, user, change, data):
+        if change.operation == SyncOperation.CREATE:
+            payload = PatientCreate.model_validate(data)
+            payload.id = change.entity_id
+            return await self.treatments.create_patient(user, payload)
+        if change.operation == SyncOperation.UPDATE:
+            return await self.treatments.update_patient(user, change.entity_id, PatientUpdate.model_validate(data))
+        return await self.treatments.delete_patient(user, change.entity_id, change.base_version or 1)
 
     async def _mut_tx(self, user, change, data):
         if change.operation == SyncOperation.CREATE:
@@ -404,6 +421,8 @@ class SyncService:
 
 
 def dump_record(entity: SyncEntity, record: Any) -> dict[str, Any]:
+    if entity == SyncEntity.TREATMENT_TRANSACTION:
+        return serialize_transaction(record).model_dump(mode="json")
     return READERS[entity].model_validate(record).model_dump(mode="json")
 
 

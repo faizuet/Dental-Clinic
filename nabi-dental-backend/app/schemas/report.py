@@ -40,6 +40,11 @@ class ReportLine(APIModel):
     name: str
     detail: str | None = None
     amount: Decimal
+    serial_no: int | None = None
+    patient_name: str | None = None
+    sub_treatment: str | None = None
+    tooth: str | None = None
+    details_text: str | None = None
 
     @field_serializer("amount")
     def serialize_amount(self, value: Decimal) -> str:
@@ -88,6 +93,7 @@ class ClinicReport(APIModel):
     profit: Decimal
     income_count: int = 0
     expense_count: int = 0
+    patient_count: int = 0
     income_by_treatment: list[NamedAmount]
     expenses_by_category: list[NamedAmount]
     income_lines: list[ReportLine] = []

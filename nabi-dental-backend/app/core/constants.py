@@ -44,6 +44,7 @@ class SyncEntity(StrEnum):
     TREATMENT_CATEGORY = "treatment_category"
     TREATMENT = "treatment"
     TREATMENT_TRANSACTION = "treatment_transaction"
+    PATIENT = "patient"
     CLINIC_EXPENSE_CATEGORY = "clinic_expense_category"
     CLINIC_EXPENSE = "clinic_expense"
     HOME_EXPENSE_CATEGORY = "home_expense_category"
@@ -71,11 +72,11 @@ SEED_TREATMENTS: dict[str, list[str]] = {
     "Basic": ["Consultation", "Scaling and Polishing", "Dental Filling"],
     "Extraction": ["Tooth Extraction"],
     "Endodontics": ["RCT", "Pulpotomy", "Apicoectomy"],
-    "Prosthetics": ["Crown", "Dental Bridge", "Dentures", "Dental Implant"],
+    "Prosthetics": ["Crown", "Dental Bridge", "Removable Denture", "Full Denture", "Dentures", "Dental Implant"],
     "Orthodontics": ["Braces", "Clear Aligners"],
     "Cosmetic": ["Veneers", "Teeth Whitening"],
     "Restorative": ["Inlay or Onlay"],
-    "Periodontal": ["Gingivectomy", "Frenectomy"],
+    "Periodontal": ["Scaling", "Gingivectomy", "Frenectomy"],
     "Protective": ["Night Guard", "Sports Guard"],
     "Diagnostic": ["X Ray", "Panoramic X Ray"],
     "Emergency": ["Emergency Treatment"],

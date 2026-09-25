@@ -163,7 +163,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 child: FilledButton.icon(
                   onPressed: () => appPush(context, '/clinic/income'),
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add treatment income', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               ),
               const SizedBox(height: 10),
@@ -176,8 +176,8 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               ),
               const SizedBox(height: 16),
               ActionCard(
-                title: 'Income history',
-                subtitle: 'Search, edit, or delete treatment income',
+                title: 'Treatment history',
+                subtitle: 'Patient visits, X-rays, and treatment fees',
                 icon: Icons.history_rounded,
                 onTap: () => appPush(context, '/clinic/income/history'),
               ),

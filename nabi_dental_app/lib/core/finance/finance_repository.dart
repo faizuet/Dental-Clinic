@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -15,6 +16,7 @@ const _collections = {
   'treatment_category': 'treatment_categories',
   'treatment': 'treatments',
   'treatment_transaction': 'treatment_transactions',
+  'patient': 'patients',
   'clinic_expense_category': 'clinic_expense_categories',
   'clinic_expense': 'clinic_expenses',
   'home_expense_category': 'home_expense_categories',
@@ -537,8 +539,127 @@ class FinanceRepository {
     );
   }
 
+  Future<List<PatientRecord>> patients({String? search}) async {
+    final rows = await _db.list('patients');
+    var items = rows.map(PatientRecord.fromJson).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final needle = search?.trim().toLowerCase();
+    if (needle != null && needle.isNotEmpty) {
+      items = items
+          .where(
+            (item) =>
+                item.name.toLowerCase().contains(needle) || (item.phone ?? '').toLowerCase().contains(needle),
+          )
+          .toList();
+    }
+    return items;
+  }
+
+  Future<PatientRecord> savePatient({required String name, String? phone}) async {
+    final id = await createCatalog(
+      path: '/api/v1/patients',
+      collection: 'patients',
+      entityType: 'patient',
+      body: {'name': name, 'phone': phone},
+    );
+    final row = await _db.get('patients', id) ?? {'id': id, 'name': name, 'phone': phone};
+    return PatientRecord.fromJson(row);
+  }
+
   Future<List<MoneyEntry>> incomeHistory({DateRange? range, String? search}) async {
     return _filterEntries(await _db.list('treatment_transactions'), range: range, search: search);
+  }
+
+  Future<MoneyEntry?> treatmentById(String id) async {
+    try {
+      final response = await _api.get('/api/v1/treatment-transactions/$id');
+      final row = _asMap(response.data);
+      if (row != null) {
+        final named = (await _namedTransactions([row])).first;
+        await _db.upsert('treatment_transactions', named);
+        return MoneyEntry.fromJson(named);
+      }
+    } catch (_) {}
+    final local = await _db.get('treatment_transactions', id);
+    return local == null ? null : MoneyEntry.fromJson(local);
+  }
+
+  Future<List<int>> treatmentAttachmentBytes(String transactionId, String attachmentId) async {
+    final response = await _api.getBytes('/api/v1/treatment-transactions/$transactionId/attachments/$attachmentId/file');
+    return response.data ?? <int>[];
+  }
+
+  Future<ResponseBytes> exportTreatment(String id) async {
+    final response = await _api.getBytes('/api/v1/treatment-transactions/$id/export');
+    return ResponseBytes(
+      bytes: response.data ?? <int>[],
+      filename: 'treatment-record.pdf',
+      mime: 'application/pdf',
+    );
+  }
+
+  Future<String> saveTreatmentVisit({
+    required String date,
+    required String treatmentId,
+    required String amount,
+    String? patientId,
+    String? patientName,
+    String? subTreatment,
+    Map<String, dynamic>? details,
+    String? notes,
+    List<({List<int> bytes, String filename, String label})> xrays = const [],
+  }) async {
+    final payload = {
+      'id': _uuid.v4(),
+      'treatment_id': treatmentId,
+      'transaction_date': date,
+      'quantity': 1,
+      'amount': amount,
+      'notes': notes,
+      'patient_id': patientId,
+      'sub_treatment': subTreatment,
+      'details': details ?? {},
+    };
+    final names = {for (final item in await treatments()) item.id: item.name};
+    try {
+      final response = await _api.post('/api/v1/treatment-transactions', data: payload);
+      final saved = _asMap(response.data) ?? payload;
+      saved['catalog_name'] = names[treatmentId] ?? saved['treatment_name'] ?? 'Treatment';
+      saved['patient_name'] = saved['patient_name'] ?? patientName;
+      for (final xray in xrays) {
+        final form = FormData.fromMap({
+          'label': xray.label,
+          'file': MultipartFile.fromBytes(xray.bytes, filename: xray.filename),
+        });
+        final uploaded = await _api.postMultipart(
+          '/api/v1/treatment-transactions/${saved['id']}/attachments',
+          data: form,
+        );
+        final attachment = _asMap(uploaded.data);
+        if (attachment != null) {
+          final current = jsonMapList(saved['attachments']);
+          current.add(attachment);
+          saved['attachments'] = current;
+        }
+      }
+      await _db.upsert('treatment_transactions', saved);
+      return 'Treatment saved.';
+    } on OfflineException {
+      payload['catalog_name'] = names[treatmentId] ?? 'Treatment';
+      payload['patient_name'] = patientName;
+      payload['version'] = 1;
+      await _db.upsert('treatment_transactions', payload);
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'treatment_transaction',
+        entityId: payload['id'].toString(),
+        operation: 'create',
+        payload: payload,
+      );
+      return xrays.isEmpty
+          ? 'Saved on this device and waiting to sync.'
+          : 'Treatment saved on this device. Add X-rays again when you are online.';
+    }
   }
 
   Future<List<MoneyEntry>> clinicExpenseHistory({DateRange? range, String? search}) async {
@@ -1040,6 +1161,7 @@ class FinanceRepository {
     await _db.upsertAll('treatment_categories', treatmentCats);
     await _db.upsertAll('clinic_expense_categories', await _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100}));
     await _db.upsertAll('home_expense_categories', await _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100}));
+    await _db.upsertAll('patients', await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': 'name'}));
     await _db.upsertAll(
       'treatment_transactions',
       await _namedTransactions(await _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'})),
@@ -1171,7 +1293,11 @@ class FinanceRepository {
     final needle = search?.trim().toLowerCase();
     if (needle != null && needle.isNotEmpty) {
       entries = entries.where((entry) {
-        return entry.catalogName.toLowerCase().contains(needle) || (entry.notes ?? '').toLowerCase().contains(needle);
+        return entry.catalogName.toLowerCase().contains(needle) ||
+            (entry.notes ?? '').toLowerCase().contains(needle) ||
+            (entry.patientName ?? '').toLowerCase().contains(needle) ||
+            (entry.subTreatment ?? '').toLowerCase().contains(needle) ||
+            (entry.detailsText ?? '').toLowerCase().contains(needle);
       }).toList();
     }
     entries.sort((a, b) => b.date.compareTo(a.date));
