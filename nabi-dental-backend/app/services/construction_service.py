@@ -85,7 +85,10 @@ class ConstructionService:
         return await self.materials.list_filtered(user.id, **filters)
 
     async def get_material(self, user: User, material_id: uuid.UUID) -> ConstructionMaterial:
-        return require_record(await self.materials.get(user.id, material_id))
+        return require_record(
+            await self.materials.get(user.id, material_id),
+            "This construction material is not available on the server. Sync the app and select it again.",
+        )
 
     async def create_material(self, user: User, payload: ConstructionMaterialCreate) -> ConstructionMaterial:
         await self._require_active_category(user, payload.category_id)

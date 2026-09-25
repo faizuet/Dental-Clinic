@@ -26,7 +26,10 @@ class HomeExpenseService:
         return await self.categories.list_filtered(user.id, **filters)
 
     async def get_category(self, user: User, category_id: uuid.UUID) -> HomeExpenseCategory:
-        return require_record(await self.categories.get(user.id, category_id))
+        return require_record(
+            await self.categories.get(user.id, category_id),
+            "This home expense category is not available on the server. Sync the app and select it again.",
+        )
 
     async def create_category(self, user: User, payload: HomeExpenseCategoryCreate) -> HomeExpenseCategory:
         if await self.categories.name_taken(user.id, payload.name):

@@ -140,6 +140,7 @@ class FinanceRepository {
   final AppDatabase _db;
   final DeviceIdentity _device;
   static const _uuid = Uuid();
+  final _serverCatalogIds = <String>{};
 
   Future<bool> refresh() async {
     try {
@@ -150,6 +151,7 @@ class FinanceRepository {
       } else {
         await _pull(cursor);
       }
+      await _hydrateRest();
       await _decorateNames();
       await _pruneDuplicateFinanceCatalogs();
       await ensureConstructionCatalog();
@@ -451,7 +453,14 @@ class FinanceRepository {
       final key = includeCategory
           ? '${item.name.trim().toLowerCase()}|${(item.categoryName ?? item.categoryId ?? '').trim().toLowerCase()}'
           : item.name.trim().toLowerCase();
-      unique.putIfAbsent(key, () => item);
+      final existing = unique[key];
+      if (existing == null) {
+        unique[key] = item;
+        continue;
+      }
+      if (!_serverCatalogIds.contains(existing.id) && _serverCatalogIds.contains(item.id)) {
+        unique[key] = item;
+      }
     }
     return unique.values.toList()..sort((a, b) => a.name.compareTo(b.name));
   }
@@ -485,6 +494,11 @@ class FinanceRepository {
         continue;
       }
       group.sort((a, b) {
+        final aServer = _serverCatalogIds.contains(a['id'].toString()) ? 0 : 1;
+        final bServer = _serverCatalogIds.contains(b['id'].toString()) ? 0 : 1;
+        if (aServer != bServer) {
+          return aServer.compareTo(bServer);
+        }
         final seedRank = (a['local_seed'] == true ? 1 : 0).compareTo(b['local_seed'] == true ? 1 : 0);
         if (seedRank != 0) {
           return seedRank;
@@ -565,6 +579,7 @@ class FinanceRepository {
         if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
       },
     );
+    _serverCatalogIds.add(id);
     try {
       final response = await _api.get('/api/v1/patients/$id');
       final remote = _asMap(response.data);
@@ -638,14 +653,21 @@ class FinanceRepository {
     String? notes,
     List<({List<int> bytes, String filename, String label})> xrays = const [],
   }) async {
+    final resolvedTreatmentId = await _resolveCatalogId(
+      collection: 'treatments',
+      listPath: '/api/v1/treatments',
+      id: treatmentId,
+      extraKey: 'category_name',
+    );
+    final resolvedPatientId = await _resolvePatientId(patientId, name: patientName, phone: patientPhone);
     final payload = {
       'id': _uuid.v4(),
-      'treatment_id': treatmentId,
+      'treatment_id': resolvedTreatmentId,
       'transaction_date': date,
       'quantity': 1,
       'amount': amount,
       'notes': notes,
-      'patient_id': patientId,
+      'patient_id': resolvedPatientId,
       'sub_treatment': subTreatment,
       'details': details ?? {},
     };
@@ -653,7 +675,7 @@ class FinanceRepository {
     try {
       final response = await _api.post('/api/v1/treatment-transactions', data: payload);
       final saved = _asMap(response.data) ?? payload;
-      saved['catalog_name'] = names[treatmentId] ?? saved['treatment_name'] ?? 'Treatment';
+      saved['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? saved['treatment_name'] ?? 'Treatment';
       saved['patient_name'] = saved['patient_name'] ?? patientName;
       saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
       for (final xray in xrays) {
@@ -675,7 +697,7 @@ class FinanceRepository {
       await _db.upsert('treatment_transactions', saved);
       return 'Treatment saved.';
     } on OfflineException {
-      payload['catalog_name'] = names[treatmentId] ?? 'Treatment';
+      payload['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? 'Treatment';
       payload['patient_name'] = patientName;
       payload['patient_phone'] = patientPhone;
       payload['version'] = 1;
@@ -709,7 +731,12 @@ class FinanceRepository {
       for (final row in rows)
         {
           'id': _uuid.v4(),
-          'treatment_id': row.treatmentId,
+          'treatment_id': await _resolveCatalogId(
+            collection: 'treatments',
+            listPath: '/api/v1/treatments',
+            id: row.treatmentId,
+            extraKey: 'category_name',
+          ),
           'transaction_date': date,
           'quantity': row.quantity,
           'amount': row.amount,
@@ -734,6 +761,8 @@ class FinanceRepository {
       collection: 'clinic_expenses',
       entityType: 'clinic_expense',
       categories: clinicExpenseCategories,
+      catalogCollection: 'clinic_expense_categories',
+      catalogPath: '/api/v1/clinic-expense-categories',
       date: date,
       rows: rows,
     );
@@ -748,6 +777,8 @@ class FinanceRepository {
       collection: 'home_expenses',
       entityType: 'home_expense',
       categories: homeExpenseCategories,
+      catalogCollection: 'home_expense_categories',
+      catalogPath: '/api/v1/home-expense-categories',
       date: date,
       rows: rows,
     );
@@ -982,7 +1013,11 @@ class FinanceRepository {
     final payload = {'id': _uuid.v4(), ...body};
     try {
       final response = await _api.post(path, data: payload);
-      await _db.upsert(collection, _asMap(response.data) ?? payload);
+      final saved = _asMap(response.data) ?? payload;
+      await _db.upsert(collection, saved);
+      final id = saved['id']?.toString() ?? payload['id'].toString();
+      _serverCatalogIds.add(id);
+      return id;
     } on OfflineException {
       await _db.upsert(collection, payload);
       await _db.enqueueChange(
@@ -1174,6 +1209,129 @@ class FinanceRepository {
     }
   }
 
+  bool _isNotFound(Object error) {
+    return error is AppException &&
+        (error.code == 'NOT_FOUND' || error.message.toLowerCase().contains('not found'));
+  }
+
+  Future<String> _resolveCatalogId({
+    required String collection,
+    required String listPath,
+    required String id,
+    String? extraKey,
+  }) async {
+    try {
+      await _api.get('$listPath/$id');
+      _serverCatalogIds.add(id);
+      return id;
+    } on OfflineException {
+      return id;
+    } on AppException catch (error) {
+      if (!_isNotFound(error)) {
+        rethrow;
+      }
+    }
+    final local = await _db.get(collection, id);
+    final name = (local?['name']?.toString() ?? '').trim().toLowerCase();
+    final extra = extraKey == null ? '' : (local?[extraKey]?.toString() ?? '').trim().toLowerCase();
+    if (name.isEmpty) {
+      return id;
+    }
+
+    bool matches(Map<String, dynamic> row) {
+      if ((row['name']?.toString() ?? '').trim().toLowerCase() != name) {
+        return false;
+      }
+      if (extraKey == null || extra.isEmpty) {
+        return true;
+      }
+      final rowExtra = (row[extraKey]?.toString() ?? row['category_name']?.toString() ?? '').trim().toLowerCase();
+      return rowExtra.isEmpty || rowExtra == extra;
+    }
+
+    for (final row in await _db.list(collection)) {
+      final candidate = row['id'].toString();
+      if (candidate == id || !matches(row)) {
+        continue;
+      }
+      try {
+        await _api.get('$listPath/$candidate');
+        _serverCatalogIds.add(candidate);
+        return candidate;
+      } on OfflineException {
+        return candidate;
+      } on AppException catch (error) {
+        if (!_isNotFound(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    try {
+      final remote = await _allPages(listPath, extra: {'page_size': 100});
+      for (final row in remote) {
+        if (!matches(row)) {
+          continue;
+        }
+        final resolved = row['id'].toString();
+        await _db.upsert(collection, {
+          ...row,
+          if (local != null) 'category_name': local['category_name'] ?? row['category_name'],
+        });
+        _serverCatalogIds.add(resolved);
+        return resolved;
+      }
+    } on OfflineException {
+      return id;
+    } on AppException {
+      return id;
+    }
+    return id;
+  }
+
+  Future<String?> _resolvePatientId(String? patientId, {String? name, String? phone}) async {
+    if (patientId == null || patientId.isEmpty) {
+      return null;
+    }
+    try {
+      await _api.get('/api/v1/patients/$patientId');
+      return patientId;
+    } on OfflineException {
+      return patientId;
+    } on AppException catch (error) {
+      if (!_isNotFound(error)) {
+        rethrow;
+      }
+    }
+    final needleName = (name ?? '').trim().toLowerCase();
+    final needlePhone = (phone ?? '').trim();
+    try {
+      final remote = await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': 'name'});
+      for (final row in remote) {
+        final rowName = (row['name']?.toString() ?? '').trim().toLowerCase();
+        final rowPhone = (row['phone']?.toString() ?? '').trim();
+        final sameName = needleName.isNotEmpty && rowName == needleName;
+        final samePhone = needlePhone.isEmpty || rowPhone.isEmpty || rowPhone == needlePhone;
+        if (sameName && samePhone) {
+          await _db.upsert('patients', row);
+          return row['id'].toString();
+        }
+      }
+      if (needleName.length >= 2) {
+        return await createCatalog(
+          path: '/api/v1/patients',
+          collection: 'patients',
+          entityType: 'patient',
+          body: {
+            'name': name!.trim(),
+            if (needlePhone.isNotEmpty) 'phone': needlePhone,
+          },
+        );
+      }
+    } catch (_) {}
+    return patientId;
+  }
+
   Future<void> _hydrateRest() async {
     final treatments = await _allPages('/api/v1/treatments', extra: {'page_size': 100});
     final treatmentCats = await _allPages('/api/v1/treatment-categories', extra: {'page_size': 100});
@@ -1189,10 +1347,13 @@ class FinanceRepository {
               })
           .toList(),
     );
+    final clinicCats = await _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100});
+    final homeCats = await _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100});
+    final patients = await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': 'name'});
     await _db.upsertAll('treatment_categories', treatmentCats);
-    await _db.upsertAll('clinic_expense_categories', await _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100}));
-    await _db.upsertAll('home_expense_categories', await _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100}));
-    await _db.upsertAll('patients', await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': 'name'}));
+    await _db.upsertAll('clinic_expense_categories', clinicCats);
+    await _db.upsertAll('home_expense_categories', homeCats);
+    await _db.upsertAll('patients', patients);
     await _db.upsertAll(
       'treatment_transactions',
       await _namedTransactions(await _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'})),
@@ -1213,17 +1374,22 @@ class FinanceRepository {
     );
     await _db.upsertAll('home_budgets', await _allPages('/api/v1/home-budgets', extra: {'page_size': 100}));
     await _hydrateConstruction();
+    _serverCatalogIds
+      ..addAll(treatments.map((item) => item['id'].toString()))
+      ..addAll(treatmentCats.map((item) => item['id'].toString()))
+      ..addAll(clinicCats.map((item) => item['id'].toString()))
+      ..addAll(homeCats.map((item) => item['id'].toString()))
+      ..addAll(patients.map((item) => item['id'].toString()));
   }
 
   Future<void> _hydrateConstruction() async {
-    await _db.upsertAll(
-      'construction_material_categories',
-      await _allPages('/api/v1/construction-material-categories', extra: {'page_size': 100}),
-    );
-    await _db.upsertAll(
-      'construction_materials',
-      await _allPages('/api/v1/construction-materials', extra: {'page_size': 100}),
-    );
+    final categories = await _allPages('/api/v1/construction-material-categories', extra: {'page_size': 100});
+    final materials = await _allPages('/api/v1/construction-materials', extra: {'page_size': 100});
+    await _db.upsertAll('construction_material_categories', categories);
+    await _db.upsertAll('construction_materials', materials);
+    _serverCatalogIds
+      ..addAll(categories.map((item) => item['id'].toString()))
+      ..addAll(materials.map((item) => item['id'].toString()));
     await _db.upsertAll(
       'construction_purchases',
       await _decorateConstructionPurchases(
@@ -1386,14 +1552,20 @@ class FinanceRepository {
     required String collection,
     required String entityType,
     required Future<List<CatalogItem>> Function() categories,
+    required String catalogCollection,
+    required String catalogPath,
     required String date,
     required List<({String categoryId, String amount, String? notes})> rows,
-  }) {
+  }) async {
     final items = [
       for (final row in rows)
         {
           'id': _uuid.v4(),
-          'category_id': row.categoryId,
+          'category_id': await _resolveCatalogId(
+            collection: catalogCollection,
+            listPath: catalogPath,
+            id: row.categoryId,
+          ),
           'expense_date': date,
           'amount': row.amount,
           'notes': row.notes,

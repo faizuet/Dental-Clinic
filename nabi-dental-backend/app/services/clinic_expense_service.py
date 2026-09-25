@@ -22,7 +22,10 @@ class ClinicExpenseService:
         return await self.categories.list_filtered(user.clinic_id, **filters)
 
     async def get_category(self, user: User, category_id: uuid.UUID) -> ClinicExpenseCategory:
-        return require_record(await self.categories.get(user.clinic_id, category_id))
+        return require_record(
+            await self.categories.get(user.clinic_id, category_id),
+            "This clinic expense category is not available on the server. Sync the app and select it again.",
+        )
 
     async def create_category(self, user: User, payload: ClinicExpenseCategoryCreate) -> ClinicExpenseCategory:
         if await self.categories.name_taken(user.clinic_id, payload.name):

@@ -86,7 +86,10 @@ class TreatmentService:
         return await self.treatments.list_filtered(user.clinic_id, **filters)
 
     async def get_treatment(self, user: User, treatment_id: uuid.UUID) -> Treatment:
-        return require_record(await self.treatments.get(user.clinic_id, treatment_id))
+        return require_record(
+            await self.treatments.get(user.clinic_id, treatment_id),
+            "This treatment is not available on the server. Sync the app and select it again.",
+        )
 
     async def create_treatment(self, user: User, payload: TreatmentCreate) -> Treatment:
         category = await self.get_category(user, payload.category_id)
@@ -133,7 +136,10 @@ class TreatmentService:
         return await self.patients.list_filtered(user.clinic_id, **filters)
 
     async def get_patient(self, user: User, patient_id: uuid.UUID) -> Patient:
-        return require_record(await self.patients.get(user.clinic_id, patient_id))
+        return require_record(
+            await self.patients.get(user.clinic_id, patient_id),
+            "This patient is not available on the server. Add the patient again.",
+        )
 
     async def create_patient(self, user: User, payload: PatientCreate) -> Patient:
         record = Patient(
