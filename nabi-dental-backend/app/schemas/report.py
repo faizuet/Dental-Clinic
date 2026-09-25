@@ -112,6 +112,16 @@ class HomeReport(APIModel):
     budget_source: str
     timeline: list[TimelinePoint]
 
+    @field_serializer("total_expenses", "budget", "remaining")
+    def serialize_home_money(self, value: Decimal) -> str:
+        return format_money(value)
+
+    @field_serializer("percentage_used")
+    def serialize_percentage(self, value: Decimal | None) -> str | None:
+        if value is None:
+            return None
+        return f"{value:.2f}"
+
 
 class ConstructionReport(APIModel):
     period: PeriodWindow
@@ -127,15 +137,5 @@ class ConstructionReport(APIModel):
     timeline: list[TimelinePoint]
 
     @field_serializer("total_expenses")
-    def serialize_money(self, value: Decimal) -> str:
+    def serialize_total_expenses(self, value: Decimal) -> str:
         return format_money(value)
-
-    @field_serializer("total_expenses", "budget", "remaining")
-    def serialize_money(self, value: Decimal) -> str:
-        return format_money(value)
-
-    @field_serializer("percentage_used")
-    def serialize_percentage(self, value: Decimal | None) -> str | None:
-        if value is None:
-            return None
-        return f"{value:.2f}"
