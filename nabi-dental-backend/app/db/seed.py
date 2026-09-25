@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -16,12 +16,16 @@ from app.core.security import hash_password
 from app.db.session import SessionLocal
 from app.models import (
     Clinic,
+    ClinicExpense,
     ClinicExpenseCategory,
     ConstructionMaterial,
     ConstructionMaterialCategory,
+    ConstructionPurchase,
+    HomeExpense,
     HomeExpenseCategory,
     Treatment,
     TreatmentCategory,
+    TreatmentTransaction,
     User,
 )
 
@@ -33,6 +37,7 @@ async def seed_database(session: AsyncSession) -> None:
     await _seed_clinic_expense_categories(session, clinic)
     await _seed_home_expense_categories(session, owner)
     await seed_construction_catalog(session, owner)
+    await _dedupe_clinic_catalogs(session, clinic, owner)
     await session.commit()
     logger.info("Seed completed", extra={"clinic_id": str(clinic.id), "user_id": str(owner.id)})
 
@@ -195,6 +200,68 @@ async def seed_construction_catalog(session: AsyncSession, user: User) -> None:
                 )
             )
             present_materials.add(material_name.lower())
+
+
+async def _dedupe_clinic_catalogs(session: AsyncSession, clinic: Clinic, owner: User) -> None:
+    await _dedupe_by_name(
+        session,
+        TreatmentCategory,
+        TreatmentCategory.clinic_id == clinic.id,
+        child_model=Treatment,
+        child_fk="category_id",
+    )
+    await _dedupe_by_name(
+        session,
+        Treatment,
+        Treatment.clinic_id == clinic.id,
+        child_model=TreatmentTransaction,
+        child_fk="treatment_id",
+    )
+    await _dedupe_by_name(
+        session,
+        ClinicExpenseCategory,
+        ClinicExpenseCategory.clinic_id == clinic.id,
+        child_model=ClinicExpense,
+        child_fk="category_id",
+    )
+    await _dedupe_by_name(
+        session,
+        HomeExpenseCategory,
+        HomeExpenseCategory.user_id == owner.id,
+        child_model=HomeExpense,
+        child_fk="category_id",
+    )
+    await _dedupe_by_name(
+        session,
+        ConstructionMaterialCategory,
+        ConstructionMaterialCategory.user_id == owner.id,
+        child_model=ConstructionMaterial,
+        child_fk="category_id",
+    )
+    await _dedupe_by_name(
+        session,
+        ConstructionMaterial,
+        ConstructionMaterial.user_id == owner.id,
+        child_model=ConstructionPurchase,
+        child_fk="material_id",
+    )
+
+
+async def _dedupe_by_name(session, model, scope, *, child_model, child_fk: str) -> None:
+    rows = (await session.execute(select(model).where(scope, model.deleted_at.is_(None)))).scalars().all()
+    groups: dict[str, list] = {}
+    for row in rows:
+        groups.setdefault(row.name.strip().lower(), []).append(row)
+    for items in groups.values():
+        if len(items) < 2:
+            continue
+        items.sort(key=lambda item: (item.created_at, str(item.id)))
+        keep = items[0]
+        for extra in items[1:]:
+            await session.execute(
+                update(child_model).where(getattr(child_model, child_fk) == extra.id).values(**{child_fk: keep.id})
+            )
+            extra.soft_delete()
 
 
 async def main() -> None:

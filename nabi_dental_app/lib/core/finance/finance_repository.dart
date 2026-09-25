@@ -149,27 +149,32 @@ class FinanceRepository {
         await _pull(cursor);
       }
       await _decorateNames();
+      await _pruneDuplicateFinanceCatalogs();
       await ensureConstructionCatalog();
       await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
       await _db.setMeta('sync_state', 'synced');
       return true;
     } on OfflineException {
       await _db.setMeta('sync_state', 'offline');
+      await _pruneDuplicateFinanceCatalogs();
       await ensureConstructionCatalog();
       return false;
     } on AppException {
       try {
         await _hydrateRest();
         await _decorateNames();
+        await _pruneDuplicateFinanceCatalogs();
         await ensureConstructionCatalog();
         await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
         return true;
       } on OfflineException {
         await _db.setMeta('sync_state', 'offline');
+        await _pruneDuplicateFinanceCatalogs();
         await ensureConstructionCatalog();
         return false;
       } on AppException {
         await _db.setMeta('sync_state', 'failed');
+        await _pruneDuplicateFinanceCatalogs();
         await ensureConstructionCatalog();
         return false;
       }
@@ -365,11 +370,10 @@ class FinanceRepository {
 
   Future<List<CatalogItem>> treatments() async {
     final rows = await _db.list('treatments');
-    return rows
+    final items = rows
         .map((row) => CatalogItem.fromJson(row, categoryName: row['category_name']?.toString()))
-        .where((item) => item.isActive)
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+        .where((item) => item.isActive);
+    return _uniqueCatalogItems(items);
   }
 
   Future<List<CatalogItem>> clinicExpenseCategories() => _categories('clinic_expense_categories');
@@ -436,8 +440,71 @@ class FinanceRepository {
 
   Future<List<CatalogItem>> _categories(String collection) async {
     final rows = await _db.list(collection);
-    return rows.map(CatalogItem.fromJson).where((item) => item.isActive).toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+    return _uniqueCatalogItems(rows.map(CatalogItem.fromJson).where((item) => item.isActive));
+  }
+
+  List<CatalogItem> _uniqueCatalogItems(Iterable<CatalogItem> items, {bool includeCategory = false}) {
+    final unique = <String, CatalogItem>{};
+    for (final item in items) {
+      final key = includeCategory
+          ? '${item.name.trim().toLowerCase()}|${(item.categoryName ?? item.categoryId ?? '').trim().toLowerCase()}'
+          : item.name.trim().toLowerCase();
+      unique.putIfAbsent(key, () => item);
+    }
+    return unique.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  Future<void> _pruneDuplicateFinanceCatalogs() async {
+    await _pruneDuplicateNamed('treatment_categories', remapCollection: 'treatments', remapField: 'category_id');
+    await _pruneDuplicateNamed('treatments', extraKey: 'category_name', remapCollection: 'treatment_transactions', remapField: 'treatment_id');
+    await _pruneDuplicateNamed('clinic_expense_categories', remapCollection: 'clinic_expenses', remapField: 'category_id');
+    await _pruneDuplicateNamed('home_expense_categories', remapCollection: 'home_expenses', remapField: 'category_id');
+  }
+
+  Future<void> _pruneDuplicateNamed(
+    String collection, {
+    String? extraKey,
+    String? remapCollection,
+    String? remapField,
+  }) async {
+    final rows = await _db.list(collection);
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in rows) {
+      final name = (row['name']?.toString() ?? '').trim().toLowerCase();
+      if (name.isEmpty) {
+        continue;
+      }
+      final extra = extraKey == null ? '' : (row[extraKey]?.toString() ?? '').trim().toLowerCase();
+      groups.putIfAbsent('$name|$extra', () => []).add(row);
+    }
+    final idMap = <String, String>{};
+    for (final group in groups.values) {
+      if (group.length < 2) {
+        continue;
+      }
+      group.sort((a, b) {
+        final seedRank = (a['local_seed'] == true ? 1 : 0).compareTo(b['local_seed'] == true ? 1 : 0);
+        if (seedRank != 0) {
+          return seedRank;
+        }
+        return a['id'].toString().compareTo(b['id'].toString());
+      });
+      final keepId = group.first['id'].toString();
+      for (final extra in group.skip(1)) {
+        idMap[extra['id'].toString()] = keepId;
+        await _db.markDeleted(collection, extra['id'].toString());
+      }
+    }
+    if (idMap.isEmpty || remapCollection == null || remapField == null) {
+      return;
+    }
+    for (final row in await _db.list(remapCollection)) {
+      final mapped = idMap[row[remapField]?.toString()];
+      if (mapped != null) {
+        row[remapField] = mapped;
+        await _db.upsert(remapCollection, row);
+      }
+    }
   }
 
   Future<ClinicTotals> clinicTotals(DateRange range) async {
