@@ -180,6 +180,7 @@ class FinanceRepository {
     try {
       await _hydrateConstruction();
       await _decorateConstructionLocal();
+      await _pruneLocalConstructionSeed();
     } catch (_) {}
     if ((await constructionMaterials()).isNotEmpty) {
       return;
@@ -188,6 +189,7 @@ class FinanceRepository {
       await _bootstrap();
       await _hydrateConstruction();
       await _decorateConstructionLocal();
+      await _pruneLocalConstructionSeed();
     } catch (_) {}
     if ((await constructionMaterials()).isEmpty) {
       await _installLocalConstructionSeed();
@@ -247,6 +249,53 @@ class FinanceRepository {
       return material.id;
     } catch (_) {
       return material.id;
+    }
+  }
+
+  Future<void> _pruneLocalConstructionSeed() async {
+    final categories = await _db.list('construction_material_categories');
+    final materials = await _db.list('construction_materials');
+    String key(Object? value) => (value?.toString() ?? '').trim().toLowerCase();
+
+    final serverCategoryIds = {
+      for (final row in categories)
+        if (row['local_seed'] != true) key(row['name']): row['id'].toString(),
+    };
+    final serverMaterialIds = <String, String>{};
+    for (final row in materials) {
+      if (row['local_seed'] == true) {
+        continue;
+      }
+      serverMaterialIds['${key(row['name'])}|${key(row['category_name'])}'] = row['id'].toString();
+      serverMaterialIds[key(row['name'])] = row['id'].toString();
+    }
+
+    final materialIdMap = <String, String>{};
+    for (final row in materials) {
+      if (row['local_seed'] != true) {
+        continue;
+      }
+      final serverId = serverMaterialIds['${key(row['name'])}|${key(row['category_name'])}'] ?? serverMaterialIds[key(row['name'])];
+      if (serverId == null) {
+        continue;
+      }
+      materialIdMap[row['id'].toString()] = serverId;
+      await _db.markDeleted('construction_materials', row['id'].toString());
+    }
+    for (final row in categories) {
+      if (row['local_seed'] == true && serverCategoryIds.containsKey(key(row['name']))) {
+        await _db.markDeleted('construction_material_categories', row['id'].toString());
+      }
+    }
+    if (materialIdMap.isEmpty) {
+      return;
+    }
+    for (final row in await _db.list('construction_purchases')) {
+      final mapped = materialIdMap[row['material_id']?.toString()];
+      if (mapped != null) {
+        row['material_id'] = mapped;
+        await _db.upsert('construction_purchases', row);
+      }
     }
   }
 
@@ -332,7 +381,16 @@ class FinanceRepository {
   Future<List<CatalogItem>> constructionMaterialCategories() => _categories('construction_material_categories');
 
   Future<List<ConstructionMaterial>> constructionMaterials() async {
-    return (await _db.list('construction_materials')).map(ConstructionMaterial.fromJson).where((item) => item.isActive).toList()
+    final items = (await _db.list('construction_materials')).map(ConstructionMaterial.fromJson).where((item) => item.isActive);
+    final unique = <String, ConstructionMaterial>{};
+    for (final item in items) {
+      final key = '${item.name.trim().toLowerCase()}|${(item.categoryName ?? '').trim().toLowerCase()}';
+      final existing = unique[key];
+      if (existing == null || (existing.localSeed && !item.localSeed)) {
+        unique[key] = item;
+      }
+    }
+    return unique.values.toList()
       ..sort((a, b) {
         final category = (a.categoryName ?? '').compareTo(b.categoryName ?? '');
         return category != 0 ? category : a.name.compareTo(b.name);
