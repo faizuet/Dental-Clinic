@@ -34,41 +34,15 @@ class AppBackButton extends StatelessWidget {
   }
 }
 
-Future<bool> showExitAppDialog(BuildContext context) async {
-  final result = await showGeneralDialog<bool>(
+Future<bool> showExitAppDialog(BuildContext context) {
+  return showAppConfirmDialog(
     context: context,
-    barrierDismissible: true,
-    barrierLabel: 'Dismiss',
-    barrierColor: Colors.black54,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (dialogContext, _, __) {
-      return AlertDialog(
-        title: const Text('Do you want to exit the app?'),
-        content: const Text('You can open Nabi Dental again from the home screen.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Exit'),
-          ),
-        ],
-      );
-    },
-    transitionBuilder: (context, animation, _, child) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-          child: child,
-        ),
-      );
-    },
+    title: 'Exit the app?',
+    message: 'Are you sure you want to exit? You can open Nabi Dental again from the home screen.',
+    cancelLabel: 'Cancel',
+    confirmLabel: 'Exit',
+    icon: Icons.logout_rounded,
   );
-  return result ?? false;
 }
 
 class AppExitScope extends StatelessWidget {
@@ -94,17 +68,16 @@ class AppExitScope extends StatelessWidget {
   }
 }
 
-Future<bool> confirmDiscardChanges(BuildContext context) async {
-  final result = await showAppDialog<bool>(
+Future<bool> confirmDiscardChanges(BuildContext context) {
+  return showAppConfirmDialog(
     context: context,
-    title: 'Discard changes?',
-    content: const Text('Your unsaved entries will be lost.'),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep editing')),
-      FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Discard')),
-    ],
+    title: 'Discard these changes?',
+    message: 'What you typed will not be saved.',
+    cancelLabel: 'Keep editing',
+    confirmLabel: 'Discard',
+    destructive: true,
+    icon: Icons.edit_off_rounded,
   );
-  return result ?? false;
 }
 
 class AppDiscardScope extends StatefulWidget {

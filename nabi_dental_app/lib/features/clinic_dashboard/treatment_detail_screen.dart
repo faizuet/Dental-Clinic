@@ -128,6 +128,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                           _section('Patient information', [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
                             _row('Patient', entry.patientName ?? 'Walk-in'),
+                            if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
                             _row('Date', entry.date),
                             _row('Main treatment', entry.catalogName),
                             if (entry.subTreatment != null) _row('Sub-treatment', entry.subTreatment!),

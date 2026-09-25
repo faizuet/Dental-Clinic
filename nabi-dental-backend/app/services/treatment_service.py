@@ -262,6 +262,7 @@ def _rel_loaded(record, name: str) -> bool:
 
 def serialize_transaction(record: TreatmentTransaction) -> TreatmentTransactionRead:
     patient_name = record.patient.name if _rel_loaded(record, "patient") and record.patient else None
+    patient_phone = record.patient.phone if _rel_loaded(record, "patient") and record.patient else None
     treatment_name = record.treatment.name if _rel_loaded(record, "treatment") and record.treatment else None
     category_name = None
     if _rel_loaded(record, "treatment") and record.treatment is not None and _rel_loaded(record.treatment, "category"):
@@ -292,6 +293,7 @@ def serialize_transaction(record: TreatmentTransaction) -> TreatmentTransactionR
         sub_treatment=record.sub_treatment,
         details=details,
         patient_name=patient_name,
+        patient_phone=patient_phone,
         treatment_name=treatment_name,
         category_name=category_name,
         details_text=clinical_summary(details, record.sub_treatment),

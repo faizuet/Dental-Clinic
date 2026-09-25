@@ -12,6 +12,7 @@ void main() {
       'amount': '8000.00',
       'serial_no': 12,
       'patient_name': 'Ali Khan',
+      'patient_phone': '03001234567',
       'sub_treatment': 'RCT',
       'details': {
         'kind': 'rct',
@@ -22,6 +23,7 @@ void main() {
       'details_text': 'Tooth #26, 3 canals, 21 mm',
     });
     expect(entry.patientName, 'Ali Khan');
+    expect(entry.patientPhone, '03001234567');
     expect(entry.serialNo, 12);
     expect(entry.details['tooth_number'], '26');
     expect(kindOf(entry.catalogName), TreatmentKind.rct);

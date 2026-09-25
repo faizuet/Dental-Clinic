@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from pydantic import Field, field_validator
@@ -5,12 +6,28 @@ from pydantic import Field, field_validator
 from app.schemas.common import VersionedRead
 from app.utils.pagination import APIModel
 
+_PHONE_CHARS = re.compile(r"[0-9+()\-\s.]")
+
 
 def _trim(value: str | None) -> str | None:
     if value is None:
         return None
     cleaned = value.strip()
     return cleaned or None
+
+
+def _clean_phone(value: str | None) -> str | None:
+    cleaned = _trim(value)
+    if cleaned is None:
+        return None
+    if len(cleaned) > 40:
+        raise ValueError("Phone number is too long.")
+    if any(not _PHONE_CHARS.fullmatch(char) for char in cleaned):
+        raise ValueError("Enter a valid phone number.")
+    digits = re.sub(r"\D", "", cleaned)
+    if digits and len(digits) < 6:
+        raise ValueError("Enter a valid phone number.")
+    return cleaned
 
 
 class PatientCreate(APIModel):
@@ -27,7 +44,12 @@ class PatientCreate(APIModel):
             raise ValueError("Enter the patient name.")
         return cleaned
 
-    @field_validator("phone", "notes")
+    @field_validator("phone")
+    @classmethod
+    def clean_phone(cls, value: str | None) -> str | None:
+        return _clean_phone(value)
+
+    @field_validator("notes")
     @classmethod
     def clean_optional(cls, value: str | None) -> str | None:
         return _trim(value)
@@ -49,7 +71,12 @@ class PatientUpdate(APIModel):
             raise ValueError("Enter the patient name.")
         return cleaned
 
-    @field_validator("phone", "notes")
+    @field_validator("phone")
+    @classmethod
+    def clean_phone(cls, value: str | None) -> str | None:
+        return _clean_phone(value)
+
+    @field_validator("notes")
     @classmethod
     def clean_optional(cls, value: str | None) -> str | None:
         return _trim(value)

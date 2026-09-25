@@ -560,9 +560,37 @@ class FinanceRepository {
       path: '/api/v1/patients',
       collection: 'patients',
       entityType: 'patient',
-      body: {'name': name, 'phone': phone},
+      body: {
+        'name': name,
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      },
     );
+    try {
+      final response = await _api.get('/api/v1/patients/$id');
+      final remote = _asMap(response.data);
+      if (remote != null) {
+        await _db.upsert('patients', remote);
+        return PatientRecord.fromJson(remote);
+      }
+    } catch (_) {}
     final row = await _db.get('patients', id) ?? {'id': id, 'name': name, 'phone': phone};
+    return PatientRecord.fromJson(row);
+  }
+
+  Future<PatientRecord> updatePatient(PatientRecord patient, {String? name, String? phone}) async {
+    final patch = {
+      if (name != null) 'name': name,
+      'phone': phone,
+    };
+    await updateCatalog(
+      path: '/api/v1/patients/${patient.id}',
+      collection: 'patients',
+      entityType: 'patient',
+      id: patient.id,
+      version: patient.version,
+      patch: patch,
+    );
+    final row = await _db.get('patients', patient.id) ?? {...patient.toJson(), ...patch};
     return PatientRecord.fromJson(row);
   }
 
@@ -604,6 +632,7 @@ class FinanceRepository {
     required String amount,
     String? patientId,
     String? patientName,
+    String? patientPhone,
     String? subTreatment,
     Map<String, dynamic>? details,
     String? notes,
@@ -626,6 +655,7 @@ class FinanceRepository {
       final saved = _asMap(response.data) ?? payload;
       saved['catalog_name'] = names[treatmentId] ?? saved['treatment_name'] ?? 'Treatment';
       saved['patient_name'] = saved['patient_name'] ?? patientName;
+      saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
       for (final xray in xrays) {
         final form = FormData.fromMap({
           'label': xray.label,
@@ -647,6 +677,7 @@ class FinanceRepository {
     } on OfflineException {
       payload['catalog_name'] = names[treatmentId] ?? 'Treatment';
       payload['patient_name'] = patientName;
+      payload['patient_phone'] = patientPhone;
       payload['version'] = 1;
       await _db.upsert('treatment_transactions', payload);
       await _db.enqueueChange(
@@ -1296,6 +1327,7 @@ class FinanceRepository {
         return entry.catalogName.toLowerCase().contains(needle) ||
             (entry.notes ?? '').toLowerCase().contains(needle) ||
             (entry.patientName ?? '').toLowerCase().contains(needle) ||
+            (entry.patientPhone ?? '').toLowerCase().contains(needle) ||
             (entry.subTreatment ?? '').toLowerCase().contains(needle) ||
             (entry.detailsText ?? '').toLowerCase().contains(needle);
       }).toList();

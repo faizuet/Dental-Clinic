@@ -100,6 +100,7 @@ class TreatmentTransactionRead(VersionedRead):
     sub_treatment: str | None = None
     details: dict[str, Any] = Field(default_factory=dict)
     patient_name: str | None = None
+    patient_phone: str | None = None
     treatment_name: str | None = None
     category_name: str | None = None
     details_text: str | None = None

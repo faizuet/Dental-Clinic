@@ -41,6 +41,54 @@ async def test_clinic_report_and_exports(client):
 
 
 @pytest.mark.asyncio
+async def test_clinic_report_includes_all_dates_in_range(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
+    rct_id = next(item["id"] for item in treatments if item["name"] == "RCT")
+    crown_id = next(item["id"] for item in treatments if item["name"] == "Crown")
+    scaling_id = next(item["id"] for item in treatments if item["name"] == "Scaling")
+    for date_value, treatment_id, amount in [
+        ("2026-09-01", rct_id, "8000.00"),
+        ("2026-09-15", crown_id, "15000.00"),
+        ("2026-09-30", scaling_id, "5000.00"),
+    ]:
+        created = await client.post(
+            "/api/v1/treatment-transactions",
+            headers=headers,
+            json={"treatment_id": treatment_id, "transaction_date": date_value, "amount": amount},
+        )
+        assert created.status_code == 201, created.text
+
+    report = await client.get(
+        "/api/v1/reports/clinic",
+        headers=headers,
+        params={"from_date": "2026-09-01", "to_date": "2026-09-30"},
+    )
+    assert report.status_code == 200
+    body = report.json()
+    assert body["income_count"] == 3
+    assert body["total_income"] == "28000.00"
+    dates = {item["entry_date"] for item in body["income_lines"]}
+    assert dates == {"2026-09-01", "2026-09-15", "2026-09-30"}
+
+    empty = await client.get(
+        "/api/v1/reports/clinic",
+        headers=headers,
+        params={"from_date": "2026-08-01", "to_date": "2026-08-31"},
+    )
+    assert empty.json()["income_count"] == 0
+    assert empty.json()["total_income"] == "0.00"
+    pdf = await client.get(
+        "/api/v1/reports/clinic/export",
+        headers=headers,
+        params={"from_date": "2026-08-01", "to_date": "2026-08-31", "format": "pdf"},
+    )
+    assert pdf.status_code == 200
+    assert pdf.content[:4] == b"%PDF"
+
+
+@pytest.mark.asyncio
 async def test_construction_report_and_exports(client):
     tokens = await login(client)
     headers = auth_header(tokens)

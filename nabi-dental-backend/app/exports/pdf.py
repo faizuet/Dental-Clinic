@@ -392,7 +392,9 @@ def _line_section(
     styles = _styles()
     data = [[Paragraph(header, styles["headerCell"]) for header in headers]]
     if not rows:
-        data.append([Paragraph("No records in this period.", styles["cell"])] + [""] * (len(headers) - 1))
+        data.append(
+            [Paragraph("No records found for the selected date range.", styles["cell"])] + [""] * (len(headers) - 1)
+        )
     else:
         for row in rows:
             styled = []

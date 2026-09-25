@@ -192,6 +192,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return showAppDialog<bool>(
       context: context,
       title: 'Use this photo?',
+      icon: Icons.photo_outlined,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -215,18 +216,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _removePhoto() async {
-    final ok = await showAppDialog<bool>(
+    final ok = await showAppConfirmDialog(
       context: context,
-      title: 'Remove profile photo?',
-      content: const Text('Your initials will be shown instead.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Remove'),
-        ),
-      ],
+      title: 'Remove this photo?',
+      message: 'Your initials will be shown on your profile instead.',
+      confirmLabel: 'Remove',
+      destructive: true,
+      icon: Icons.hide_image_outlined,
     );
     if (ok != true || !mounted) {
       return;

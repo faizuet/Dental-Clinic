@@ -31,7 +31,14 @@ async def test_patient_rct_history_and_finance_total(client):
         json={"name": "Ali Khan", "phone": "03001234567"},
     )
     assert patient.status_code == 201, patient.text
+    assert patient.json()["phone"] == "03001234567"
     patient_id = patient.json()["id"]
+    fetched = await client.get(f"/api/v1/patients/{patient_id}", headers=headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["phone"] == "03001234567"
+    listed = await client.get("/api/v1/patients", headers=headers, params={"search": "Ali"})
+    assert listed.status_code == 200
+    assert listed.json()["items"][0]["phone"] == "03001234567"
 
     first = await client.post(
         "/api/v1/treatment-transactions",
@@ -56,6 +63,7 @@ async def test_patient_rct_history_and_finance_total(client):
     body = first.json()
     assert body["serial_no"] == 1
     assert body["patient_name"] == "Ali Khan"
+    assert body["patient_phone"] == "03001234567"
     assert body["details"]["tooth_number"] == "26"
 
     second = await client.post(

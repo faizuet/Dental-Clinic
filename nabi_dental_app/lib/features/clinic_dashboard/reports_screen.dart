@@ -182,26 +182,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 value: _period,
                 onChanged: (value) async {
                   if (value == FinancePeriod.custom) {
-                    final from = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (from == null || !context.mounted) {
+                    final picked = await pickInclusiveDateRange(context, from: _from, to: _to);
+                    if (picked == null) {
                       return;
                     }
-                    final to = await showDatePicker(
-                      context: context,
-                      initialDate: DateTime.now(),
-                      firstDate: from,
-                      lastDate: DateTime.now(),
-                    );
-                    if (to == null) {
-                      return;
-                    }
-                    _from = from;
-                    _to = to;
+                    _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+                    _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
                   }
                   setState(() => _period = value);
                   await _load();
@@ -209,8 +195,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                '${_range.fromIso} to ${_range.toIso}',
-                maxLines: 1,
+                'Report dates: ${_range.fromIso} to ${_range.toIso} (inclusive)',
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
               ),

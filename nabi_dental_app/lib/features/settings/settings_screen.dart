@@ -51,22 +51,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _confirmLogout({required bool allDevices}) async {
-    final ok = await showAppDialog<bool>(
+    final ok = await showAppConfirmDialog(
       context: context,
       title: allDevices ? 'Sign out everywhere?' : 'Sign out?',
-      content: Text(
-        allDevices
-            ? 'Every signed-in device will return to the login screen. Local records stay on this phone.'
-            : 'This device will return to the sign-in screen. Local records stay on the phone.',
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Sign out'),
-        ),
-      ],
+      message: allDevices
+          ? 'Every signed-in device will return to the login screen. Records saved on this phone stay here.'
+          : 'This phone will return to the sign-in screen. Records saved here stay on the phone.',
+      confirmLabel: 'Sign out',
+      destructive: true,
+      icon: Icons.logout_rounded,
     );
     if (ok == true) {
       await ref.read(sessionProvider.notifier).logout(allDevices: allDevices);

@@ -138,14 +138,13 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
   }
 
   Future<void> _deleteCategory(CatalogItem category) async {
-    final ok = await showAppDialog<bool>(
+    final ok = await showAppConfirmDialog(
       context: context,
       title: 'Delete ${category.name}?',
-      content: const Text('Categories with materials cannot be deleted.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-      ],
+      message: 'This category will be removed. Categories that still have materials cannot be deleted.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (ok != true) {
       return;
@@ -360,14 +359,13 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
   }
 
   Future<void> _deleteMaterial(ConstructionMaterial material) async {
-    final ok = await showAppDialog<bool>(
+    final ok = await showAppConfirmDialog(
       context: context,
       title: 'Delete ${material.name}?',
-      content: const Text('Materials with purchase history cannot be deleted.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-      ],
+      message: 'This material will be removed. Materials with purchase history cannot be deleted.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (ok != true) {
       return;

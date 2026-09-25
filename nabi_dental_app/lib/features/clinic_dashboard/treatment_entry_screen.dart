@@ -146,32 +146,31 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   Future<void> _addPatient() async {
     final name = TextEditingController();
     final phone = TextEditingController();
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add patient'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: 'Patient name'),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Phone (optional)'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+      title: 'Add patient',
+      icon: Icons.person_add_alt_1_rounded,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: name,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Patient name'),
+            autofocus: true,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(labelText: 'Phone number'),
+          ),
         ],
       ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+      ],
     );
     final trimmed = name.text.trim();
     final phoneValue = phone.text.trim();
@@ -309,6 +308,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             amount: moneyFromDouble(moneyToDouble(_amount.text)),
             patientId: _patient?.id,
             patientName: _patient?.name,
+            patientPhone: _patient?.phone,
             subTreatment: _family == TreatmentFamily.prosthetic || _family == TreatmentFamily.perio
                 ? _treatment!.name
                 : null,
@@ -457,11 +457,15 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             const SizedBox(height: 8),
             if (_patient != null)
               Chip(
-                label: Text(_patient!.name),
+                label: Text(
+                  _patient!.phone == null || _patient!.phone!.isEmpty
+                      ? _patient!.name
+                      : '${_patient!.name}  ·  ${_patient!.phone}',
+                ),
                 onDeleted: () => setState(() => _patient = null),
               )
             else
-              const Text('Select an existing patient or add a new one.'),
+              const Text('Select a patient or add a new one. Phone number is saved with the patient.'),
             const SizedBox(height: 8),
             TextField(
               controller: _patientSearch,

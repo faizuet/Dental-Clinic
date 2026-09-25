@@ -153,6 +153,7 @@ class MoneyEntry {
     this.version = 1,
     this.patientId,
     this.patientName,
+    this.patientPhone,
     this.serialNo,
     this.subTreatment,
     this.details = const {},
@@ -170,6 +171,7 @@ class MoneyEntry {
   final int version;
   final String? patientId;
   final String? patientName;
+  final String? patientPhone;
   final int? serialNo;
   final String? subTreatment;
   final Map<String, dynamic> details;
@@ -188,6 +190,7 @@ class MoneyEntry {
       version: jsonInt(json['version'], fallback: 1),
       patientId: jsonText(json['patient_id']),
       patientName: jsonText(json['patient_name']),
+      patientPhone: jsonText(json['patient_phone']),
       serialNo: json['serial_no'] == null ? null : jsonInt(json['serial_no']),
       subTreatment: jsonText(json['sub_treatment']),
       details: jsonMap(json['details']),
@@ -211,6 +214,7 @@ class MoneyEntry {
         'version': version,
         'patient_id': patientId,
         'patient_name': patientName,
+        'patient_phone': patientPhone,
         'serial_no': serialNo,
         'sub_treatment': subTreatment,
         'details': details,

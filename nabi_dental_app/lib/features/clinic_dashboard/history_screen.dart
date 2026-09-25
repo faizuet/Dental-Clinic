@@ -87,40 +87,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Future<void> _pickRange() async {
-    final from = await showDatePicker(
-      context: context,
-      initialDate: _from ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-    );
-    if (from == null || !mounted) {
-      return;
-    }
-    final to = await showDatePicker(
-      context: context,
-      initialDate: _to ?? DateTime.now(),
-      firstDate: from,
-      lastDate: DateTime.now(),
-    );
-    if (to == null) {
+    final picked = await pickInclusiveDateRange(context, from: _from, to: _to);
+    if (picked == null) {
       return;
     }
     setState(() {
-      _from = from;
-      _to = to;
+      _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+      _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
     });
     await _load();
   }
 
   Future<void> _delete(MoneyEntry entry) async {
-    final ok = await showAppDialog<bool>(
+    final ok = await showAppConfirmDialog(
       context: context,
       title: 'Delete this record?',
-      content: const Text('It will be hidden immediately and queued to sync.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-      ],
+      message: 'This entry will be removed from the list and synced when you are online.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      icon: Icons.delete_outline_rounded,
     );
     if (ok != true) {
       return;
@@ -317,6 +302,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 final subtitle = [
                                   if (item.serialNo != null) '#${item.serialNo}',
                                   if (item.patientName != null) item.patientName,
+                                  if (item.patientPhone != null) item.patientPhone,
                                   item.date,
                                   if (detail.isNotEmpty) detail,
                                   if (item.notes != null && item.notes!.isNotEmpty) item.notes,
