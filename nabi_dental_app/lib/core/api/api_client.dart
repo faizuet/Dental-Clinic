@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../config/app_config.dart';
 import '../auth/token_storage.dart';
 import '../errors/app_exception.dart';
+import '../logging/app_logger.dart';
 import '../security/device_id.dart';
 import 'api_error.dart';
 
@@ -95,6 +96,10 @@ class ApiClient {
     return _wrap(() => _dio.get<T>(path, queryParameters: _query(query)));
   }
 
+  Future<Response<T>> put<T>(String path, {Object? data}) {
+    return _wrap(() => _dio.put<T>(path, data: data));
+  }
+
   Future<Response<T>> patch<T>(String path, {Object? data}) {
     return _wrap(() => _dio.patch<T>(path, data: data));
   }
@@ -146,13 +151,16 @@ class ApiClient {
     try {
       return await send();
     } on DioException catch (error) {
+      final path = error.requestOptions.path;
+      final status = error.response?.statusCode;
+      AppLogger.error('api', error.type.name, path: path, status: status);
       if (error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout ||
           error.type == DioExceptionType.sendTimeout) {
         throw const OfflineException();
       }
-      throw parseApiError(error.response?.data, error.response?.statusCode);
+      throw parseApiError(error.response?.data, status);
     }
   }
 }

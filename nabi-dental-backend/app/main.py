@@ -116,11 +116,16 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         code = ErrorCode.NOT_FOUND
     elif exc.status_code == 429:
         code = ErrorCode.RATE_LIMITED
+    message = str(exc.detail)
+    if exc.status_code == 404 and message.lower() in {"not found", "the requested resource was not found."}:
+        message = "The requested item could not be found."
+    elif exc.status_code >= 500:
+        message = "An unexpected error occurred."
     return JSONResponse(
         status_code=exc.status_code,
         content=error_body(
             code=code,
-            message=str(exc.detail),
+            message=message,
             request_id=_request_id(request),
         ),
         headers={"X-Request-ID": _request_id(request)},

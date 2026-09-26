@@ -109,7 +109,7 @@ class HomeExpenseService:
 
     async def get_budget(self, user: User, budget_id: uuid.UUID) -> HomeBudget:
         record = await self.budgets.get(user.id, budget_id)
-        return require_record(record)
+        return require_record(record, "This monthly budget was not found. Set the budget again.")
 
     async def create_budget(self, user: User, payload: HomeBudgetCreate) -> HomeBudget:
         existing = await self.budgets.get_override(user.id, payload.year, payload.month)
@@ -124,6 +124,15 @@ class HomeExpenseService:
             amount=payload.amount,
         )
         return await self.budgets.add(record)
+
+    async def upsert_month_budget(self, user: User, payload: HomeBudgetCreate) -> HomeBudget:
+        existing = await self.budgets.get_override(user.id, payload.year, payload.month)
+        if existing is None:
+            return await self.create_budget(user, payload)
+        existing.amount = payload.amount
+        existing.bump()
+        await self.session.flush()
+        return existing
 
     async def update_budget(self, user: User, budget_id: uuid.UUID, payload: HomeBudgetUpdate) -> HomeBudget:
         record = await self.get_budget(user, budget_id)

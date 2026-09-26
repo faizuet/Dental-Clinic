@@ -198,7 +198,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
         _xrays.add(_PendingXray(bytes: bytes, filename: picked.name));
       });
     } catch (error) {
-      setState(() => _error = friendlyError(error));
+      setState(() => _error = friendlyError(error, feature: 'upload'));
     }
   }
 

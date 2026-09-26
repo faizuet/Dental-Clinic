@@ -157,7 +157,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       }
     } catch (error) {
       if (mounted) {
-        showAppSnack(context, friendlyError(error), error: true);
+        showAppSnack(context, friendlyError(error, feature: 'report'), error: true);
       }
     }
   }

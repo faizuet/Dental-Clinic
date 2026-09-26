@@ -1,8 +1,14 @@
 class AppException implements Exception {
-  const AppException(this.message, {this.code, this.fieldErrors = const {}});
+  const AppException(
+    this.message, {
+    this.code,
+    this.statusCode,
+    this.fieldErrors = const {},
+  });
 
   final String message;
   final String? code;
+  final int? statusCode;
   final Map<String, String> fieldErrors;
 
   @override
@@ -11,7 +17,10 @@ class AppException implements Exception {
 
 class OfflineException extends AppException {
   const OfflineException()
-      : super('Could not reach the server. Keep the phone connected and confirm the API is running.');
+      : super(
+          'No internet connection. Please check your connection and try again.',
+          code: 'NETWORK',
+        );
 }
 
 class UnauthorizedException extends AppException {

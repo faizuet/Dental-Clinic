@@ -976,23 +976,30 @@ class FinanceRepository {
 
   Future<void> saveBudget({required int year, required int month, required String amount}) async {
     final existing = await budgetFor(year, month);
-    final body = existing == null
-        ? {'id': _uuid.v4(), 'year': year, 'month': month, 'amount': amount}
-        : {'version': existing.version, 'amount': amount};
     try {
-      final response = existing == null
-          ? await _api.post('/api/v1/home-budgets', data: body)
-          : await _api.patch('/api/v1/home-budgets/${existing.id}', data: body);
-      await _db.upsert('home_budgets', _asMap(response.data) ?? body);
+      try {
+        final response = await _api.put('/api/v1/home-budgets/current', data: {
+          'year': year,
+          'month': month,
+          'amount': amount,
+        });
+        await _storeMonthBudget(year, month, _asMap(response.data));
+        return;
+      } on AppException catch (error) {
+        if (!_isMissingRoute(error)) {
+          rethrow;
+        }
+      }
+      await _saveBudgetByPeriod(year: year, month: month, amount: amount);
     } on OfflineException {
       final local = {
-        'id': existing?.id ?? body['id'],
+        'id': existing?.id ?? _uuid.v4(),
         'year': year,
         'month': month,
         'amount': amount,
         'version': (existing?.version ?? 0) + 1,
       };
-      await _db.upsert('home_budgets', local);
+      await _storeMonthBudget(year, month, local);
       await _db.enqueueChange(
         clientChangeId: _uuid.v4(),
         entityType: 'home_budget',
@@ -1001,6 +1008,85 @@ class FinanceRepository {
         payload: existing == null ? local : {'amount': amount},
         baseVersion: existing?.version,
       );
+    }
+  }
+
+  Future<void> _saveBudgetByPeriod({required int year, required int month, required String amount}) async {
+    final current = await _api.get('/api/v1/home-budgets/current', query: {'year': year, 'month': month});
+    final body = _asMap(current.data) ?? {};
+    final override = body['override'];
+    if (override is Map && override['id'] != null) {
+      try {
+        final response = await _api.patch('/api/v1/home-budgets/${override['id']}', data: {
+          'version': override['version'] ?? 1,
+          'amount': amount,
+        });
+        await _storeMonthBudget(year, month, _asMap(response.data));
+        return;
+      } on AppException catch (error) {
+        if (!_isNotFound(error)) {
+          rethrow;
+        }
+      }
+    }
+    try {
+      final response = await _api.post('/api/v1/home-budgets', data: {
+        'id': _uuid.v4(),
+        'year': year,
+        'month': month,
+        'amount': amount,
+      });
+      await _storeMonthBudget(year, month, _asMap(response.data));
+    } on AppException catch (error) {
+      if (error.code != 'CONFLICT' && error.statusCode != 409) {
+        rethrow;
+      }
+      final retry = await _api.get('/api/v1/home-budgets/current', query: {'year': year, 'month': month});
+      final retryOverride = (_asMap(retry.data) ?? {})['override'];
+      if (retryOverride is! Map || retryOverride['id'] == null) {
+        rethrow;
+      }
+      final response = await _api.patch('/api/v1/home-budgets/${retryOverride['id']}', data: {
+        'version': retryOverride['version'] ?? 1,
+        'amount': amount,
+      });
+      await _storeMonthBudget(year, month, _asMap(response.data));
+    }
+  }
+
+  Future<void> _storeMonthBudget(int year, int month, Map<String, dynamic>? saved) async {
+    if (saved == null) {
+      return;
+    }
+    for (final row in await _db.list('home_budgets')) {
+      if (_asInt(row['year']) == year && _asInt(row['month']) == month && row['id'].toString() != saved['id'].toString()) {
+        await _db.markDeleted('home_budgets', row['id'].toString());
+      }
+    }
+    await _db.upsert('home_budgets', saved);
+  }
+
+  bool _isMissingRoute(AppException error) {
+    return error.statusCode == 404 || error.statusCode == 405 || error.code == 'NOT_FOUND';
+  }
+
+  Future<void> _pruneDuplicateMonthBudgets() async {
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final row in await _db.list('home_budgets')) {
+      groups.putIfAbsent('${_asInt(row['year'])}-${_asInt(row['month'])}', () => []).add(row);
+    }
+    for (final group in groups.values) {
+      if (group.length < 2) {
+        continue;
+      }
+      group.sort((a, b) {
+        final aServer = _serverCatalogIds.contains(a['id'].toString()) ? 0 : 1;
+        final bServer = _serverCatalogIds.contains(b['id'].toString()) ? 0 : 1;
+        return aServer.compareTo(bServer);
+      });
+      for (final extra in group.skip(1)) {
+        await _db.markDeleted('home_budgets', extra['id'].toString());
+      }
     }
   }
 
@@ -1372,14 +1458,17 @@ class FinanceRepository {
         'home_expense_categories',
       ),
     );
-    await _db.upsertAll('home_budgets', await _allPages('/api/v1/home-budgets', extra: {'page_size': 100}));
+    final budgets = await _allPages('/api/v1/home-budgets', extra: {'page_size': 100});
+    await _db.upsertAll('home_budgets', budgets);
     await _hydrateConstruction();
     _serverCatalogIds
       ..addAll(treatments.map((item) => item['id'].toString()))
       ..addAll(treatmentCats.map((item) => item['id'].toString()))
       ..addAll(clinicCats.map((item) => item['id'].toString()))
       ..addAll(homeCats.map((item) => item['id'].toString()))
-      ..addAll(patients.map((item) => item['id'].toString()));
+      ..addAll(patients.map((item) => item['id'].toString()))
+      ..addAll(budgets.map((item) => item['id'].toString()));
+    await _pruneDuplicateMonthBudgets();
   }
 
   Future<void> _hydrateConstruction() async {

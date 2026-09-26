@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../../app/theme/app_colors.dart';
 
 class ErrorBanner extends StatelessWidget {
-  const ErrorBanner({super.key, required this.message});
+  const ErrorBanner({super.key, required this.message, this.onRetry});
 
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +27,11 @@ class ErrorBanner extends StatelessWidget {
               style: const TextStyle(color: AppColors.danger, fontWeight: FontWeight.w600, height: 1.35),
             ),
           ),
+          if (onRetry != null)
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );

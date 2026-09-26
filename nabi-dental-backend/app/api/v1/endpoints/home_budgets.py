@@ -39,6 +39,11 @@ async def current_budget(
     return await HomeExpenseService(session).current_budget(user, year or today.year, month or today.month)
 
 
+@router.put("/current", response_model=HomeBudgetRead)
+async def upsert_current_budget(payload: HomeBudgetCreate, user: CurrentUser, session: DBSession):
+    return await HomeExpenseService(session).upsert_month_budget(user, payload)
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=HomeBudgetRead)
 async def create_budget(payload: HomeBudgetCreate, user: CurrentUser, session: DBSession):
     return await HomeExpenseService(session).create_budget(user, payload)

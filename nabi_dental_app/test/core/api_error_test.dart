@@ -23,4 +23,17 @@ void main() {
     final error = parseApiError(null, 401);
     expect(error, isA<UnauthorizedException>());
   });
+
+  test('replaces generic not-found copy and hides technical text', () {
+    final missing = parseApiError({
+      'error': {'code': 'NOT_FOUND', 'message': 'The requested resource was not found.'},
+    }, 404);
+    expect(missing.message, contains('could not be found'));
+    expect(missing.statusCode, 404);
+
+    final technical = parseApiError({
+      'error': {'code': 'INTERNAL_ERROR', 'message': 'sqlalchemy.exc.ProgrammingError'},
+    }, 500);
+    expect(technical.message, contains('unavailable'));
+  });
 }

@@ -74,3 +74,26 @@ async def test_budget_override_and_overspend(client):
     )
     assert current_default.json()["source"] == "default"
     assert current_default.json()["amount"] == "30000.00"
+
+
+@pytest.mark.asyncio
+async def test_budget_upsert_updates_existing_month(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    created = await client.put(
+        "/api/v1/home-budgets/current",
+        headers=headers,
+        json={"year": 2026, "month": 4, "amount": "12000.00"},
+    )
+    assert created.status_code == 200
+    updated = await client.put(
+        "/api/v1/home-budgets/current",
+        headers=headers,
+        json={"year": 2026, "month": 4, "amount": "18000.00", "id": "00000000-0000-0000-0000-000000000099"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["amount"] == "18000.00"
+    assert updated.json()["id"] == created.json()["id"]
+    current = await client.get("/api/v1/home-budgets/current", headers=headers, params={"year": 2026, "month": 4})
+    assert current.json()["amount"] == "18000.00"
+    assert current.json()["source"] == "override"

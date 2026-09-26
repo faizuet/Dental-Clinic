@@ -84,7 +84,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
       }
     } catch (error) {
       if (mounted) {
-        showAppSnack(context, friendlyError(error), error: true);
+        showAppSnack(context, friendlyError(error, feature: 'report'), error: true);
       }
     } finally {
       if (mounted) {
