@@ -7,7 +7,9 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/error_banner.dart';
@@ -187,6 +189,9 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
           ),
           if (_error != null) ErrorBanner(message: _error!),
           const SizedBox(height: 8),
+          AppExpand(
+            child: Column(
+              children: [
           for (var i = 0; i < _rows.length; i++)
             Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -198,7 +203,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       key: ValueKey('expense-category-$i-${_rows[i].categoryId}'),
                       initialValue: _categoryValue(_rows[i].categoryId),
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Category'),
+                      decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
                       items: [
                         for (final item in _categories)
                           DropdownMenuItem<String>(
@@ -213,7 +218,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       controller: _rows[i].amount,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: 'Amount'),
+                      decoration: const InputDecoration(labelText: 'Amount', prefixIcon: Icon(Icons.payments_outlined)),
                       onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 10),
@@ -221,7 +226,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       controller: _rows[i].notes,
                       textInputAction: TextInputAction.done,
                       textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                      decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
                     ),
                     if (_rows.length > 1)
                       Align(
@@ -235,6 +240,9 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                 ),
               ),
             ),
+              ],
+            ),
+          ),
           TextButton.icon(
             onPressed: () => setState(() => _rows.add(_Row())),
             icon: const Icon(Icons.add),
@@ -244,7 +252,12 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
           TotalBar(label: 'Total', value: formatMoney(moneyFromDouble(_total))),
           const SizedBox(height: 12),
           Stretch(
-            child: FilledButton(onPressed: _busy || !_canSave ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
+            child: AppBusyButton(
+              busy: _busy,
+              busyLabel: 'Saving…',
+              onPressed: _busy || !_canSave ? null : _save,
+              label: 'Save',
+            ),
           ),
         ],
         ),

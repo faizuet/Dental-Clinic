@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/brand_header.dart';
@@ -65,11 +67,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 key: _formKey,
                 child: Column(
                   children: [
-                    BrandHeader(
+                    AppReveal(
+                      child: BrandHeader(
                       subtitle: clinicName ?? 'Sign in to clinic and home finance',
                     ),
+                    ),
                     const SizedBox(height: 28),
-                    Card(
+                    AppReveal(
+                      index: 1,
+                      child: Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
                         child: Column(
@@ -120,20 +126,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             const SizedBox(height: 20),
                             Stretch(
-                              child: FilledButton(
-                                onPressed: session.busy ? null : _submit,
-                                child: session.busy
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Text('Sign in'),
+                              child: AppBusyButton(
+                                busy: session.busy,
+                                busyLabel: 'Signing in…',
+                                onPressed: _submit,
+                                label: 'Sign in',
                               ),
                             ),
                           ],
                         ),
                       ),
+                    ),
                     ),
                     const SizedBox(height: 16),
                     Text(

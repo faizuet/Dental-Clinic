@@ -9,6 +9,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/profile/avatar_validation.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
@@ -313,7 +314,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         controller: _fullName,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Your name'),
+                        decoration: const InputDecoration(labelText: 'Your name', prefixIcon: Icon(Icons.person_outline_rounded)),
                       ),
                       const SizedBox(height: 16),
                       Align(
@@ -353,36 +354,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         controller: _clinicName,
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Clinic name'),
+                        decoration: const InputDecoration(labelText: 'Clinic name', prefixIcon: Icon(Icons.local_hospital_outlined)),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: _currency,
                         textCapitalization: TextCapitalization.characters,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Currency'),
+                        decoration: const InputDecoration(labelText: 'Currency', prefixIcon: Icon(Icons.payments_outlined)),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: _timezone,
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Timezone'),
+                        decoration: const InputDecoration(labelText: 'Timezone', prefixIcon: Icon(Icons.schedule_rounded)),
                       ),
                       const SizedBox(height: 12),
                       TextField(
                         controller: _budget,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(labelText: 'Default home budget'),
+                        decoration: const InputDecoration(labelText: 'Default home budget', prefixIcon: Icon(Icons.savings_outlined)),
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 8),
-              FilledButton(
-                onPressed: _busy ? null : _saveProfile,
-                child: Text(_busy ? 'Saving…' : 'Save changes'),
+              Stretch(
+                child: AppBusyButton(
+                  busy: _busy,
+                  busyLabel: 'Saving…',
+                  onPressed: _saveProfile,
+                  label: 'Save changes',
+                ),
               ),
             ],
           ),

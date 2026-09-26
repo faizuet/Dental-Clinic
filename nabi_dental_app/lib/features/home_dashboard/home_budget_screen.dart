@@ -6,6 +6,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
@@ -116,9 +117,11 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 12, bottom: 8),
-        child: _loading
-            ? const LoadingView(message: 'Loading budget…')
+        child: AppStateSwitch(
+          child: _loading
+            ? const LoadingView(key: ValueKey('budget-loading'), message: 'Loading budget…')
             : ListView(
+                key: const ValueKey('budget-form'),
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
                 children: [
@@ -193,13 +196,16 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
                   ),
                   const SizedBox(height: 20),
                   Stretch(
-                    child: FilledButton(
-                      onPressed: _busy ? null : _save,
-                      child: Text(_busy ? 'Saving…' : 'Save budget'),
+                    child: AppBusyButton(
+                      busy: _busy,
+                      busyLabel: 'Saving…',
+                      onPressed: _save,
+                      label: 'Save budget',
                     ),
                   ),
                 ],
               ),
+        ),
       ),
     );
   }

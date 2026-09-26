@@ -51,7 +51,7 @@ class ProfileAvatar extends StatelessWidget {
             ? const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.purple, AppColors.pink],
+                colors: [AppColors.primary, AppColors.secondary],
               )
             : null,
         image: image == null ? null : DecorationImage(image: image, fit: BoxFit.cover),
@@ -113,7 +113,7 @@ class ProfileAvatar extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: AppColors.purple,
+                        color: AppColors.primary,
                         shape: BoxShape.circle,
                         border: Border.all(color: AppColors.card, width: 2),
                       ),

@@ -11,6 +11,8 @@ import '../../core/utils/period.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
+import '../../core/widgets/app_controls.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
@@ -126,13 +128,13 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
                 StatusBanner.offline('Showing local construction records.', onRetry: _load),
               ],
               const SizedBox(height: 16),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+              AppStateSwitch(
                 child: _loading
-                    ? const LoadingView(message: 'Updating construction totals…')
+                    ? const SkeletonCards(key: ValueKey('construction-skeleton'))
                     : totals == null
-                        ? const EmptyState(message: 'No construction totals yet.')
-                        : Column(
+                        ? const EmptyState(key: ValueKey('construction-empty'), message: 'No construction totals yet.')
+                        : AppReveal(
+                            child: Column(
                             key: const ValueKey('construction-totals'),
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -172,6 +174,7 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
                               else
                                 for (final item in totals.recent) _RecentPurchaseTile(item: item, currency: currency),
                             ],
+                          ),
                           ),
               ),
               const SectionHeader('Quick actions'),

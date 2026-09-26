@@ -21,7 +21,8 @@ class PinDots extends StatelessWidget {
         children: List.generate(length, (index) {
           final active = index < filled;
           return AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
+            duration: AppMotion.of(context, AppMotion.fast),
+            curve: AppMotion.standard,
             margin: EdgeInsets.symmetric(horizontal: compact ? 6 : 8),
             width: size,
             height: size,
@@ -138,7 +139,9 @@ class _CircleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
+      elevation: 0,
+      shadowColor: AppColors.shadow,
       shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
       child: InkWell(
         customBorder: const CircleBorder(),

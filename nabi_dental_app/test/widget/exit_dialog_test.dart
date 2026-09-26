@@ -58,7 +58,8 @@ void main() {
     navigator.maybePop();
     await tester.pumpAndSettle();
 
-    expect(find.text('Do you want to exit the app?'), findsOneWidget);
+    expect(find.text('Exit the app?'), findsOneWidget);
+    expect(find.textContaining('Are you sure you want to exit?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(find.text('Clinic Finance'), findsOneWidget);

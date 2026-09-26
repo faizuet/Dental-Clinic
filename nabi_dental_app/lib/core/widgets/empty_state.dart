@@ -27,8 +27,8 @@ class EmptyState extends StatelessWidget {
           Container(
             width: 64,
             height: 64,
-            decoration: BoxDecoration(color: AppColors.purpleSoft, borderRadius: BorderRadius.circular(AppRadii.md)),
-            child: Icon(icon, color: AppColors.purple),
+            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(AppRadii.md)),
+            child: Icon(icon, color: AppColors.primary),
           ),
           const SizedBox(height: 16),
           if (title != null) ...[

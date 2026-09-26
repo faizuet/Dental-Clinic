@@ -9,7 +9,9 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 import 'construction_material_picker.dart';
@@ -286,10 +288,12 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                   ),
                 ),
               Expanded(
-                child: _loading
-                    ? const Center(child: LoadingView(message: 'Loading purchases…'))
+                child: AppStateSwitch(
+                  child: _loading
+                    ? const Center(key: ValueKey('purchase-history-loading'), child: SkeletonCards())
                     : _loadError != null
                         ? Center(
+                            key: const ValueKey('purchase-history-error'),
                             child: EmptyState(
                               message: _loadError!,
                               title: 'Could not load purchases',
@@ -300,6 +304,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                           )
                         : _items.isEmpty
                             ? const Center(
+                                key: ValueKey('purchase-history-empty'),
                                 child: EmptyState(
                                   message: 'No purchases for this filter yet.',
                                   title: 'Nothing here',
@@ -325,7 +330,9 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                                       if (item.supplier != null && item.supplier!.isNotEmpty) item.supplier,
                                       if (item.notes != null && item.notes!.isNotEmpty) item.notes,
                                     ].join(' · ');
-                                    return Card(
+                                    return AppReveal(
+                                      index: index,
+                                      child: Card(
                                       child: Padding(
                                         padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
                                         child: Column(
@@ -374,18 +381,20 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                                                 ),
                                                 TextButton.icon(
                                                   onPressed: () => _delete(item),
-                                                  icon: const Icon(Icons.delete_outline, size: 18),
-                                                  label: const Text('Delete'),
+                                                  icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                                                  label: const Text('Delete', style: TextStyle(color: AppColors.danger)),
                                                 ),
                                               ],
                                             ),
                                           ],
                                         ),
                                       ),
+                                    ),
                                     );
                                   },
                                 ),
                               ),
+                ),
               ),
             ],
           ),

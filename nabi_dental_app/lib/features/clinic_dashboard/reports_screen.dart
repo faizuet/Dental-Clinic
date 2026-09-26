@@ -10,6 +10,7 @@ import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
@@ -54,6 +55,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   List<NamedAmount> _timeline = [];
   List<ConstructionPurchase> _recentPurchases = [];
   bool _loading = true;
+  bool _exporting = false;
+  String? _exportFormat;
   String? _loadError;
 
   DateRange get _range => DateRange.forPeriod(_period, customFrom: _from, customTo: _to);
@@ -140,6 +143,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _export(String format) async {
+    if (_exporting) {
+      return;
+    }
+    setState(() {
+      _exporting = true;
+      _exportFormat = format;
+    });
     try {
       final repo = ref.read(financeRepositoryProvider);
       final file = switch (widget.kind) {
@@ -158,6 +168,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error, feature: 'report'), error: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+          _exportFormat = null;
+        });
       }
     }
   }
@@ -205,9 +222,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 StatusBanner.error(_loadError!, onRetry: _load),
                 const SizedBox(height: 12),
               ],
-              if (_loading)
-                const LoadingView(message: 'Building this report…')
-              else ...[
+              AppStateSwitch(
+                child: _loading
+                ? const SkeletonCards(key: ValueKey('report-skeleton'), count: 3)
+                : Column(
+                    key: const ValueKey('report-body'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                 if (_isClinic) ...[
                   SummaryCard(label: 'Income', value: formatMoney(_income, currency: currency), color: AppColors.success, icon: Icons.trending_up_rounded),
                   SummaryCard(label: 'Expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
@@ -263,21 +284,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 _amountCard(_timeline, currency, empty: 'No daily totals yet.', color: _accent),
                 const SizedBox(height: 8),
                 Stretch(
-                  child: FilledButton.icon(
-                    onPressed: () => _export('pdf'),
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    label: const Text('Export PDF', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: AppBusyButton(
+                    onPressed: _exporting ? null : () => _export('pdf'),
+                    busy: _exporting && _exportFormat == 'pdf',
+                    busyLabel: 'Exporting…',
+                    icon: Icons.picture_as_pdf_outlined,
+                    label: 'Export PDF',
                   ),
                 ),
                 const SizedBox(height: 8),
                 Stretch(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _export('xlsx'),
-                    icon: const Icon(Icons.table_view_outlined),
-                    label: const Text('Export Excel', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: AppBusyButton(
+                    outlined: true,
+                    onPressed: _exporting ? null : () => _export('xlsx'),
+                    busy: _exporting && _exportFormat == 'xlsx',
+                    busyLabel: 'Exporting…',
+                    icon: Icons.table_view_outlined,
+                    label: 'Export Excel',
                   ),
                 ),
-              ],
+                    ],
+                  ),
+              ),
             ],
           ),
         ),

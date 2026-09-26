@@ -12,9 +12,11 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/summary_card.dart';
 
@@ -344,55 +346,68 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               ),
               const SizedBox(height: 12),
               _familyPicker(),
-              if (_family == TreatmentFamily.prosthetic) ...[
-                const SizedBox(height: 12),
-                _catalogDropdown('Sub-treatment', _prostheticItems, _treatment, (value) {
-                  setState(() {
-                    _treatment = value;
-                    _applyDefaultPrice();
-                  });
-                }),
-              ],
-              if (_family == TreatmentFamily.perio) ...[
-                const SizedBox(height: 12),
-                _catalogDropdown('Sub-treatment', _perioItems, _treatment, (value) {
-                  setState(() {
-                    _treatment = value;
-                    _applyDefaultPrice();
-                  });
-                }),
-              ],
-              if (_family == TreatmentFamily.general) ...[
-                const SizedBox(height: 12),
-                _catalogDropdown('Treatment', _generalItems, _treatment, (value) {
-                  setState(() {
-                    _treatment = value;
-                    _applyDefaultPrice();
-                  });
-                }),
-              ],
-              if (_treatment != null) ...[
-                const SizedBox(height: 16),
-                Text('Clinical details', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 8),
-                ..._clinicalFields(),
-                const SizedBox(height: 16),
-                _xraySection(),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _amount,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Treatment fee'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notes,
-                  textCapitalization: TextCapitalization.sentences,
-                  maxLines: 3,
-                  decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                ),
-              ],
+              AppExpand(
+                child: _family == TreatmentFamily.prosthetic
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _catalogDropdown('Sub-treatment', _prostheticItems, _treatment, (value) {
+                          setState(() {
+                            _treatment = value;
+                            _applyDefaultPrice();
+                          });
+                        }),
+                      )
+                    : _family == TreatmentFamily.perio
+                        ? Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _catalogDropdown('Sub-treatment', _perioItems, _treatment, (value) {
+                              setState(() {
+                                _treatment = value;
+                                _applyDefaultPrice();
+                              });
+                            }),
+                          )
+                        : _family == TreatmentFamily.general
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: _catalogDropdown('Treatment', _generalItems, _treatment, (value) {
+                                  setState(() {
+                                    _treatment = value;
+                                    _applyDefaultPrice();
+                                  });
+                                }),
+                              )
+                            : const SizedBox.shrink(),
+              ),
+              AppExpand(
+                child: _treatment == null
+                    ? const SizedBox.shrink()
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(height: 16),
+                          Text('Clinical details', style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 8),
+                          ..._clinicalFields(),
+                          const SizedBox(height: 16),
+                          _xraySection(),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _amount,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            decoration: const InputDecoration(labelText: 'Treatment fee', prefixIcon: Icon(Icons.payments_outlined)),
+                            onChanged: (_) => setState(() {}),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _notes,
+                            textCapitalization: TextCapitalization.sentences,
+                            maxLines: 3,
+                            decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
+                          ),
+                        ],
+                      ),
+              ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 ErrorBanner(message: _error!),
@@ -401,9 +416,11 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               TotalBar(label: 'Fee', value: formatMoney(isValidMoney(_amount.text) ? moneyFromDouble(moneyToDouble(_amount.text)) : '0.00')),
               const SizedBox(height: 12),
               Stretch(
-                child: FilledButton(
+                child: AppBusyButton(
+                  busy: _busy,
+                  busyLabel: 'Saving…',
                   onPressed: _busy || !_canSave ? null : _save,
-                  child: Text(_busy ? 'Saving…' : 'Save treatment'),
+                  label: 'Save treatment',
                 ),
               ),
             ],
@@ -679,6 +696,12 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
           ],
         ),
         const SizedBox(height: 8),
+        AnimatedSize(
+          duration: AppMotion.of(context, AppMotion.medium),
+          curve: AppMotion.standard,
+          alignment: Alignment.topCenter,
+          child: Column(
+            children: [
         for (var i = 0; i < _xrays.length; i++)
           Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -705,6 +728,9 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               ),
             ),
           ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -759,14 +785,14 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
               TextField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Patient name'),
+                decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.person_outline_rounded)),
                 autofocus: true,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Phone number'),
+                decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined)),
               ),
             ],
           ),

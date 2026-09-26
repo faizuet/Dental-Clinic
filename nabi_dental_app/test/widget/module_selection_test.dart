@@ -58,6 +58,6 @@ void main() {
     expect(find.text('Home Finance'), findsOneWidget);
     expect(find.text('Construction Finance'), findsOneWidget);
     expect(find.text('Nabi Dental'), findsOneWidget);
-    expect(find.text('Dr Owner'), findsOneWidget);
+    expect(find.text('Hello, Dr Owner'), findsOneWidget);
   });
 }

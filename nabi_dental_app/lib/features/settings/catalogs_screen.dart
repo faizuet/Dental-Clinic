@@ -7,6 +7,7 @@ import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 
@@ -256,16 +257,19 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
                       if (item.categoryName != null && item.categoryName!.isNotEmpty) item.categoryName,
                       if (item.defaultPrice != null) item.defaultPrice,
                     ].whereType<String>().join(' · ');
-                    return Card(
+                    return AppReveal(
+                      index: index,
+                      child: Card(
                       child: ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: AppColors.purpleSoft,
-                          foregroundColor: AppColors.purple,
+                          backgroundColor: AppColors.primarySoft,
+                          foregroundColor: AppColors.primary,
                           child: Text(item.name.isEmpty ? '?' : item.name[0].toUpperCase()),
                         ),
                         title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis),
                         subtitle: subtitle.isEmpty ? null : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
                       ),
+                    ),
                     );
                   },
                 ),

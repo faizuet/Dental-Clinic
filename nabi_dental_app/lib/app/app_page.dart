@@ -2,6 +2,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
+import 'theme/app_colors.dart';
+
 Page<void> buildAppPage(GoRouterState state, Widget child) {
   if (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS) {
     return CupertinoPage<void>(key: state.pageKey, child: child);
@@ -9,10 +11,10 @@ Page<void> buildAppPage(GoRouterState state, Widget child) {
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 260),
-    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionDuration: AppMotion.medium,
+    reverseTransitionDuration: AppMotion.fast,
     transitionsBuilder: (context, animation, secondaryAnimation, page) {
-      final curved = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+      final curved = CurvedAnimation(parent: animation, curve: AppMotion.standard, reverseCurve: AppMotion.accelerate);
       return FadeTransition(
         opacity: curved,
         child: SlideTransition(

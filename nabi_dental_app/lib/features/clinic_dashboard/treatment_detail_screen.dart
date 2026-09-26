@@ -11,6 +11,7 @@ import '../../core/export/file_saver.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
@@ -111,10 +112,12 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
+        child: AppStateSwitch(
+          child: _loading
+            ? const Center(key: ValueKey('detail-loading'), child: SkeletonCards(count: 2))
             : _error != null
                 ? EmptyState(
+                    key: const ValueKey('detail-error'),
                     title: 'Could not open record',
                     message: _error!,
                     icon: Icons.wifi_off_rounded,
@@ -122,8 +125,9 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                     onAction: _load,
                   )
                 : entry == null
-                    ? const EmptyState(title: 'Not found', message: 'This treatment record is not available.', icon: Icons.healing_outlined)
+                    ? const EmptyState(key: ValueKey('detail-missing'), title: 'Not found', message: 'This treatment record is not available.', icon: Icons.healing_outlined)
                     : ListView(
+                        key: const ValueKey('detail-body'),
                         children: [
                           _section('Patient information', [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
@@ -158,22 +162,26 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                                         style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.muted),
                                       ),
                                       const SizedBox(height: 8),
-                                      if (_images[attachment.id] != null)
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(12),
+                                      AnimatedSwitcher(
+                                        duration: AppMotion.of(context, AppMotion.medium),
+                                        child: _images[attachment.id] != null
+                                        ? ClipRRect(
+                                          key: ValueKey(attachment.id),
+                                          borderRadius: BorderRadius.circular(AppRadii.md),
                                           child: Image.memory(
                                             Uint8List.fromList(_images[attachment.id]!),
                                             fit: BoxFit.contain,
                                           ),
                                         )
-                                      else
-                                        const Text('Image could not be loaded.'),
+                                        : const Text('Image could not be loaded.'),
+                                      ),
                                     ],
                                   ),
                                 ),
                               ),
                         ],
                       ),
+        ),
       ),
     );
   }
@@ -196,12 +204,13 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
 
   Widget _row(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 120, child: Text(label, style: const TextStyle(color: AppColors.muted))),
-          Expanded(child: Text(value)),
+          Text(label, style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text(value),
         ],
       ),
     );

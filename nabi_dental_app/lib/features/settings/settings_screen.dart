@@ -6,6 +6,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
@@ -164,7 +165,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ErrorBanner(message: _message!),
               const SizedBox(height: 16),
             ],
-            Card(
+            AppReveal(
+              child: Card(
               child: InkWell(
                 borderRadius: BorderRadius.circular(AppRadii.lg),
                 onTap: () => appPush(context, '/settings/profile'),
@@ -204,6 +206,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
               ),
+            ),
             ),
             const SectionHeader('Clinic'),
             Card(
@@ -320,7 +323,15 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      leading: Icon(icon, color: iconColor ?? AppColors.purple),
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: (iconColor ?? AppColors.primary).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+        ),
+        child: Icon(icon, color: iconColor ?? AppColors.primary, size: 22),
+      ),
       title: Text(
         title,
         maxLines: 2,

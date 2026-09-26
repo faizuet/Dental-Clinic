@@ -7,7 +7,9 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
@@ -192,9 +194,11 @@ class _ConstructionPurchaseScreenState extends ConsumerState<ConstructionPurchas
         ),
         body: AppPageBody(
           padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
-          child: _loading
-              ? const LoadingView(message: 'Loading materials…')
+          child: AppStateSwitch(
+            child: _loading
+              ? const LoadingView(key: ValueKey('purchase-loading'), message: 'Loading materials…')
               : ListView(
+            key: const ValueKey('purchase-form'),
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
             children: [
@@ -218,6 +222,9 @@ class _ConstructionPurchaseScreenState extends ConsumerState<ConstructionPurchas
                 TextButton(onPressed: _bootstrap, child: const Text('Retry')),
               ],
               const SizedBox(height: 8),
+              AppExpand(
+                child: Column(
+                  children: [
               for (var i = 0; i < _rows.length; i++)
                 Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -310,6 +317,9 @@ class _ConstructionPurchaseScreenState extends ConsumerState<ConstructionPurchas
                     ),
                   ),
                 ),
+                  ],
+                ),
+              ),
               TextButton.icon(
                 onPressed: () => setState(() => _rows.add(_Row())),
                 icon: const Icon(Icons.add),
@@ -319,9 +329,15 @@ class _ConstructionPurchaseScreenState extends ConsumerState<ConstructionPurchas
               TotalBar(label: 'Total', value: formatMoney(moneyFromDouble(_total))),
               const SizedBox(height: 12),
               Stretch(
-                child: FilledButton(onPressed: _busy || !_canSave ? null : _save, child: Text(_busy ? 'Saving…' : 'Save')),
+                child: AppBusyButton(
+                  busy: _busy,
+                  busyLabel: 'Saving…',
+                  onPressed: _busy || !_canSave ? null : _save,
+                  label: 'Save',
+                ),
               ),
             ],
+          ),
           ),
         ),
       ),

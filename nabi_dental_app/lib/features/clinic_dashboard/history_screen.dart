@@ -11,7 +11,9 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 
@@ -265,10 +267,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                 ),
               Expanded(
-                child: _loading
-                    ? const Center(child: LoadingView(message: 'Loading records…'))
+                child: AppStateSwitch(
+                  child: _loading
+                    ? const Center(key: ValueKey('history-loading'), child: SkeletonCards())
                     : _loadError != null
                         ? Center(
+                            key: const ValueKey('history-error'),
                             child: EmptyState(
                               message: _loadError!,
                               title: 'Could not load records',
@@ -279,6 +283,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           )
                     : _items.isEmpty
                         ? const Center(
+                            key: ValueKey('history-empty'),
                             child: EmptyState(
                               message: 'No records for this filter yet.',
                               title: 'Nothing here',
@@ -307,10 +312,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                   if (detail.isNotEmpty) detail,
                                   if (item.notes != null && item.notes!.isNotEmpty) item.notes,
                                 ].join(' · ');
-                                return Card(
+                                return AppReveal(
+                                  index: index,
+                                  child: Card(
                                   child: InkWell(
                                     onTap: widget.onOpen == null ? null : () => widget.onOpen!(context, item),
-                                    borderRadius: BorderRadius.circular(16),
+                                    borderRadius: BorderRadius.circular(AppRadii.lg),
                                     child: Padding(
                                     padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
                                     child: Column(
@@ -374,10 +381,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     ),
                                   ),
                                   ),
+                                ),
                                 );
                               },
                             ),
                           ),
+                ),
               ),
             ],
           ),

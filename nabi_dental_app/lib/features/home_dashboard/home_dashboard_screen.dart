@@ -10,6 +10,8 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
+import '../../core/widgets/app_controls.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
@@ -121,13 +123,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                 StatusBanner.offline('Showing local household records.', onRetry: _load),
               ],
               const SizedBox(height: 16),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+              AppStateSwitch(
                 child: _loading
-                    ? const LoadingView(message: 'Updating home totals…')
+                    ? const SkeletonCards(key: ValueKey('home-skeleton'))
                     : totals == null
-                        ? const EmptyState(message: 'No household totals yet.')
-                        : Column(
+                        ? const EmptyState(key: ValueKey('home-empty'), message: 'No household totals yet.')
+                        : AppReveal(
+                            child: Column(
                             key: const ValueKey('home-totals'),
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -162,8 +164,8 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                                           child: LinearProgressIndicator(
                                             minHeight: 8,
                                             value: ((double.tryParse(totals.percentageUsed!) ?? 0) / 100).clamp(0, 1),
-                                            color: AppColors.pink,
-                                            backgroundColor: AppColors.pinkSoft,
+                                            color: AppColors.primary,
+                                            backgroundColor: AppColors.primarySoft,
                                           ),
                                         ),
                                       ],
@@ -171,6 +173,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                                   ),
                                 ),
                             ],
+                          ),
                           ),
               ),
               const SectionHeader('Quick actions'),

@@ -24,14 +24,12 @@ class BrandHeader extends StatelessWidget {
             height: size,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [AppColors.purple, AppColors.pink],
+                colors: [AppColors.primary, AppColors.secondary],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(compact ? AppRadii.md : AppRadii.lg),
-              boxShadow: const [
-                BoxShadow(color: AppColors.overlay, blurRadius: 18, offset: Offset(0, 8)),
-              ],
+              boxShadow: AppShadows.soft,
             ),
             child: Icon(Icons.local_hospital_rounded, color: Colors.white, size: compact ? 24 : 34),
           ),

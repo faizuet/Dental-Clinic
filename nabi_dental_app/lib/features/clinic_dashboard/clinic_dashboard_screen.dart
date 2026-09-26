@@ -11,6 +11,8 @@ import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/app_controls.dart';
+import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
 import '../../core/widgets/summary_card.dart';
@@ -120,13 +122,13 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 StatusBanner.offline('Showing local records. Sync when you are back online.', onRetry: _load),
               ],
               const SizedBox(height: 16),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+              AppStateSwitch(
                 child: _loading
-                    ? const LoadingView(message: 'Updating clinic totals…')
+                    ? const SkeletonCards(key: ValueKey('clinic-skeleton'))
                     : totals == null
-                        ? const EmptyState(message: 'No clinic totals yet.')
-                        : Column(
+                        ? const EmptyState(key: ValueKey('clinic-empty'), message: 'No clinic totals yet.')
+                        : AppReveal(
+                            child: Column(
                             key: const ValueKey('clinic-totals'),
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -156,6 +158,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                                 icon: Icons.account_balance_wallet_outlined,
                               ),
                             ],
+                          ),
                           ),
               ),
               const SectionHeader('Quick actions'),

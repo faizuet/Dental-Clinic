@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
+import 'app_controls.dart';
 import 'app_layout.dart';
 
 class SummaryCard extends StatelessWidget {
@@ -8,7 +9,7 @@ class SummaryCard extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    this.color = AppColors.purple,
+    this.color = AppColors.primary,
     this.icon,
   });
 
@@ -47,11 +48,15 @@ class SummaryCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
                   ),
                   const SizedBox(height: 6),
-                  MoneyText(
-                    value,
-                    align: TextAlign.left,
-                    style: Theme.of(context).textTheme.titleLarge,
-                    color: color,
+                  AnimatedSwitcher(
+                    duration: AppMotion.of(context, AppMotion.medium),
+                    child: MoneyText(
+                      value,
+                      key: ValueKey(value),
+                      align: TextAlign.left,
+                      style: Theme.of(context).textTheme.titleLarge,
+                      color: color,
+                    ),
                   ),
                 ],
               ),
@@ -70,8 +75,8 @@ class ActionCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.onTap,
-    this.color = AppColors.purple,
-    this.soft = AppColors.purpleSoft,
+    this.color = AppColors.primary,
+    this.soft = AppColors.primarySoft,
   });
 
   final String title;
@@ -83,7 +88,8 @@ class ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return AppPressScale(
+      child: Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.lg),
         splashColor: color.withValues(alpha: 0.10),
@@ -120,10 +126,11 @@ class ActionCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+              Icon(Icons.chevron_right_rounded, color: color.withValues(alpha: 0.7)),
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -140,7 +147,7 @@ class TotalBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.purpleSoft,
+        color: AppColors.primarySoft,
         borderRadius: BorderRadius.circular(AppRadii.md),
       ),
       child: Row(
@@ -158,7 +165,7 @@ class TotalBar extends StatelessWidget {
             child: MoneyText(
               value,
               style: Theme.of(context).textTheme.titleMedium,
-              color: AppColors.purple,
+              color: AppColors.primary,
             ),
           ),
         ],
