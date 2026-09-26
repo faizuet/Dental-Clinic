@@ -5,8 +5,19 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme/app_colors.dart';
 import 'app_layout.dart';
 
-void appPush(BuildContext context, String location) {
-  context.push(location);
+Future<T?> appPush<T extends Object?>(BuildContext context, String location) {
+  return context.push<T>(location);
+}
+
+Future<void> appPushAndRefresh(
+  BuildContext context,
+  String location,
+  Future<void> Function() refresh,
+) async {
+  await appPush(context, location);
+  if (context.mounted) {
+    await refresh();
+  }
 }
 
 void appPop(BuildContext context, {String? fallback}) {

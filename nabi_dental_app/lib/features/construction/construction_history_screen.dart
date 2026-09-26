@@ -45,11 +45,13 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _items.isEmpty) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       await ref.read(financeRepositoryProvider).refresh();
       final range = _from == null || _to == null ? null : DateRange(from: _from!, to: _to!, period: FinancePeriod.custom);
@@ -98,7 +100,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
       return;
     }
     await ref.read(financeRepositoryProvider).deleteConstructionPurchase(entry);
-    await _load();
+    await _load(silent: true);
   }
 
   Future<void> _edit(ConstructionPurchase entry) async {
@@ -229,7 +231,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
     if (mounted) {
       showAppSnack(context, message);
     }
-    await _load();
+    await _load(silent: true);
   }
 
   @override

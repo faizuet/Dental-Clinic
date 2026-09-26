@@ -40,11 +40,13 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _totals == null) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final online = await ref.read(financeRepositoryProvider).refresh();
       final range = DateRange.forPeriod(_period, customFrom: _customFrom, customTo: _customTo);
@@ -165,7 +167,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               const SectionHeader('Quick actions'),
               Stretch(
                 child: FilledButton.icon(
-                  onPressed: () => appPush(context, '/clinic/income'),
+                  onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -173,7 +175,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               const SizedBox(height: 10),
               Stretch(
                 child: OutlinedButton.icon(
-                  onPressed: () => appPush(context, '/clinic/expenses'),
+                  onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
                   icon: const Icon(Icons.receipt_long_outlined),
                   label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -183,7 +185,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 title: 'Treatment history',
                 subtitle: 'Patient visits, X-rays, and treatment fees',
                 icon: Icons.history_rounded,
-                onTap: () => appPush(context, '/clinic/income/history'),
+                onTap: () => appPushAndRefresh(context, '/clinic/income/history', () => _load(silent: true)),
               ),
               ActionCard(
                 title: 'Expense history',
@@ -191,13 +193,13 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 icon: Icons.list_alt_rounded,
                 color: AppColors.pink,
                 soft: AppColors.pinkSoft,
-                onTap: () => appPush(context, '/clinic/expenses/history'),
+                onTap: () => appPushAndRefresh(context, '/clinic/expenses/history', () => _load(silent: true)),
               ),
               ActionCard(
                 title: 'Reports and exports',
                 subtitle: 'Breakdowns, timeline, PDF and Excel',
                 icon: Icons.picture_as_pdf_outlined,
-                onTap: () => appPush(context, '/clinic/reports'),
+                onTap: () => appPushAndRefresh(context, '/clinic/reports', () => _load(silent: true)),
               ),
             ],
           ),

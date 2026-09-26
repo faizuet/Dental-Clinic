@@ -38,7 +38,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String Function(String id) deletePath;
   final String Function(String id) updatePath;
   final Future<List<MoneyEntry>> Function(FinanceRepository repo, {DateRange? range, String? search}) loader;
-  final void Function(BuildContext context, MoneyEntry entry)? onOpen;
+  final Future<void> Function(BuildContext context, MoneyEntry entry)? onOpen;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -64,11 +64,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _items.isEmpty) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       await ref.read(financeRepositoryProvider).refresh();
       final range = _from == null || _to == null ? null : DateRange(from: _from!, to: _to!, period: FinancePeriod.custom);
@@ -119,7 +121,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           entityType: widget.entityType,
           entry: entry,
         );
-    await _load();
+    await _load(silent: true);
+  }
+
+  Future<void> _open(MoneyEntry entry) async {
+    if (widget.onOpen == null) {
+      return;
+    }
+    await widget.onOpen!(context, entry);
+    if (mounted) {
+      await _load(silent: true);
+    }
   }
 
   Future<void> _edit(MoneyEntry entry) async {
@@ -208,7 +220,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (mounted) {
       showAppSnack(context, message);
     }
-    await _load();
+    await _load(silent: true);
   }
 
   @override
@@ -325,7 +337,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                   index: index,
                                   child: Card(
                                   child: InkWell(
-                                    onTap: widget.onOpen == null ? null : () => widget.onOpen!(context, item),
+                                    onTap: widget.onOpen == null ? null : () => _open(item),
                                     borderRadius: BorderRadius.circular(AppRadii.lg),
                                     child: Padding(
                                     padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
@@ -370,7 +382,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                           children: [
                                             if (widget.onOpen != null)
                                               TextButton.icon(
-                                                onPressed: () => widget.onOpen!(context, item),
+                                                onPressed: () => _open(item),
                                                 icon: const Icon(Icons.visibility_outlined, size: 18),
                                                 label: const Text('View'),
                                               ),
@@ -418,7 +430,9 @@ class TreatmentHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/treatment-transactions/$id',
       updatePath: (id) => '/api/v1/treatment-transactions/$id',
       loader: (repo, {range, search}) => repo.incomeHistory(range: range, search: search),
-      onOpen: (context, entry) => context.push('/clinic/income/${entry.id}'),
+      onOpen: (context, entry) async {
+        await context.push('/clinic/income/${entry.id}');
+      },
     );
   }
 }

@@ -73,11 +73,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final repo = ref.read(financeRepositoryProvider);
       await repo.refresh();

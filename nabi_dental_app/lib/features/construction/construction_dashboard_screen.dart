@@ -41,11 +41,13 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _totals == null) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final repo = ref.read(financeRepositoryProvider);
       var online = true;
@@ -181,7 +183,7 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
               const SectionHeader('Quick actions'),
               Stretch(
                 child: FilledButton.icon(
-                  onPressed: () => appPush(context, '/construction/purchases'),
+                  onPressed: () => appPushAndRefresh(context, '/construction/purchases', () => _load(silent: true)),
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add material purchase', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -189,7 +191,7 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
               const SizedBox(height: 10),
               Stretch(
                 child: OutlinedButton.icon(
-                  onPressed: () => appPush(context, '/construction/materials'),
+                  onPressed: () => appPushAndRefresh(context, '/construction/materials', () => _load(silent: true)),
                   icon: const Icon(Icons.category_outlined),
                   label: const Text('Manage materials', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -201,7 +203,7 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
                 icon: Icons.history_rounded,
                 color: AppColors.teal,
                 soft: AppColors.tealSoft,
-                onTap: () => appPush(context, '/construction/purchases/history'),
+                onTap: () => appPushAndRefresh(context, '/construction/purchases/history', () => _load(silent: true)),
               ),
               ActionCard(
                 title: 'Reports and exports',
@@ -209,7 +211,7 @@ class _ConstructionDashboardScreenState extends ConsumerState<ConstructionDashbo
                 icon: Icons.picture_as_pdf_outlined,
                 color: AppColors.teal,
                 soft: AppColors.tealSoft,
-                onTap: () => appPush(context, '/construction/reports'),
+                onTap: () => appPushAndRefresh(context, '/construction/reports', () => _load(silent: true)),
               ),
             ],
           ),

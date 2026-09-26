@@ -34,11 +34,13 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _materials.isEmpty) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final repo = ref.read(financeRepositoryProvider);
       try {
@@ -90,7 +92,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
             entityType: 'construction_material_category',
             body: {'name': name.text.trim()},
           );
-      await _load();
+      await _load(silent: true);
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error), error: true);
@@ -128,7 +130,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
             version: category.version,
             patch: {'name': name.text.trim()},
           );
-      await _load();
+      await _load(silent: true);
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error), error: true);
@@ -158,7 +160,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
             id: category.id,
             version: category.version,
           );
-      await _load();
+      await _load(silent: true);
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error), error: true);
@@ -344,7 +346,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
           },
         );
       }
-      await _load();
+      await _load(silent: true);
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error), error: true);
@@ -379,7 +381,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
             id: material.id,
             version: material.version,
           );
-      await _load();
+      await _load(silent: true);
     } catch (error) {
       if (mounted) {
         showAppSnack(context, friendlyError(error), error: true);

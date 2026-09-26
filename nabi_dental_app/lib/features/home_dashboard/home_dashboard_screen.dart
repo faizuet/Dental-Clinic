@@ -39,11 +39,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent || _totals == null) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final online = await ref.read(financeRepositoryProvider).refresh();
       final range = DateRange.forPeriod(_period, customFrom: _customFrom, customTo: _customTo);
@@ -179,7 +181,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
               const SectionHeader('Quick actions'),
               Stretch(
                 child: FilledButton.icon(
-                  onPressed: () => appPush(context, '/home/expenses'),
+                  onPressed: () => appPushAndRefresh(context, '/home/expenses', () => _load(silent: true)),
                   icon: const Icon(Icons.add_rounded),
                   label: const Text('Add home expense', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -187,7 +189,7 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
               const SizedBox(height: 10),
               Stretch(
                 child: OutlinedButton.icon(
-                  onPressed: () => appPush(context, '/home/budget'),
+                  onPressed: () => appPushAndRefresh(context, '/home/budget', () => _load(silent: true)),
                   icon: const Icon(Icons.savings_outlined),
                   label: const Text('Set monthly budget', maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
@@ -199,13 +201,13 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                 icon: Icons.history_rounded,
                 color: AppColors.pink,
                 soft: AppColors.pinkSoft,
-                onTap: () => appPush(context, '/home/expenses/history'),
+                onTap: () => appPushAndRefresh(context, '/home/expenses/history', () => _load(silent: true)),
               ),
               ActionCard(
                 title: 'Reports and exports',
                 subtitle: 'Category breakdown, PDF and Excel',
                 icon: Icons.picture_as_pdf_outlined,
-                onTap: () => appPush(context, '/home/reports'),
+                onTap: () => appPushAndRefresh(context, '/home/reports', () => _load(silent: true)),
               ),
             ],
           ),
