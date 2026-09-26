@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/finance/finance_repository.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/errors/friendly_error.dart';
@@ -133,7 +134,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                '${totals.range.fromIso} to ${totals.range.toIso}',
+                                formatDisplayDateRange(totals.range.from, totals.range.to),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),

@@ -7,6 +7,7 @@ import '../../core/errors/app_exception.dart';
 import '../../core/export/file_saver.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/errors/friendly_error.dart';
@@ -212,7 +213,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Report dates: ${_range.fromIso} to ${_range.toIso} (inclusive)',
+                'Report dates: ${formatDisplayDateRange(_range.from, _range.to)} (inclusive)',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
@@ -323,7 +324,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Widget _row(NamedAmount item, String currency, {Color? color}) {
     return ListTile(
-      title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+      title: Text(formatDisplayDateLabel(item.name), maxLines: 2, overflow: TextOverflow.ellipsis),
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 140),
         child: MoneyText(
@@ -337,7 +338,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Widget _purchaseRow(ConstructionPurchase item, String currency) {
     final detail = [
-      item.date,
+      formatDisplayDate(item.date),
       '${formatQuantity(item.quantity)} ${item.unit}',
       if ((item.categoryName ?? '').isNotEmpty) item.categoryName,
       if ((item.supplier ?? '').isNotEmpty) item.supplier,

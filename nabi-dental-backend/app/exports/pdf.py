@@ -12,8 +12,8 @@ from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate
 
 from app.schemas.report import ClinicReport, ConstructionReport, HomeReport, NamedAmount
 from app.schemas.treatment_transaction import TreatmentTransactionRead
-from app.utils.treatment_details import clinical_summary, tooth_label
-from app.utils.dates import serialize_datetime
+from app.utils.treatment_details import clinical_summary, family_label, resolved_sub_treatment, tooth_label
+from app.utils.dates import format_display_date, format_display_date_range
 from app.utils.money import format_money, format_quantity
 
 PURPLE = colors.HexColor("#7C3AED")
@@ -51,7 +51,7 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
                 [
                     str(item.serial_no or "—"),
                     item.patient_name or "Walk-in",
-                    str(item.entry_date),
+                    format_display_date(item.entry_date),
                     item.name,
                     item.sub_treatment or "—",
                     item.tooth or "—",
@@ -67,7 +67,7 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
             "Clinic expenses",
             ["Date", "Category", "Notes", "Amount"],
             [
-                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                [format_display_date(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
                 for item in report.expense_lines
             ],
             [72, 150, 170, 80],
@@ -96,13 +96,18 @@ def render_treatment_pdf(
     title = "Patient Treatment Record"
     details = visit.details or {}
     tooth = tooth_label(details) or "—"
-    summary = clinical_summary(details, visit.sub_treatment) or "—"
+    sub_treatment = resolved_sub_treatment(
+        sub_treatment=visit.sub_treatment,
+        details=details,
+        treatment_name=visit.treatment_name,
+    )
+    summary = clinical_summary(details, sub_treatment) or "—"
     info_rows = [
         ("Sr. No.", str(visit.serial_no or "—")),
         ("Patient", visit.patient_name or "Walk-in"),
-        ("Treatment date", str(visit.transaction_date)),
-        ("Main treatment", visit.treatment_name or visit.category_name or "Treatment"),
-        ("Sub-treatment", visit.sub_treatment or "—"),
+        ("Treatment date", format_display_date(visit.transaction_date)),
+        ("Main treatment", family_label(visit.treatment_name, visit.category_name)),
+        ("Sub-treatment", sub_treatment or "—"),
         ("Fee", _money(visit.amount, currency)),
     ]
     dental_rows = [
@@ -132,7 +137,7 @@ def render_treatment_pdf(
         clinic_name=clinic_name,
         title=title,
         generated=generated,
-        period=str(visit.transaction_date),
+        period=format_display_date(visit.transaction_date),
         accent=PURPLE,
     )
 
@@ -205,7 +210,7 @@ def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:
             "Home expenses",
             ["Date", "Category", "Notes", "Amount"],
             [
-                [str(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
+                [format_display_date(item.entry_date), item.name, item.detail or "—", _money(item.amount, report.currency)]
                 for item in report.expense_lines
             ],
             [72, 150, 170, 80],
@@ -237,7 +242,7 @@ def render_construction_pdf(report: ConstructionReport, *, clinic_name: str) -> 
     ]
     purchase_rows = [
         [
-            str(item.purchase_date),
+            format_display_date(item.purchase_date),
             item.material_name,
             item.category_name,
             f"{format_quantity(item.quantity)} {item.unit}",
@@ -346,7 +351,7 @@ def _draw_chrome(canvas, doc, *, clinic_name: str, title: str, generated: str, p
 
 
 def _period_label(from_date, to_date) -> str:
-    return f"{from_date} to {to_date} (inclusive)"
+    return f"{format_display_date_range(from_date, to_date)} (inclusive)"
 
 
 def _summary_block(rows: list[tuple[str, str]]) -> list:
@@ -447,7 +452,7 @@ def _timeline_section(points, currency: str, *, include_income: bool) -> list:
     if include_income:
         rows = [
             [
-                item.period,
+                format_display_date(item.period) if "-" in str(item.period) else item.period,
                 _money(item.income, currency) if item.income is not None else "—",
                 _money(item.expenses, currency) if item.expenses is not None else "—",
                 _money(item.profit, currency) if item.profit is not None else "—",
@@ -455,7 +460,7 @@ def _timeline_section(points, currency: str, *, include_income: bool) -> list:
             for item in points
         ]
         return _line_section("Period summary", ["Period", "Income", "Expenses", "Profit"], rows, [140, 110, 110, 112], [1, 2, 3])
-    rows = [[item.period, _money(item.expenses, currency) if item.expenses is not None else "—"] for item in points]
+    rows = [[format_display_date(item.period) if "-" in str(item.period) else item.period, _money(item.expenses, currency) if item.expenses is not None else "—"] for item in points]
     return _line_section("Monthly / period spending", ["Period", "Amount"], rows, [280, 192], [1])
 
 
@@ -464,7 +469,8 @@ def _money(value, currency: str) -> str:
 
 
 def _generated_label() -> str:
-    return serialize_datetime(datetime.now(timezone.utc)).replace("T", " ").replace("Z", " UTC")
+    now = datetime.now(timezone.utc)
+    return f"{format_display_date(now)} {now.strftime('%H:%M:%S')} UTC"
 
 
 def _styles():

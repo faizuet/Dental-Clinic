@@ -100,6 +100,30 @@ String familyLabel(TreatmentFamily family) {
   };
 }
 
+String displayMainTreatment(String catalogName, {String? categoryName}) {
+  return familyLabel(familyOf(catalogName, categoryName: categoryName));
+}
+
+String? displaySubTreatment({
+  String? subTreatment,
+  Map<String, dynamic> details = const {},
+  String? catalogName,
+}) {
+  final fromField = subTreatment?.trim();
+  if (fromField != null && fromField.isNotEmpty) {
+    return fromField;
+  }
+  final nested = details['sub_treatment']?.toString().trim();
+  if (nested != null && nested.isNotEmpty) {
+    return nested;
+  }
+  final name = catalogName?.trim();
+  if (name != null && name.isNotEmpty) {
+    return name;
+  }
+  return null;
+}
+
 String clinicalSummary(Map<String, dynamic> details, {String? subTreatment}) {
   final parts = <String>[];
   if (subTreatment != null && subTreatment.trim().isNotEmpty) {

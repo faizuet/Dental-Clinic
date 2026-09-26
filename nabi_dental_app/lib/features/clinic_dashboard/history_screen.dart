@@ -9,6 +9,7 @@ import '../../core/dental/tooth_catalog.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/widgets/app_controls.dart';
@@ -144,7 +145,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Date'),
-                        subtitle: Text(DateFormat('yyyy-MM-dd').format(date)),
+                        subtitle: Text(formatDisplayDate(date)),
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -252,7 +253,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     child: ActionChip(
                       avatar: const Icon(Icons.close_rounded, size: 18),
                       label: Text(
-                        '${_from!.toIso8601String().substring(0, 10)} → ${_to!.toIso8601String().substring(0, 10)}',
+                        formatDisplayDateRange(_from, _to, separator: ' → '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -303,12 +304,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               itemCount: _items.length,
                               itemBuilder: (context, index) {
                                 final item = _items[index];
-                                final detail = item.detailsText ?? clinicalSummary(item.details, subTreatment: item.subTreatment);
+                                final detail = item.detailsText ??
+                                    clinicalSummary(
+                                      item.details,
+                                      subTreatment: displaySubTreatment(
+                                        subTreatment: item.subTreatment,
+                                        details: item.details,
+                                        catalogName: item.catalogName,
+                                      ),
+                                    );
                                 final subtitle = [
                                   if (item.serialNo != null) '#${item.serialNo}',
                                   if (item.patientName != null) item.patientName,
                                   if (item.patientPhone != null) item.patientPhone,
-                                  item.date,
+                                  formatDisplayDate(item.date),
                                   if (detail.isNotEmpty) detail,
                                   if (item.notes != null && item.notes!.isNotEmpty) item.notes,
                                 ].join(' · ');

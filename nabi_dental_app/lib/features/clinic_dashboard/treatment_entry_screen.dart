@@ -11,6 +11,7 @@ import '../../core/dental/xray_validation.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
@@ -110,10 +111,10 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   List<CatalogItem> get _generalItems =>
       _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.general).toList();
 
-  CatalogItem? get _rctItem {
-    final matches = _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.rct);
-    return matches.isEmpty ? null : matches.first;
-  }
+  List<CatalogItem> get _rctItems =>
+      _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.rct).toList();
+
+  CatalogItem? get _rctItem => _rctItems.isEmpty ? null : _rctItems.first;
 
   bool get _canSave => _treatment != null && isValidMoney(_amount.text);
 
@@ -278,6 +279,8 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       _error = null;
     });
     try {
+      final details = _details();
+      details['sub_treatment'] = _treatment!.name;
       final message = await ref.read(financeRepositoryProvider).saveTreatmentVisit(
             date: DateFormat('yyyy-MM-dd').format(_date),
             treatmentId: _treatment!.id,
@@ -285,10 +288,8 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             patientId: _patient?.id,
             patientName: _patient?.name,
             patientPhone: _patient?.phone,
-            subTreatment: _family == TreatmentFamily.prosthetic || _family == TreatmentFamily.perio
-                ? _treatment!.name
-                : null,
-            details: _details(),
+            subTreatment: _treatment!.name,
+            details: details,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             xrays: [
               for (final item in _xrays) (bytes: item.bytes, filename: item.filename, label: item.label),
@@ -331,7 +332,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               const SizedBox(height: 12),
               DatePickerTile(
                 label: 'Treatment date',
-                value: DateFormat('yyyy-MM-dd').format(_date),
+                value: formatDisplayDate(_date),
                 onTap: () async {
                   final picked = await showDatePicker(
                     context: context,
@@ -347,7 +348,17 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
               const SizedBox(height: 12),
               _familyPicker(),
               AppExpand(
-                child: _family == TreatmentFamily.prosthetic
+                child: _family == TreatmentFamily.rct && _rctItems.isNotEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _catalogDropdown('Sub-treatment', _rctItems, _treatment, (value) {
+                          setState(() {
+                            _treatment = value;
+                            _applyDefaultPrice();
+                          });
+                        }),
+                      )
+                    : _family == TreatmentFamily.prosthetic
                     ? Padding(
                         padding: const EdgeInsets.only(top: 12),
                         child: _catalogDropdown('Sub-treatment', _prostheticItems, _treatment, (value) {
@@ -370,7 +381,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                         : _family == TreatmentFamily.general
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 12),
-                                child: _catalogDropdown('Treatment', _generalItems, _treatment, (value) {
+                                child: _catalogDropdown('Sub-treatment', _generalItems, _treatment, (value) {
                                   setState(() {
                                     _treatment = value;
                                     _applyDefaultPrice();

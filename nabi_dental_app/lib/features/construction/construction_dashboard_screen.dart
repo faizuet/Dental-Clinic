@@ -6,6 +6,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/widgets/app_layout.dart';
@@ -248,7 +249,7 @@ class _NamedList extends StatelessWidget {
           for (final item in items)
             Card(
               child: ListTile(
-                title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+                title: Text(formatDisplayDateLabel(item.name), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 140),
                   child: MoneyText(
@@ -273,7 +274,7 @@ class _RecentPurchaseTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final detail = [
-      item.date,
+      formatDisplayDate(item.date),
       '${formatQuantity(item.quantity)} ${item.unit}',
       if (item.supplier != null && item.supplier!.isNotEmpty) item.supplier,
     ].join(' · ');

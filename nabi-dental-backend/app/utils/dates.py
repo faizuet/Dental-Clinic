@@ -94,6 +94,28 @@ def validate_business_date(value: date, tz_name: str) -> None:
         )
 
 
+def format_display_date(value: date | datetime | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        value = value.date()
+    if isinstance(value, date):
+        return value.strftime("%d/%m/%y")
+    text = str(value).strip()
+    if not text:
+        return ""
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        try:
+            return date.fromisoformat(text[:10]).strftime("%d/%m/%y")
+        except ValueError:
+            return text
+    return text
+
+
+def format_display_date_range(from_date, to_date, *, separator: str = " to ") -> str:
+    return f"{format_display_date(from_date)}{separator}{format_display_date(to_date)}"
+
+
 def serialize_datetime(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)

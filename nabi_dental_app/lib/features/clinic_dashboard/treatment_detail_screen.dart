@@ -10,6 +10,7 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/export/file_saver.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
@@ -133,14 +134,30 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
                             _row('Patient', entry.patientName ?? 'Walk-in'),
                             if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
-                            _row('Date', entry.date),
-                            _row('Main treatment', entry.catalogName),
-                            if (entry.subTreatment != null) _row('Sub-treatment', entry.subTreatment!),
+                            _row('Date', formatDisplayDate(entry.date)),
+                            _row('Main treatment', displayMainTreatment(entry.catalogName, categoryName: entry.categoryName)),
+                            _row('Sub-treatment', displaySubTreatment(
+                                  subTreatment: entry.subTreatment,
+                                  details: entry.details,
+                                  catalogName: entry.catalogName,
+                                ) ??
+                                '—'),
                             _row('Fee', formatMoney(entry.amount, currency: currency)),
                           ]),
                           const SizedBox(height: 12),
                           _section('Dental information', [
-                            _row('Details', entry.detailsText ?? clinicalSummary(entry.details, subTreatment: entry.subTreatment)),
+                            _row(
+                              'Details',
+                              entry.detailsText ??
+                                  clinicalSummary(
+                                    entry.details,
+                                    subTreatment: displaySubTreatment(
+                                      subTreatment: entry.subTreatment,
+                                      details: entry.details,
+                                      catalogName: entry.catalogName,
+                                    ),
+                                  ),
+                            ),
                             if (entry.notes != null) _row('Notes', entry.notes!),
                           ]),
                           const SizedBox(height: 12),

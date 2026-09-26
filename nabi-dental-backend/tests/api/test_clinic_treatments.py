@@ -65,6 +65,7 @@ async def test_patient_rct_history_and_finance_total(client):
     assert body["patient_name"] == "Ali Khan"
     assert body["patient_phone"] == "03001234567"
     assert body["details"]["tooth_number"] == "26"
+    assert body["sub_treatment"] == "RCT"
 
     second = await client.post(
         "/api/v1/treatment-transactions",

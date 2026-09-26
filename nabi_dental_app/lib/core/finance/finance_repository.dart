@@ -676,6 +676,7 @@ class FinanceRepository {
       final response = await _api.post('/api/v1/treatment-transactions', data: payload);
       final saved = _asMap(response.data) ?? payload;
       saved['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? saved['treatment_name'] ?? 'Treatment';
+      saved['sub_treatment'] = saved['sub_treatment'] ?? subTreatment;
       saved['patient_name'] = saved['patient_name'] ?? patientName;
       saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
       for (final xray in xrays) {
@@ -698,6 +699,7 @@ class FinanceRepository {
       return 'Treatment saved.';
     } on OfflineException {
       payload['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? 'Treatment';
+      payload['sub_treatment'] = subTreatment;
       payload['patient_name'] = patientName;
       payload['patient_phone'] = patientPhone;
       payload['version'] = 1;
@@ -1558,9 +1560,17 @@ class FinanceRepository {
   }
 
   Future<List<Map<String, dynamic>>> _namedTransactions(List<Map<String, dynamic>> rows) async {
-    final names = {for (final item in await treatments()) item.id: item.name};
+    final items = await treatments();
+    final names = {for (final item in items) item.id: item.name};
+    final categories = {for (final item in items) item.id: item.categoryName};
     return [
-      for (final row in rows) {...row, 'catalog_name': names[row['treatment_id'].toString()] ?? 'Treatment'},
+      for (final row in rows)
+        {
+          ...row,
+          'catalog_name': names[row['treatment_id'].toString()] ?? row['catalog_name'] ?? 'Treatment',
+          'category_name': categories[row['treatment_id'].toString()] ?? row['category_name'],
+          'sub_treatment': row['sub_treatment'] ?? (row['details'] is Map ? row['details']['sub_treatment'] : null),
+        },
     ];
   }
 

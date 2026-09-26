@@ -65,6 +65,34 @@ def tooth_label(details: dict[str, Any] | None) -> str | None:
     return ", ".join(names)
 
 
+def family_label(name: str | None, category_name: str | None = None) -> str:
+    n = (name or "").lower()
+    c = (category_name or "").lower()
+    if "rct" in n or "root canal" in n:
+        return "RCT"
+    if "prosthetic" in c or any(token in n for token in ("crown", "bridge", "denture", "implant")):
+        return "Prosthetic"
+    if "perio" in c or "scaling" in n:
+        return "Periodontal"
+    return "Other"
+
+
+def resolved_sub_treatment(
+    *,
+    sub_treatment: str | None = None,
+    details: dict[str, Any] | None = None,
+    treatment_name: str | None = None,
+) -> str | None:
+    if sub_treatment and str(sub_treatment).strip():
+        return str(sub_treatment).strip()
+    nested = (details or {}).get("sub_treatment")
+    if nested and str(nested).strip():
+        return str(nested).strip()
+    if treatment_name and str(treatment_name).strip():
+        return str(treatment_name).strip()
+    return None
+
+
 def clinical_summary(details: dict[str, Any] | None, sub_treatment: str | None = None) -> str | None:
     data = details or {}
     parts: list[str] = []

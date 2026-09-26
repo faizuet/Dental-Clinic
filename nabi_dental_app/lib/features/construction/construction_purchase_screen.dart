@@ -6,6 +6,7 @@ import '../../app/theme/app_colors.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
@@ -204,7 +205,7 @@ class _ConstructionPurchaseScreenState extends ConsumerState<ConstructionPurchas
             children: [
               DatePickerTile(
                 label: 'Purchase date',
-                value: DateFormat('yyyy-MM-dd').format(_date),
+                value: formatDisplayDate(_date),
                 onTap: () async {
                   final picked = await showDatePicker(
                     context: context,

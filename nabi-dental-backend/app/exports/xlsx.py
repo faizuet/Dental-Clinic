@@ -5,7 +5,9 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from app.schemas.report import ClinicReport, ConstructionReport, HomeReport
+from app.utils.dates import format_display_date
 from app.utils.money import format_money, format_quantity
+from app.utils.treatment_details import resolved_sub_treatment
 
 HEADER_FILL = PatternFill("solid", fgColor="7C3AED")
 SOFT_FILL = PatternFill("solid", fgColor="F3E8FF")
@@ -48,9 +50,9 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
             [
                 item.serial_no or "",
                 item.patient_name or "Walk-in",
-                str(item.entry_date),
+                format_display_date(item.entry_date),
                 item.name,
-                item.sub_treatment or "",
+                item.sub_treatment or resolved_sub_treatment(treatment_name=item.name) or "",
                 item.tooth or "",
                 item.details_text or item.detail or "",
                 item.amount,
@@ -63,7 +65,7 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
         workbook,
         "Clinic expenses",
         ["Date", "Category", "Notes", "Amount"],
-        [[str(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
+        [[format_display_date(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
         money_cols={4},
     )
     _write_timeline_sheet(workbook, report.timeline, include_income=True)
@@ -92,7 +94,7 @@ def render_home_xlsx(report: HomeReport, *, clinic_name: str) -> bytes:
         workbook,
         "Home expenses",
         ["Date", "Category", "Notes", "Amount"],
-        [[str(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
+        [[format_display_date(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
         money_cols={4},
     )
     _write_timeline_sheet(workbook, report.timeline, include_income=False)
@@ -147,7 +149,7 @@ def render_construction_xlsx(report: ConstructionReport, *, clinic_name: str) ->
         ["Date", "Material", "Category", "Quantity", "Unit", "Unit price", "Total", "Supplier"],
         [
             [
-                str(item.purchase_date),
+                format_display_date(item.purchase_date),
                 item.material_name,
                 item.category_name,
                 format_quantity(item.quantity),
@@ -171,9 +173,9 @@ def _write_header(sheet, clinic_name, title, from_date, to_date, currency) -> No
     sheet["A2"] = title
     sheet["A2"].font = SECTION_FONT
     sheet["A3"] = "From"
-    sheet["B3"] = str(from_date)
+    sheet["B3"] = format_display_date(from_date)
     sheet["A4"] = "To"
-    sheet["B4"] = str(to_date)
+    sheet["B4"] = format_display_date(to_date)
     sheet["A5"] = "Currency"
     sheet["B5"] = currency
     sheet.column_dimensions["A"].width = 32
@@ -199,7 +201,7 @@ def _write_timeline_sheet(workbook, points, *, include_income: bool) -> None:
             "Timeline",
             ["Period", "Income", "Expenses", "Profit"],
             [
-                [item.period, item.income, item.expenses, item.profit]
+                [format_display_date(item.period) if "-" in str(item.period) else item.period, item.income, item.expenses, item.profit]
                 for item in points
             ],
             money_cols={2, 3, 4},
@@ -209,7 +211,7 @@ def _write_timeline_sheet(workbook, points, *, include_income: bool) -> None:
         workbook,
         "Timeline",
         ["Period", "Amount"],
-        [[item.period, item.expenses] for item in points],
+        [[format_display_date(item.period) if "-" in str(item.period) else item.period, item.expenses] for item in points],
         money_cols={2},
     )
 

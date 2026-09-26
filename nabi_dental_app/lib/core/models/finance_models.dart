@@ -156,6 +156,7 @@ class MoneyEntry {
     this.patientPhone,
     this.serialNo,
     this.subTreatment,
+    this.categoryName,
     this.details = const {},
     this.detailsText,
     this.attachments = const [],
@@ -174,6 +175,7 @@ class MoneyEntry {
   final String? patientPhone;
   final int? serialNo;
   final String? subTreatment;
+  final String? categoryName;
   final Map<String, dynamic> details;
   final String? detailsText;
   final List<TreatmentAttachment> attachments;
@@ -193,6 +195,7 @@ class MoneyEntry {
       patientPhone: jsonText(json['patient_phone']),
       serialNo: json['serial_no'] == null ? null : jsonInt(json['serial_no']),
       subTreatment: jsonText(json['sub_treatment']),
+      categoryName: jsonText(json['category_name']),
       details: jsonMap(json['details']),
       detailsText: jsonText(json['details_text']),
       attachments: [
@@ -217,6 +220,7 @@ class MoneyEntry {
         'patient_phone': patientPhone,
         'serial_no': serialNo,
         'sub_treatment': subTreatment,
+        'category_name': categoryName,
         'details': details,
         'details_text': detailsText,
       };

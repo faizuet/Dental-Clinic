@@ -25,6 +25,8 @@ void main() {
     expect(entry.patientName, 'Ali Khan');
     expect(entry.patientPhone, '03001234567');
     expect(entry.serialNo, 12);
+    expect(entry.subTreatment, 'RCT');
+    expect(displaySubTreatment(subTreatment: entry.subTreatment, details: entry.details, catalogName: entry.catalogName), 'RCT');
     expect(entry.details['tooth_number'], '26');
     expect(kindOf(entry.catalogName), TreatmentKind.rct);
     expect(toothNameFor('26'), 'Upper Left First Molar');

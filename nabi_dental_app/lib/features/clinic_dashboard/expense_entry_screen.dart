@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../app/theme/app_colors.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_controls.dart';
@@ -179,7 +180,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
           children: [
           DatePickerTile(
             label: 'Date',
-            value: DateFormat('yyyy-MM-dd').format(_date),
+            value: formatDisplayDate(_date),
             onTap: () async {
               final picked = await showDatePicker(context: context, initialDate: _date, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 30)));
               if (picked != null) {

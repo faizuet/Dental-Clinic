@@ -7,6 +7,7 @@ import '../../core/auth/session_controller.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/widgets/app_controls.dart';
@@ -139,7 +140,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Date'),
-                        subtitle: Text(DateFormat('yyyy-MM-dd').format(date)),
+                        subtitle: Text(formatDisplayDate(date)),
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: context,
@@ -273,7 +274,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                     child: ActionChip(
                       avatar: const Icon(Icons.close_rounded, size: 18),
                       label: Text(
-                        '${_from!.toIso8601String().substring(0, 10)} → ${_to!.toIso8601String().substring(0, 10)}',
+                        formatDisplayDateRange(_from, _to, separator: ' → '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -325,7 +326,7 @@ class _ConstructionHistoryScreenState extends ConsumerState<ConstructionHistoryS
                                   itemBuilder: (context, index) {
                                     final item = _items[index];
                                     final detail = [
-                                      item.date,
+                                      formatDisplayDate(item.date),
                                       '${formatQuantity(item.quantity)} ${item.unit} × ${formatMoney(item.unitPrice, currency: currency)}',
                                       if (item.supplier != null && item.supplier!.isNotEmpty) item.supplier,
                                       if (item.notes != null && item.notes!.isNotEmpty) item.notes,

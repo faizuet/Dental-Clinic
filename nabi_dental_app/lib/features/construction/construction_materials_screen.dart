@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -231,7 +232,7 @@ class _ConstructionMaterialsScreenState extends ConsumerState<ConstructionMateri
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('Purchase date'),
-                        subtitle: Text(DateFormat('yyyy-MM-dd').format(purchaseDate)),
+                        subtitle: Text(formatDisplayDate(purchaseDate)),
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: context,

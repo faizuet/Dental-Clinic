@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/finance/finance_repository.dart';
+import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -41,7 +42,7 @@ class _ConflictReviewScreenState extends ConsumerState<ConflictReviewScreen> {
     final name = value['name'] ?? value['catalog_name'] ?? value['notes'] ?? '';
     return [
       if (amount != null) formatMoney(amount.toString()),
-      if (date != null) date.toString(),
+      if (date != null) formatDisplayDateLabel(date),
       if (name.toString().isNotEmpty) name.toString(),
     ].join(' · ');
   }

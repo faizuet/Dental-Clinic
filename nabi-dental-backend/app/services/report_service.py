@@ -8,7 +8,7 @@ from app.exports.pdf import render_clinic_pdf, render_construction_pdf, render_h
 from app.exports.xlsx import render_clinic_xlsx, render_construction_xlsx, render_home_xlsx
 from app.models import ClinicExpense, ConstructionPurchase, HomeExpense, TreatmentTransaction, User
 from app.services.treatment_service import TreatmentService
-from app.utils.treatment_details import clinical_summary, tooth_label
+from app.utils.treatment_details import clinical_summary, resolved_sub_treatment, tooth_label
 from app.repositories.totals import TotalsRepository, _date_bucket
 from app.schemas.report import (
     ClinicReport,
@@ -288,7 +288,12 @@ def _line(row) -> ReportLine:
 
 def _income_line(row) -> ReportLine:
     details = row[7] if len(row) > 7 and isinstance(row[7], dict) else {}
-    sub_treatment = row[6] if len(row) > 6 else None
+    treatment_name = row[1] if len(row) > 1 else None
+    sub_treatment = resolved_sub_treatment(
+        sub_treatment=row[6] if len(row) > 6 else None,
+        details=details,
+        treatment_name=treatment_name,
+    )
     summary = clinical_summary(details, sub_treatment)
     return ReportLine(
         entry_date=row[0],
