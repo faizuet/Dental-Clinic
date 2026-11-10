@@ -557,63 +557,86 @@ class FinanceRepository {
   }
 
   Future<List<PatientRecord>> patients({String? search}) async {
-    final rows = await _db.list('patients');
-    var items = rows.map(PatientRecord.fromJson).toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    final needle = search?.trim().toLowerCase();
-    if (needle != null && needle.isNotEmpty) {
-      items = items
-          .where(
-            (item) =>
-                item.name.toLowerCase().contains(needle) || (item.phone ?? '').toLowerCase().contains(needle),
-          )
-          .toList();
+    final needle = search?.trim();
+    try {
+      final remote = await _allPages(
+        '/api/v1/patients',
+        extra: {
+          'page_size': 100,
+          'sort': '-created_at',
+          if (needle != null && needle.isNotEmpty) 'search': needle,
+        },
+      );
+      await _replacePatients(remote);
+      final items = remote.map(PatientRecord.fromJson).toList();
+      _sortPatients(items);
+      return items;
+    } on OfflineException {
+      return await _localPatients(search: needle);
+    } on AppException {
+      return await _localPatients(search: needle);
     }
-    return items;
   }
 
   Future<PatientRecord> savePatient({required String name, String? phone}) async {
-    final id = await createCatalog(
-      path: '/api/v1/patients',
-      collection: 'patients',
-      entityType: 'patient',
-      body: {
-        'name': name,
-        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
-      },
-    );
-    _serverCatalogIds.add(id);
-    try {
-      final response = await _api.get('/api/v1/patients/$id');
-      final remote = _asMap(response.data);
-      if (remote != null) {
-        await _db.upsert('patients', remote);
-        return PatientRecord.fromJson(remote);
+    final trimmed = name.trim();
+    if (trimmed.length < 2) {
+      throw const AppException('Enter the patient name.', code: 'VALIDATION_ERROR', statusCode: 400);
+    }
+    final phoneValue = phone?.trim();
+    final existing = await patients();
+    for (final item in existing) {
+      final sameName = item.name.toLowerCase() == trimmed.toLowerCase();
+      final samePhone = (item.phone ?? '') == (phoneValue ?? '');
+      if (sameName && samePhone) {
+        return item;
       }
-    } catch (_) {}
-    final row = await _db.get('patients', id) ?? {'id': id, 'name': name, 'phone': phone};
-    return PatientRecord.fromJson(row);
+    }
+    final payload = {
+      'id': _uuid.v4(),
+      'name': trimmed,
+      if (phoneValue != null && phoneValue.isNotEmpty) 'phone': phoneValue,
+    };
+    final response = await _api.post('/api/v1/patients', data: payload);
+    final saved = _asMap(response.data);
+    if (saved == null || (saved['name']?.toString().trim().isEmpty ?? true)) {
+      throw const AppException('The patient could not be saved. Please try again.', code: 'SERVER', statusCode: 500);
+    }
+    await _db.upsert('patients', saved);
+    _serverCatalogIds.add(saved['id'].toString());
+    return PatientRecord.fromJson(saved);
   }
 
   Future<PatientRecord> updatePatient(PatientRecord patient, {String? name, String? phone}) async {
     final patch = {
-      if (name != null) 'name': name,
-      'phone': phone,
+      if (name != null) 'name': name.trim(),
+      'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
     };
-    await updateCatalog(
+    final response = await _api.patch(
+      '/api/v1/patients/${patient.id}',
+      data: {'version': patient.version, ...patch},
+    );
+    final saved = _asMap(response.data) ?? {...patient.toJson(), ...patch, 'version': patient.version + 1};
+    if ((saved['name']?.toString().trim().isEmpty ?? true)) {
+      throw const AppException('The patient could not be updated. Please try again.', code: 'SERVER', statusCode: 500);
+    }
+    await _db.upsert('patients', saved);
+    return PatientRecord.fromJson(saved);
+  }
+
+  Future<void> deletePatient(PatientRecord patient) async {
+    await deleteCatalog(
       path: '/api/v1/patients/${patient.id}',
       collection: 'patients',
       entityType: 'patient',
       id: patient.id,
       version: patient.version,
-      patch: patch,
     );
-    final row = await _db.get('patients', patient.id) ?? {...patient.toJson(), ...patch};
-    return PatientRecord.fromJson(row);
   }
 
   Future<List<MoneyEntry>> incomeHistory({DateRange? range, String? search}) async {
-    return _filterEntries(await _db.list('treatment_transactions'), range: range, search: search);
+    final rows = await _namedTransactions(await _db.list('treatment_transactions'));
+    return _filterEntries(rows, range: range, search: search);
   }
 
   Future<MoneyEntry?> treatmentById(String id) async {
@@ -1461,11 +1484,11 @@ class FinanceRepository {
     );
     final clinicCats = await _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100});
     final homeCats = await _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100});
-    final patients = await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': 'name'});
+    final patients = await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': '-created_at'});
     await _db.upsertAll('treatment_categories', treatmentCats);
     await _db.upsertAll('clinic_expense_categories', clinicCats);
     await _db.upsertAll('home_expense_categories', homeCats);
-    await _db.upsertAll('patients', patients);
+    await _replacePatients(patients);
     await _db.upsertAll(
       'treatment_transactions',
       await _namedTransactions(await _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'})),
@@ -1587,6 +1610,7 @@ class FinanceRepository {
     final items = await treatments();
     final names = {for (final item in items) item.id: item.name};
     final categories = {for (final item in items) item.id: item.categoryName};
+    final patients = {for (final item in await _db.list('patients')) item['id'].toString(): item};
     return [
       for (final row in rows)
         {
@@ -1594,8 +1618,50 @@ class FinanceRepository {
           'catalog_name': names[row['treatment_id'].toString()] ?? row['catalog_name'] ?? 'Treatment',
           'category_name': categories[row['treatment_id'].toString()] ?? row['category_name'],
           'sub_treatment': row['sub_treatment'] ?? (row['details'] is Map ? row['details']['sub_treatment'] : null),
+          'patient_name': row['patient_name'] ?? patients[row['patient_id']?.toString()]?['name'],
+          'patient_phone': row['patient_phone'] ?? patients[row['patient_id']?.toString()]?['phone'],
         },
     ];
+  }
+
+  Future<void> _replacePatients(List<Map<String, dynamic>> remote) async {
+    final remoteIds = {for (final row in remote) row['id'].toString()};
+    for (final row in await _db.list('patients')) {
+      final id = row['id'].toString();
+      if (!remoteIds.contains(id)) {
+        await _db.markDeleted('patients', id);
+      }
+    }
+    await _db.upsertAll('patients', remote);
+  }
+
+  Future<List<PatientRecord>> _localPatients({String? search}) async {
+    var items = [for (final row in await _db.list('patients')) PatientRecord.fromJson(row)];
+    _sortPatients(items);
+    final needle = search?.trim().toLowerCase();
+    if (needle != null && needle.isNotEmpty) {
+      items = items
+          .where(
+            (item) =>
+                item.name.toLowerCase().contains(needle) || (item.phone ?? '').toLowerCase().contains(needle),
+          )
+          .toList();
+    }
+    return items;
+  }
+
+  void _sortPatients(List<PatientRecord> items) {
+    items.sort((a, b) {
+      final aCreated = a.createdAt ?? '';
+      final bCreated = b.createdAt ?? '';
+      if (aCreated.isNotEmpty && bCreated.isNotEmpty) {
+        final created = bCreated.compareTo(aCreated);
+        if (created != 0) {
+          return created;
+        }
+      }
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
   }
 
   Future<List<Map<String, dynamic>>> _namedExpenses(List<Map<String, dynamic>> rows, String collection) async {

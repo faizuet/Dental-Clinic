@@ -232,6 +232,12 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 runSpacing: 0,
                 children: [
                   ActionCard(
+                    title: 'Patients',
+                    subtitle: 'Registered names, phone numbers, and records',
+                    icon: Icons.people_outline_rounded,
+                    onTap: () => appPushAndRefresh(context, '/clinic/patients', () => _load(silent: true)),
+                  ),
+                  ActionCard(
                     title: 'Treatment history',
                     subtitle: 'Patient visits, X-rays, and treatment fees',
                     icon: Icons.history_rounded,

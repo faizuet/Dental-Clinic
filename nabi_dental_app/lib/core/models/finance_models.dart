@@ -88,6 +88,7 @@ class PatientRecord {
     this.phone,
     this.notes,
     this.version = 1,
+    this.createdAt,
   });
 
   final String id;
@@ -95,14 +96,16 @@ class PatientRecord {
   final String? phone;
   final String? notes;
   final int version;
+  final String? createdAt;
 
   factory PatientRecord.fromJson(Map<String, dynamic> json) {
     return PatientRecord(
       id: json['id'].toString(),
-      name: json['name']?.toString() ?? 'Patient',
+      name: json['name']?.toString().trim().isNotEmpty == true ? json['name'].toString().trim() : 'Patient',
       phone: jsonText(json['phone']),
       notes: jsonText(json['notes']),
       version: jsonInt(json['version'], fallback: 1),
+      createdAt: jsonText(json['created_at']),
     );
   }
 
@@ -112,6 +115,7 @@ class PatientRecord {
         'phone': phone,
         'notes': notes,
         'version': version,
+        'created_at': createdAt,
       };
 }
 
@@ -179,6 +183,14 @@ class MoneyEntry {
   final Map<String, dynamic> details;
   final String? detailsText;
   final List<TreatmentAttachment> attachments;
+
+  String get displayPatientName {
+    final name = patientName?.trim();
+    if (name == null || name.isEmpty) {
+      return 'Walk-in';
+    }
+    return name;
+  }
 
   factory MoneyEntry.fromJson(Map<String, dynamic> json) {
     return MoneyEntry(

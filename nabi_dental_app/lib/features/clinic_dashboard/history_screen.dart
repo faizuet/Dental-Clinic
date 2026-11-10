@@ -31,6 +31,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
     required this.updatePath,
     required this.loader,
     this.onOpen,
+    this.showPatient = false,
   });
 
   final String title;
@@ -41,6 +42,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String Function(String id) updatePath;
   final Future<List<MoneyEntry>> Function(FinanceRepository repo, {DateRange? range, String? search}) loader;
   final Future<void> Function(BuildContext context, MoneyEntry entry)? onOpen;
+  final bool showPatient;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -237,12 +239,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         );
     return [
       if (item.serialNo != null) '#${item.serialNo}',
-      if (item.patientName != null) item.patientName,
       if (item.patientPhone != null) item.patientPhone,
       formatDisplayDate(item.date),
       if (detail.isNotEmpty) detail,
       if (item.notes != null && item.notes!.isNotEmpty) item.notes,
     ].join(' · ');
+  }
+
+  String _recordLabel(MoneyEntry item) {
+    final extra = [
+      if (item.serialNo != null) '#${item.serialNo}',
+      if (item.subTreatment != null &&
+          item.subTreatment!.isNotEmpty &&
+          item.subTreatment != item.catalogName)
+        item.subTreatment,
+    ].join(' · ');
+    if (extra.isEmpty) {
+      return item.catalogName;
+    }
+    return '${item.catalogName} · $extra';
   }
 
   Widget _historyCard(MoneyEntry item, String currency) {
@@ -262,11 +277,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (widget.showPatient) ...[
+                          Text(
+                            item.displayPatientName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 4),
+                        ],
                         Text(
                           item.catalogName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: widget.showPatient
+                              ? Theme.of(context).textTheme.bodyMedium
+                              : Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -334,24 +360,37 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 constraints: BoxConstraints(minWidth: math.max(720, constraints.maxWidth - AppLayout.horizontalPadding(context) * 2)),
                 child: DataTable(
                   headingRowColor: WidgetStateProperty.all(AppColors.primarySoft),
-                  columns: const [
-                    DataColumn(label: Text('Date')),
-                    DataColumn(label: Text('Patient')),
-                    DataColumn(label: Text('Record')),
-                    DataColumn(label: Text('Amount'), numeric: true),
-                    DataColumn(label: Text('Actions')),
+                  columns: [
+                    const DataColumn(label: Text('#')),
+                    const DataColumn(label: Text('Date')),
+                    if (widget.showPatient) const DataColumn(label: Text('Patient')),
+                    const DataColumn(label: Text('Record')),
+                    const DataColumn(label: Text('Amount'), numeric: true),
+                    const DataColumn(label: Text('Actions')),
                   ],
                   rows: [
-                    for (final item in _items)
+                    for (var index = 0; index < _items.length; index++)
                       DataRow(
                         cells: [
-                          DataCell(Text(formatDisplayDate(item.date))),
-                          DataCell(Text(item.patientName ?? item.catalogName)),
+                          DataCell(Text('${index + 1}')),
+                          DataCell(Text(formatDisplayDate(_items[index].date))),
+                          if (widget.showPatient)
+                            DataCell(
+                              SizedBox(
+                                width: 180,
+                                child: Text(
+                                  _items[index].displayPatientName,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
                           DataCell(
                             SizedBox(
                               width: 280,
                               child: Text(
-                                item.patientName == null ? _subtitle(item) : item.catalogName,
+                                widget.showPatient ? _recordLabel(_items[index]) : _items[index].catalogName,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -359,7 +398,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           ),
                           DataCell(
                             MoneyText(
-                              formatMoney(item.amount, currency: currency),
+                              formatMoney(_items[index].amount, currency: currency),
                               style: Theme.of(context).textTheme.titleSmall,
                             ),
                           ),
@@ -369,17 +408,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 if (widget.onOpen != null)
                                   IconButton(
                                     tooltip: 'View',
-                                    onPressed: () => _open(item),
+                                    onPressed: () => _open(_items[index]),
                                     icon: const Icon(Icons.visibility_outlined),
                                   ),
                                 IconButton(
                                   tooltip: 'Edit',
-                                  onPressed: () => _edit(item),
+                                  onPressed: () => _edit(_items[index]),
                                   icon: const Icon(Icons.edit_outlined),
                                 ),
                                 IconButton(
                                   tooltip: 'Delete',
-                                  onPressed: () => _delete(item),
+                                  onPressed: () => _delete(_items[index]),
                                   icon: const Icon(Icons.delete_outline, color: AppColors.danger),
                                 ),
                               ],
@@ -523,6 +562,7 @@ class TreatmentHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/treatment-transactions/$id',
       updatePath: (id) => '/api/v1/treatment-transactions/$id',
       loader: (repo, {range, search}) => repo.incomeHistory(range: range, search: search),
+      showPatient: true,
       onOpen: (context, entry) async {
         await context.push('/clinic/income/${entry.id}');
       },

@@ -60,6 +60,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   final _patientSearch = TextEditingController();
   final _xrays = <_PendingXray>[];
   bool _busy = false;
+  bool _patientBusy = false;
   String? _error;
 
   @override
@@ -117,7 +118,9 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
 
   CatalogItem? get _rctItem => _rctItems.isEmpty ? null : _rctItems.first;
 
-  bool get _canSave => _treatment != null && isValidMoney(_amount.text);
+  bool get _hasPatientInput => _patient != null || _patientSearch.text.trim().length >= 2;
+
+  bool get _canSave => _treatment != null && isValidMoney(_amount.text) && _hasPatientInput;
 
   bool get _dirty =>
       _patient != null ||
@@ -147,33 +150,71 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     }
   }
 
-  Future<void> _addPatient() async {
+  Future<void> _addPatient({String? presetName}) async {
     final result = await showDialog<({String name, String phone})>(
       context: context,
-      builder: (context) => const _AddPatientDialog(),
+      builder: (context) => _AddPatientDialog(initialName: presetName),
     );
     final trimmed = result?.name ?? '';
     final phoneValue = result?.phone ?? '';
     if (result == null || trimmed.length < 2) {
       return;
     }
+    await _registerPatient(name: trimmed, phone: phoneValue.isEmpty ? null : phoneValue);
+  }
+
+  Future<PatientRecord?> _registerPatient({required String name, String? phone}) async {
+    setState(() {
+      _patientBusy = true;
+      _error = null;
+    });
     try {
       final patient = await ref.read(financeRepositoryProvider).savePatient(
-            name: trimmed,
-            phone: phoneValue.isEmpty ? null : phoneValue,
+            name: name,
+            phone: phone,
           );
       if (mounted) {
         setState(() {
-          _patients = [..._patients, patient]..sort((a, b) => a.name.compareTo(b.name));
+          _patients = [
+            patient,
+            ..._patients.where((item) => item.id != patient.id),
+          ];
           _patient = patient;
           _patientSearch.clear();
+          _patientBusy = false;
         });
       }
+      return patient;
     } catch (error) {
       if (mounted) {
-        setState(() => _error = friendlyError(error));
+        setState(() {
+          _patientBusy = false;
+          _error = friendlyError(error);
+        });
+      }
+      return null;
+    }
+  }
+
+  Future<PatientRecord?> _ensurePatient() async {
+    if (_patient != null) {
+      return _patient;
+    }
+    final typed = _patientSearch.text.trim();
+    if (typed.length < 2) {
+      setState(() => _error = 'Select or add a patient before saving the treatment.');
+      return null;
+    }
+    for (final item in _patients) {
+      if (item.name.toLowerCase() == typed.toLowerCase()) {
+        setState(() {
+          _patient = item;
+          _patientSearch.clear();
+        });
+        return item;
       }
     }
+    return _registerPatient(name: typed);
   }
 
   Future<void> _pickXray({bool fromCamera = false}) async {
@@ -288,6 +329,10 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       setState(() => _error = clinicalError);
       return;
     }
+    final patient = await _ensurePatient();
+    if (patient == null) {
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -299,9 +344,9 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             date: DateFormat('yyyy-MM-dd').format(_date),
             treatmentId: _treatment!.id,
             amount: moneyFromDouble(moneyToDouble(_amount.text)),
-            patientId: _patient?.id,
-            patientName: _patient?.name,
-            patientPhone: _patient?.phone,
+            patientId: patient.id,
+            patientName: patient.name,
+            patientPhone: patient.phone,
             subTreatment: _treatment!.name,
             details: details,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
@@ -470,10 +515,9 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   Widget _patientCard() {
     final needle = _patientSearch.text.trim().toLowerCase();
     final matches = needle.isEmpty
-        ? _patients.take(6).toList()
+        ? _patients
         : _patients
             .where((item) => item.name.toLowerCase().contains(needle) || (item.phone ?? '').contains(needle))
-            .take(6)
             .toList();
     return Card(
       child: Padding(
@@ -493,31 +537,65 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                 onDeleted: () => setState(() => _patient = null),
               )
             else
-              const Text('Select a patient or add a new one. Phone number is saved with the patient.'),
+              const Text('Select a patient or add a new one. The treatment is saved under that patient name.'),
             const SizedBox(height: 8),
             TextField(
               controller: _patientSearch,
+              enabled: _patient == null,
               decoration: const InputDecoration(labelText: 'Search patients', prefixIcon: Icon(Icons.search_rounded)),
               onChanged: (_) => setState(() {}),
             ),
-            if (_patient == null)
-              for (final item in matches)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(item.name),
-                  subtitle: item.phone == null ? null : Text(item.phone!),
-                  onTap: () => setState(() {
-                    _patient = item;
-                    _patientSearch.clear();
-                  }),
+            if (_patient == null) ...[
+              const SizedBox(height: 8),
+              if (_patientBusy)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (matches.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    needle.length >= 2
+                        ? 'No patient named "${_patientSearch.text.trim()}". Add them before saving.'
+                        : 'No patients yet. Add a patient to continue.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: matches.length,
+                    itemBuilder: (context, index) {
+                      final item = matches[index];
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: CircleAvatar(
+                          radius: 14,
+                          backgroundColor: AppColors.primarySoft,
+                          foregroundColor: AppColors.primary,
+                          child: Text('${index + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        ),
+                        title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: item.phone == null ? null : Text(item.phone!),
+                        onTap: () => setState(() {
+                          _patient = item;
+                          _patientSearch.clear();
+                        }),
+                      );
+                    },
+                  ),
                 ),
+            ],
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
-                onPressed: _addPatient,
+                onPressed: _patientBusy ? null : () => _addPatient(presetName: _patientSearch.text.trim()),
                 icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: const Text('Add patient'),
+                label: Text(_patientBusy ? 'Saving patient…' : 'Add patient'),
               ),
             ),
           ],
@@ -782,15 +860,24 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
 }
 
 class _AddPatientDialog extends StatefulWidget {
-  const _AddPatientDialog();
+  const _AddPatientDialog({this.initialName});
+
+  final String? initialName;
 
   @override
   State<_AddPatientDialog> createState() => _AddPatientDialogState();
 }
 
 class _AddPatientDialogState extends State<_AddPatientDialog> {
-  final _name = TextEditingController();
+  late final TextEditingController _name;
   final _phone = TextEditingController();
+  String? _nameError;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initialName ?? '');
+  }
 
   @override
   void dispose() {
@@ -830,7 +917,11 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
               TextField(
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.person_outline_rounded)),
+                decoration: InputDecoration(
+                  labelText: 'Patient name',
+                  prefixIcon: const Icon(Icons.person_outline_rounded),
+                  errorText: _nameError,
+                ),
                 autofocus: true,
               ),
               const SizedBox(height: 12),
@@ -846,7 +937,14 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
-          onPressed: () => Navigator.pop(context, (name: _name.text.trim(), phone: _phone.text.trim())),
+          onPressed: () {
+            final name = _name.text.trim();
+            if (name.length < 2) {
+              setState(() => _nameError = 'Enter the patient name.');
+              return;
+            }
+            Navigator.pop(context, (name: name, phone: _phone.text.trim()));
+          },
           child: const Text('Save'),
         ),
       ],

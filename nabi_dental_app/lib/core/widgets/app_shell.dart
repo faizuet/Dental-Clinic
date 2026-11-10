@@ -32,6 +32,13 @@ const clinicDestinations = [
     matches: _isDashboard,
   ),
   ClinicDestination(
+    label: 'Patients',
+    icon: Icons.people_outline_rounded,
+    selectedIcon: Icons.people_rounded,
+    path: '/clinic/patients',
+    matches: _isPatients,
+  ),
+  ClinicDestination(
     label: 'Treatments',
     icon: Icons.healing_outlined,
     selectedIcon: Icons.healing_rounded,
@@ -62,6 +69,7 @@ const clinicDestinations = [
 ];
 
 bool _isDashboard(String location) => location == '/clinic';
+bool _isPatients(String location) => location.startsWith('/clinic/patients');
 bool _isTreatments(String location) => location.startsWith('/clinic/income');
 bool _isExpenses(String location) => location.startsWith('/clinic/expenses');
 bool _isReports(String location) => location.startsWith('/clinic/reports');

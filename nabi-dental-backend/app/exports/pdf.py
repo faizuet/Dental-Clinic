@@ -126,12 +126,7 @@ def render_treatment_pdf(
         *_kv_section("Dental information", dental_rows),
         *_kv_section("Treatment notes", [("Notes", visit.notes or "No notes recorded.")]),
     ]
-    images = _treatment_images(image_paths or [])
-    if images:
-        story.append(Paragraph("X-ray images", _styles()["section"]))
-        story.extend(images)
-    else:
-        story.extend(_kv_section("X-ray images", [("Attachments", "No X-ray attached.")]))
+    story.extend(_treatment_images(image_paths or []))
     return _build(
         story,
         clinic_name=clinic_name,
@@ -167,19 +162,57 @@ def _kv_section(title: str, rows: list[tuple[str, str]]) -> list:
 
 def _treatment_images(image_paths: list[tuple[str, str]]) -> list:
     styles = _styles()
-    blocks = []
+    frames = []
     for label, path in image_paths:
         file_path = Path(path)
         if not file_path.is_file():
             continue
         try:
             image = Image(str(file_path))
-            image.drawWidth, image.drawHeight = _fit_image(image.imageWidth, image.imageHeight, 420, 260)
-            caption = Paragraph((label or "X-ray").replace("_", " ").title(), styles["meta"])
-            blocks.extend([KeepTogether([caption, image]), Spacer(1, 10)])
+            image.drawWidth, image.drawHeight = _fit_image(image.imageWidth, image.imageHeight, 190, 128)
+            caption = Paragraph((label or "X-ray").replace("_", " ").upper(), styles["meta"])
+            frame = Table([[caption], [image]], colWidths=[220])
+            frame.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), PURPLE_SOFT),
+                        ("BACKGROUND", (0, 1), (-1, 1), WHITE),
+                        ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 1), (-1, 1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (0, 0), 6),
+                        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+                        ("TOPPADDING", (0, 1), (0, 1), 8),
+                        ("BOTTOMPADDING", (0, 1), (0, 1), 8),
+                    ]
+                )
+            )
+            frames.append(frame)
         except Exception:
             continue
-    return blocks
+    if not frames:
+        return _kv_section("X-ray images", [("Attachments", "No X-ray attached.")])
+    rows: list[list] = []
+    for index in range(0, len(frames), 2):
+        pair = frames[index : index + 2]
+        if len(pair) == 1:
+            pair.append("")
+        rows.append(pair)
+    grid = Table(rows, colWidths=[236, 236])
+    grid.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    return [Paragraph("X-ray images", styles["section"]), grid, Spacer(1, 8)]
 
 
 def _fit_image(width: float, height: float, max_w: float, max_h: float) -> tuple[float, float]:

@@ -134,7 +134,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                           AppSplit(
                             primary: _section('Patient information', [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
-                            _row('Patient', entry.patientName ?? 'Walk-in'),
+                            _row('Patient', entry.displayPatientName),
                             if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
                             _row('Date', formatDisplayDate(entry.date)),
                             _row('Main treatment', displayMainTreatment(entry.catalogName, categoryName: entry.categoryName)),
@@ -163,45 +163,121 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                           ]),
                           ),
                           const SizedBox(height: 12),
-                          Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 8),
-                          if (entry.attachments.isEmpty)
-                            Text('No X-ray attached to this treatment.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted))
-                          else
-                            for (final attachment in entry.attachments)
-                              Card(
-                                margin: const EdgeInsets.only(bottom: 10),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        attachment.label.replaceAll('_', ' ').toUpperCase(),
-                                        style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppColors.muted),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      AnimatedSwitcher(
-                                        duration: AppMotion.of(context, AppMotion.medium),
-                                        child: _images[attachment.id] != null
-                                        ? ClipRRect(
-                                          key: ValueKey(attachment.id),
-                                          borderRadius: BorderRadius.circular(AppRadii.md),
-                                          child: Image.memory(
-                                            Uint8List.fromList(_images[attachment.id]!),
-                                            fit: BoxFit.contain,
-                                          ),
-                                        )
-                                        : const Text('Image could not be loaded.'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                          _xraySection(entry),
                         ],
                       ),
         ),
       ),
+    );
+  }
+
+  Widget _xraySection(MoneyEntry entry) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            if (entry.attachments.isEmpty)
+              Text(
+                'No X-ray attached to this treatment.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+              )
+            else
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final attachment in entry.attachments) _xrayTile(attachment),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _xrayTile(TreatmentAttachment attachment) {
+    final bytes = _images[attachment.id];
+    final label = attachment.label.replaceAll('_', ' ').toUpperCase();
+    const frameWidth = 220.0;
+    const frameHeight = 156.0;
+    return SizedBox(
+      width: frameWidth,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Material(
+            color: AppColors.inputFill,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: bytes == null ? null : () => _previewImage(label: label, bytes: bytes),
+              child: Ink(
+                width: frameWidth,
+                height: frameHeight,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.border),
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                ),
+                child: bytes == null
+                    ? Center(
+                        child: Text(
+                          'Image could not be loaded.',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                        ),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: Image.memory(
+                          Uint8List.fromList(bytes),
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.medium,
+                        ),
+                      ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _previewImage({required String label, required List<int> bytes}) {
+    return showAppDialog<void>(
+      context: context,
+      title: label,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 320),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          child: ColoredBox(
+            color: AppColors.inputFill,
+            child: Image.memory(
+              Uint8List.fromList(bytes),
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
+        ),
+      ),
+      actions: (dialogContext) => [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+      ],
     );
   }
 
