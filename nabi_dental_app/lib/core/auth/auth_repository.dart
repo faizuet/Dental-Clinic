@@ -1,10 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../api/api_client.dart';
 import '../database/app_database.dart';
 import '../errors/app_exception.dart';
+import '../media/clinic_image_picker.dart';
 import '../models/session_models.dart';
 import '../security/device_id.dart';
 import 'token_storage.dart';
@@ -50,7 +52,7 @@ class AuthRepository {
     try {
       await _api.post('/api/v1/sync/bootstrap');
     } catch (_) {
-      // Cached profile is enough for first unlock; finance sync comes in later phases.
+      // Cached profile is enough to open the clinic; finance sync can catch up later.
     }
     return (user, clinic);
   }
@@ -73,6 +75,15 @@ class AuthRepository {
     return _database.readSnapshot();
   }
 
+  Future<(UserProfile, ClinicProfile)> restoreSession() async {
+    final response = await _api.get<Map<String, dynamic>>('/api/v1/auth/me');
+    final body = response.data ?? {};
+    final user = UserProfile.fromJson(body['user'] as Map<String, dynamic>);
+    final clinic = ClinicProfile.fromJson(body['clinic'] as Map<String, dynamic>);
+    await _database.saveSnapshot(user: user, clinic: clinic);
+    return (user, clinic);
+  }
+
   Future<(UserProfile, ClinicProfile)> updateSettings(Map<String, dynamic> body) async {
     final response = await _api.patch('/api/v1/settings', data: body);
     return _snapshotFromSettings(Map<String, dynamic>.from((response.data as Map?) ?? {}));
@@ -82,10 +93,15 @@ class AuthRepository {
     required List<int> bytes,
     required String filename,
   }) async {
+    final safeName = clinicUploadFilename(filename);
     final response = await _api.postMultipart(
       '/api/v1/settings/avatar',
       data: FormData.fromMap({
-        'file': MultipartFile.fromBytes(bytes, filename: filename),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: safeName,
+          contentType: MediaType.parse(sniffImageContentType(bytes, safeName)),
+        ),
       }),
     );
     return _snapshotFromSettings(Map<String, dynamic>.from((response.data as Map?) ?? {}));
@@ -135,6 +151,8 @@ class AuthRepository {
   }) {
     return _api.post(
       '/api/v1/auth/change-password',
+      skipRefresh: true,
+      responseType: ResponseType.plain,
       data: {
         'current_password': currentPassword,
         'new_password': newPassword,

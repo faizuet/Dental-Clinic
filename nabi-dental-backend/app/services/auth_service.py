@@ -103,16 +103,20 @@ class AuthService:
         await self._revoke_all(user.id)
 
     async def change_password(self, user: User, payload: ChangePasswordRequest) -> None:
-        if not verify_password(payload.current_password, user.password_hash):
-            raise UnauthorizedError("The current password is incorrect.")
+        db_user = await self.users.get_by_id(user.id)
+        if db_user is None or not db_user.is_active:
+            raise UnauthorizedError("The access token is invalid or expired.")
+        if not verify_password(payload.current_password, db_user.password_hash):
+            raise ValidationAppError("The current password is incorrect.")
         if payload.new_password == payload.current_password:
             raise ValidationAppError(
                 "The new password must be different from the current password.",
                 details=[{"field": "new_password", "message": "The new password must be different."}],
             )
-        user.password_hash = hash_password(payload.new_password)
-        user.updated_at = utc_now()
-        await self._revoke_all(user.id)
+        db_user.password_hash = hash_password(payload.new_password)
+        db_user.updated_at = utc_now()
+        await self.session.flush()
+        await self._revoke_all(db_user.id)
 
     async def me(self, user: User) -> MeResponse:
         if user.clinic is None:

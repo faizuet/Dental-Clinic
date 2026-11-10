@@ -2,13 +2,14 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/dental/tooth_catalog.dart';
 import '../../core/dental/xray_validation.dart';
+import '../../core/errors/app_exception.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/media/clinic_image_picker.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
@@ -175,19 +176,18 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     }
   }
 
-  Future<void> _pickXray(ImageSource source) async {
+  Future<void> _pickXray({bool fromCamera = false}) async {
     try {
-      final picked = await ImagePicker().pickImage(source: source, imageQuality: 92);
+      final picked = await pickClinicImage(fromCamera: fromCamera);
       if (picked == null) {
         return;
       }
-      final bytes = await picked.readAsBytes();
-      final fileError = validateXrayFile(filename: picked.name, byteLength: bytes.length);
+      final fileError = validateXrayFile(filename: picked.filename, byteLength: picked.bytes.length);
       if (fileError != null) {
         setState(() => _error = fileError);
         return;
       }
-      final imageError = await validateXrayImage(bytes);
+      final imageError = await validateXrayImage(picked.bytes);
       if (imageError != null) {
         setState(() => _error = imageError);
         return;
@@ -198,11 +198,25 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       }
       setState(() {
         _error = null;
-        _xrays.add(_PendingXray(bytes: bytes, filename: picked.name));
+        _xrays.add(_PendingXray(bytes: picked.bytes, filename: picked.filename));
       });
     } catch (error) {
       setState(() => _error = friendlyError(error, feature: 'upload'));
     }
+  }
+
+  Future<void> _previewXray(_PendingXray item) async {
+    await showAppDialog<void>(
+      context: context,
+      title: 'Selected image',
+      content: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(item.bytes, fit: BoxFit.contain, height: 280),
+      ),
+      actions: (dialogContext) => [
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
+      ],
+    );
   }
 
   Map<String, dynamic> _details() {
@@ -300,7 +314,15 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
         appPop(context, fallback: '/clinic');
       }
     } catch (error) {
-      setState(() => _error = friendlyError(error));
+      if (error is AppException && error.code == 'IMAGE_UPLOAD_PARTIAL') {
+        setState(() => _error = error.message);
+        if (mounted) {
+          showAppSnack(context, error.message, error: true);
+          appPop(context, fallback: '/clinic');
+        }
+      } else {
+        setState(() => _error = friendlyError(error, feature: 'upload'));
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -314,13 +336,10 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       dirty: _dirty,
       fallback: '/clinic',
       child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () => Navigator.maybePop(context),
-          ),
-          title: const AppBarTitle('New treatment'),
+        appBar: buildAppBar(
+          context: context,
+          title: 'New treatment',
+          fallback: '/clinic',
         ),
         body: AppPageBody(
           padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
@@ -328,8 +347,12 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
             children: [
-              _patientCard(),
-              const SizedBox(height: 12),
+              AppSplit(
+                primary: _patientCard(),
+                secondary: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
               DatePickerTile(
                 label: 'Treatment date',
                 value: formatDisplayDate(_date),
@@ -418,6 +441,9 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                           ),
                         ],
                       ),
+              ),
+                  ],
+                ),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
@@ -689,21 +715,28 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
+        Text('Clinical images', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Attach a dental X-ray or intraoral photo from this computer.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+        ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             OutlinedButton.icon(
-              onPressed: () => _pickXray(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library_outlined),
-              label: const Text('Gallery'),
+              onPressed: () => _pickXray(),
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('Choose image'),
             ),
-            OutlinedButton.icon(
-              onPressed: () => _pickXray(ImageSource.camera),
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: const Text('Camera'),
-            ),
+            if (clinicCameraAvailable)
+              OutlinedButton.icon(
+                onPressed: () => _pickXray(fromCamera: true),
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: const Text('Camera'),
+              ),
           ],
         ),
         const SizedBox(height: 8),
@@ -717,6 +750,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
           Card(
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
+              onTap: () => _previewXray(_xrays[i]),
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.memory(_xrays[i].bytes, width: 56, height: 56, fit: BoxFit.cover),
@@ -788,7 +822,7 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
         ],
       ),
       content: SizedBox(
-        width: size.width < 480 ? size.width - inset * 2 : 400,
+        width: AppLayout.dialogWidth(context),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

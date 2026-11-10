@@ -10,6 +10,8 @@ from app.core.config import settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.models import TreatmentAttachment, TreatmentTransaction, User
 from app.repositories.treatments import TreatmentAttachmentRepository
+from app.utils.dental_image import reject_non_dental_image
+from app.utils.upload_paths import ensure_upload_dir
 
 ALLOWED_TYPES = {
     "image/jpeg": "JPEG",
@@ -29,8 +31,7 @@ class XrayService:
 
     def _dir(self, clinic_id: uuid.UUID, transaction_id: uuid.UUID) -> Path:
         path = Path(settings.UPLOAD_DIR) / "xrays" / str(clinic_id) / str(transaction_id)
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return ensure_upload_dir(path)
 
     async def save(
         self,
@@ -72,6 +73,10 @@ class XrayService:
         if width > settings.XRAY_MAX_PX or height > settings.XRAY_MAX_PX:
             raise ValidationAppError("The image is too large. Use at most 8192×8192 pixels.")
 
+        dental_error = reject_non_dental_image(image)
+        if dental_error:
+            raise ValidationAppError(dental_error)
+
         image = image.convert("RGB")
         longest = max(image.size)
         if longest > 2048:
@@ -79,7 +84,12 @@ class XrayService:
             image = image.resize((int(image.width * ratio), int(image.height * ratio)), Image.Resampling.LANCZOS)
 
         dest = self._dir(record.clinic_id, record.id) / f"{uuid.uuid4()}.jpg"
-        image.save(dest, format="JPEG", quality=88, optimize=True)
+        try:
+            image.save(dest, format="JPEG", quality=88, optimize=True)
+        except OSError as exc:
+            raise ValidationAppError(
+                "The clinic could not save this image on this computer. Check the local uploads folder and try again."
+            ) from exc
         attachment = TreatmentAttachment(
             clinic_id=record.clinic_id,
             transaction_id=record.id,

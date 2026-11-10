@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.models import User
 from app.models.mixins import utc_now
+from app.utils.upload_paths import ensure_upload_dir
 
 ALLOWED_TYPES = {
     "image/jpeg": "JPEG",
@@ -25,8 +26,7 @@ class AvatarService:
 
     def _dir(self) -> Path:
         path = Path(settings.UPLOAD_DIR) / "avatars"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        return ensure_upload_dir(path)
 
     def _file_for(self, user: User) -> Path:
         return self._dir() / f"{user.id}.jpg"

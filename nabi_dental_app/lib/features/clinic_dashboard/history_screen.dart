@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -149,7 +151,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               insetPadding: EdgeInsets.symmetric(horizontal: inset, vertical: 24),
               title: const Text('Edit record'),
               content: SizedBox(
-                width: size.width < 480 ? size.width - inset * 2 : 400,
+                width: AppLayout.dialogWidth(context),
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -223,13 +225,186 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     await _load(silent: true);
   }
 
+  String _subtitle(MoneyEntry item) {
+    final detail = item.detailsText ??
+        clinicalSummary(
+          item.details,
+          subTreatment: displaySubTreatment(
+            subTreatment: item.subTreatment,
+            details: item.details,
+            catalogName: item.catalogName,
+          ),
+        );
+    return [
+      if (item.serialNo != null) '#${item.serialNo}',
+      if (item.patientName != null) item.patientName,
+      if (item.patientPhone != null) item.patientPhone,
+      formatDisplayDate(item.date),
+      if (detail.isNotEmpty) detail,
+      if (item.notes != null && item.notes!.isNotEmpty) item.notes,
+    ].join(' · ');
+  }
+
+  Widget _historyCard(MoneyEntry item, String currency) {
+    return Card(
+      child: InkWell(
+        onTap: widget.onOpen == null ? null : () => _open(item),
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.catalogName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _subtitle(item),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 128, minWidth: 72),
+                    child: MoneyText(
+                      formatMoney(item.amount, currency: currency),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              ),
+              OverflowBar(
+                alignment: MainAxisAlignment.end,
+                children: [
+                  if (widget.onOpen != null)
+                    TextButton.icon(
+                      onPressed: () => _open(item),
+                      icon: const Icon(Icons.visibility_outlined, size: 18),
+                      label: const Text('View'),
+                    ),
+                  TextButton.icon(
+                    onPressed: () => _edit(item),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Edit'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _delete(item),
+                    icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
+                    label: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _desktopTable(String currency) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            AppLayout.horizontalPadding(context),
+            8,
+            AppLayout.horizontalPadding(context),
+            24,
+          ),
+          child: Card(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: math.max(720, constraints.maxWidth - AppLayout.horizontalPadding(context) * 2)),
+                child: DataTable(
+                  headingRowColor: WidgetStateProperty.all(AppColors.primarySoft),
+                  columns: const [
+                    DataColumn(label: Text('Date')),
+                    DataColumn(label: Text('Patient')),
+                    DataColumn(label: Text('Record')),
+                    DataColumn(label: Text('Amount'), numeric: true),
+                    DataColumn(label: Text('Actions')),
+                  ],
+                  rows: [
+                    for (final item in _items)
+                      DataRow(
+                        cells: [
+                          DataCell(Text(formatDisplayDate(item.date))),
+                          DataCell(Text(item.patientName ?? item.catalogName)),
+                          DataCell(
+                            SizedBox(
+                              width: 280,
+                              child: Text(
+                                item.patientName == null ? _subtitle(item) : item.catalogName,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                          DataCell(
+                            MoneyText(
+                              formatMoney(item.amount, currency: currency),
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                          DataCell(
+                            Row(
+                              children: [
+                                if (widget.onOpen != null)
+                                  IconButton(
+                                    tooltip: 'View',
+                                    onPressed: () => _open(item),
+                                    icon: const Icon(Icons.visibility_outlined),
+                                  ),
+                                IconButton(
+                                  tooltip: 'Edit',
+                                  onPressed: () => _edit(item),
+                                  icon: const Icon(Icons.edit_outlined),
+                                ),
+                                IconButton(
+                                  tooltip: 'Delete',
+                                  onPressed: () => _delete(item),
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     return Scaffold(
-      appBar: AppBar(
-        leading: AppBackButton(fallback: widget.backTo),
-        title: AppBarTitle(widget.title),
+      appBar: buildAppBar(
+        context: context,
+        title: widget.title,
+        fallback: widget.backTo,
         actions: [
           IconButton(tooltip: 'Filter dates', onPressed: _pickRange, icon: const Icon(Icons.filter_alt_outlined)),
         ],
@@ -237,7 +412,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       body: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppSpacing.maxContent),
+          constraints: BoxConstraints(maxWidth: AppLayout.maxContent(context)),
           child: Column(
             children: [
               Padding(
@@ -305,7 +480,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           )
                         : RefreshIndicator(
                             onRefresh: _load,
-                            child: ListView.builder(
+                            child: AppLayout.isDesktop(context)
+                                ? _desktopTable(currency)
+                                : ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
                               padding: EdgeInsets.fromLTRB(
                                 AppLayout.horizontalPadding(context),
@@ -316,93 +493,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               itemCount: _items.length,
                               itemBuilder: (context, index) {
                                 final item = _items[index];
-                                final detail = item.detailsText ??
-                                    clinicalSummary(
-                                      item.details,
-                                      subTreatment: displaySubTreatment(
-                                        subTreatment: item.subTreatment,
-                                        details: item.details,
-                                        catalogName: item.catalogName,
-                                      ),
-                                    );
-                                final subtitle = [
-                                  if (item.serialNo != null) '#${item.serialNo}',
-                                  if (item.patientName != null) item.patientName,
-                                  if (item.patientPhone != null) item.patientPhone,
-                                  formatDisplayDate(item.date),
-                                  if (detail.isNotEmpty) detail,
-                                  if (item.notes != null && item.notes!.isNotEmpty) item.notes,
-                                ].join(' · ');
                                 return AppReveal(
                                   index: index,
-                                  child: Card(
-                                  child: InkWell(
-                                    onTap: widget.onOpen == null ? null : () => _open(item),
-                                    borderRadius: BorderRadius.circular(AppRadii.lg),
-                                    child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    item.catalogName,
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: Theme.of(context).textTheme.titleMedium,
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    subtitle,
-                                                    maxLines: 3,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            ConstrainedBox(
-                                              constraints: const BoxConstraints(maxWidth: 128, minWidth: 72),
-                                              child: MoneyText(
-                                                formatMoney(item.amount, currency: currency),
-                                                style: Theme.of(context).textTheme.titleSmall,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        OverflowBar(
-                                          alignment: MainAxisAlignment.end,
-                                          children: [
-                                            if (widget.onOpen != null)
-                                              TextButton.icon(
-                                                onPressed: () => _open(item),
-                                                icon: const Icon(Icons.visibility_outlined, size: 18),
-                                                label: const Text('View'),
-                                              ),
-                                            TextButton.icon(
-                                              onPressed: () => _edit(item),
-                                              icon: const Icon(Icons.edit_outlined, size: 18),
-                                              label: const Text('Edit'),
-                                            ),
-                                            TextButton.icon(
-                                              onPressed: () => _delete(item),
-                                              icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
-                                              label: const Text('Delete', style: TextStyle(color: AppColors.danger)),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  ),
-                                ),
+                                  child: _historyCard(item, currency),
                                 );
                               },
                             ),

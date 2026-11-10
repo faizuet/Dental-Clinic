@@ -13,9 +13,8 @@ def normalize_database_url(value: str) -> str:
         raise ValueError("DATABASE_URL is empty.")
     if "${{" in url or url.startswith("${"):
         raise ValueError(
-            "DATABASE_URL was not interpolated. On Railway, add it with "
-            "Add Variable → Variable Reference → Postgres → DATABASE_PRIVATE_URL. "
-            "Do not leave the raw ${{Postgres.DATABASE_PRIVATE_URL}} text unresolved."
+            "DATABASE_URL contains an unresolved template. Set a real Postgres URL "
+            "such as postgresql+asyncpg://postgres:postgres@localhost:5433/nabi_dental."
         )
 
     if url.startswith("postgres://"):
@@ -84,7 +83,6 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT: int = 5
     LOGIN_RATE_WINDOW_SECONDS: int = 60
 
-    FORWARDED_ALLOW_IPS: str = ""
     BATCH_MAX_ITEMS: int = 50
     SYNC_PUSH_MAX_CHANGES: int = 100
     SYNC_PULL_MAX_LIMIT: int = 500

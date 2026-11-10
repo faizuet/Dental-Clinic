@@ -1,8 +1,8 @@
 # Nabi Dental Clinic
 
-Private finance and treatment records app for a single dental clinic owner. It tracks clinic income and expenses, home spending against a monthly budget, and construction purchases, and it keeps patient treatment history with optional X-rays.
+Private finance and treatment records app for a single dental clinic owner. It tracks clinic income and expenses, and it keeps patient treatment history with optional X-rays.
 
-The project is a monorepo: a FastAPI + PostgreSQL API and a Flutter client that works offline-first.
+The project is a monorepo: a FastAPI + PostgreSQL API and a Flutter desktop client. Both run on the clinic laptop with Docker. There is no cloud host.
 
 ## Contents
 
@@ -23,9 +23,9 @@ The project is a monorepo: a FastAPI + PostgreSQL API and a Flutter client that 
 
 ## What it does
 
-Clinic owners usually keep treatment fees, clinic bills, household spending, and building costs in separate notebooks or spreadsheets. This app keeps those three books in one place, with a PIN lock on the phone and a dated treatment history per patient.
+Clinic owners usually keep treatment fees and clinic bills in notebooks or spreadsheets. This app keeps those records on the clinic laptop, with email/password sign-in and a dated treatment history per patient.
 
-It is a single-clinic, owner-operated tool. It does not manage staff rosters, appointments, multiple clinics, or public patient portals.
+It is a single-clinic, owner-operated tool. It does not manage staff rosters, appointments, multiple clinics, or public patient portals. It does not deploy to Railway or any other cloud host.
 
 ## Key features
 
@@ -55,7 +55,6 @@ It is a single-clinic, owner-operated tool. It does not manage staff rosters, ap
 **Shared**
 
 - Email/password login, JWT access token (20 minutes) and refresh token (30 days)
-- Device PIN, optional biometrics, and an unlock screen
 - Offline-first Flutter cache (SQLite) with sync when the API is reachable
 - Conflict review under Settings when a queued change cannot apply
 - Profile photo and password change
@@ -66,10 +65,10 @@ It is a single-clinic, owner-operated tool. It does not manage staff rosters, ap
 
 ## How the app works
 
-1. Sign in, set a PIN on first use, then unlock later with PIN or biometrics.
-2. Choose **Clinic**, **Home**, or **Construction**.
-3. Enter records, open history to search or edit, and open reports to review a period and export PDF/Excel.
-4. Settings covers profile, catalogs, PIN, sync conflicts, and sign-out.
+1. Start Docker Compose, then open the Flutter desktop app.
+2. Sign in with the clinic owner email and password.
+3. Use the clinic dashboard to add treatments, expenses, history, and reports.
+4. Settings covers profile, catalogs, password change, sync conflicts, and sign-out.
 
 ### Dental treatment flow
 
@@ -108,7 +107,7 @@ Custom range uses a start-and-end calendar. Both dates are included. A period wi
 | Exports  | ReportLab (PDF), openpyxl (Excel) |
 | Images   | Pillow; files on local disk under `UPLOAD_DIR` |
 | App      | Flutter 3 (Dart SDK `>=3.5.0 <4.0.0`) |
-| App libs | Riverpod, go_router, Dio, sqflite, flutter_secure_storage, local_auth, image_picker, connectivity_plus |
+| App libs | Riverpod, go_router, Dio, sqflite, flutter_secure_storage, image_picker |
 | Local API| Docker Compose (API on host port 8001, Postgres on 5433) |
 
 Currency defaults to PKR. Dates use the clinic timezone (`Asia/Karachi` by default).
@@ -211,37 +210,31 @@ Requires the [Flutter SDK](https://docs.flutter.dev/get-started/install).
 ```powershell
 cd nabi_dental_app
 flutter pub get
+flutter run -d windows
 ```
 
-Android already includes internet, biometrics, camera, and photo permissions. USB debugging against the Docker API:
-
-```powershell
-adb reverse tcp:8001 tcp:8001
-flutter run -d <device-id> --dart-define=API_BASE_URL=http://127.0.0.1:8001
-```
-
-Development seed login (change before sharing the app):
+Development seed login:
 
 - Email: `owner@example.com`
 - Password: `ChangeMeNow!1`
 
-Do not commit `.env`. Use `.env.example` or `.env.production.example`.
+Do not commit `.env`. Copy `.env.example` instead.
 
 ## Environment variables
 
-Set these in `nabi-dental-backend/.env`. Values below are safe examples, not production secrets.
+Set these in `nabi-dental-backend/.env`. Values below are local laptop examples.
 
 | Name | Purpose | Example |
 | ---- | ------- | ------- |
 | `APP_NAME` | API title | `Nabi Dental Clinic API` |
-| `APP_ENV` | `development` or `production` | `development` |
+| `APP_ENV` | Runtime mode | `development` |
 | `DEBUG` | Verbose errors | `true` |
 | `DATABASE_URL` | Postgres URL (`postgres://` is accepted and normalized) | `postgresql+asyncpg://postgres:postgres@localhost:5433/nabi_dental` |
 | `PORT` | Listen port inside the container | `8000` |
 | `JWT_SECRET_KEY` | Token signing key | a long random string |
 | `ACCESS_TOKEN_MINUTES` | Access token lifetime | `20` |
 | `REFRESH_TOKEN_DAYS` | Refresh token lifetime | `30` |
-| `CORS_ORIGINS` | Extra allowed origins (comma-separated) | empty in local Docker |
+| `CORS_ORIGINS` | Extra allowed origins (comma-separated) | empty on a laptop |
 | `DEFAULT_CLINIC_NAME` | Seed clinic name | `Nabi Dental Clinic` |
 | `DEFAULT_CURRENCY` | Money code | `PKR` |
 | `DEFAULT_TIMEZONE` | IANA timezone | `Asia/Karachi` |
@@ -251,32 +244,22 @@ Set these in `nabi-dental-backend/.env`. Values below are safe examples, not pro
 | `AVATAR_MAX_BYTES` | Profile photo size cap | `2000000` |
 | `XRAY_MAX_BYTES` | X-ray size cap | `5000000` |
 
-Flutter API URL is a compile-time define, not an `.env` file:
-
-```text
---dart-define=API_BASE_URL=http://127.0.0.1:8001
-```
-
-If that define is omitted, Android emulators use `http://10.0.2.2:8001` and other platforms use `http://localhost:8001`.
+The Flutter desktop app uses `http://127.0.0.1:8001` unless you pass `--dart-define=API_BASE_URL=...`.
 
 ## Running the apps
 
 ```powershell
-# API + database
+# API + database (local Docker)
 cd nabi-dental-backend
+copy .env.example .env
 docker compose up --build
 
-# Flutter — emulator
+# Flutter desktop on this laptop
 cd nabi_dental_app
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8001
-
-# Flutter — Windows / Chrome / iOS simulator
-flutter run --dart-define=API_BASE_URL=http://localhost:8001
-
-# Flutter — USB phone against local Docker
-adb reverse tcp:8001 tcp:8001
-flutter run -d <device-id> --dart-define=API_BASE_URL=http://127.0.0.1:8001
+flutter run -d windows
 ```
+
+The API listens on `http://127.0.0.1:8001`. The desktop app uses that address by default. After the Docker images are on the laptop, clinic work does not need the public internet.
 
 ## Reports and files
 
@@ -290,14 +273,13 @@ Reports accept `from_date` and `to_date` (inclusive calendar dates). The Flutter
 Profile photos: JPG, PNG, or WebP, at most 2 MB, stored under `uploads/avatars/`.  
 Treatment X-rays: same formats, at most 5 MB, 64–8192 px, stored under `uploads/xrays/{clinic}/{visit}/`. Empty or invalid files are rejected with a short message.
 
-Exports need a network connection. The rest of the app can queue creates and edits while offline.
+PDF and Excel exports need the local API running. If the API is down, the desktop app keeps queued creates and edits in SQLite until Docker is started again.
 
 ### Mobile UX that is implemented
 
 - Compact layout and a max content width on larger screens
 - Hardware/system back: exit confirmation on the module home, discard confirmation on dirty forms
 - Shared confirmation dialogs for delete, sign-out, and similar actions
-- PIN keypad and optional biometrics
 - Downloads + open for PDF/Excel on Android
 
 ## Screenshots
@@ -325,6 +307,5 @@ flutter test
 
 ## Later work
 
-- Store builds (Play Store / App Store) and release signing
-- Hosted object storage if upload volume outgrows local disk
-- Stronger production secrets (`JWT_SECRET_KEY`, owner password) before any shared deploy
+- Windows release signing for a clinic installer
+- Stronger local secrets (`JWT_SECRET_KEY`, owner password) on shared clinic laptops

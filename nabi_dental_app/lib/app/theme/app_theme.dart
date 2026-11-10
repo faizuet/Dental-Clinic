@@ -28,11 +28,14 @@ ThemeData buildAppTheme() {
     ),
     textTheme: textTheme.apply(bodyColor: AppColors.text, displayColor: AppColors.text),
     splashFactory: InkRipple.splashFactory,
+    visualDensity: VisualDensity.standard,
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
         TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
         TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+        TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
       },
     ),
   );
@@ -90,8 +93,8 @@ ThemeData buildAppTheme() {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(64, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        minimumSize: const Size(64, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         disabledBackgroundColor: AppColors.primarySoft,
@@ -104,8 +107,8 @@ ThemeData buildAppTheme() {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(64, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        minimumSize: const Size(64, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         foregroundColor: AppColors.primary,
         side: const BorderSide(color: AppColors.primarySoft, width: 1.5),
         animationDuration: AppMotion.fast,

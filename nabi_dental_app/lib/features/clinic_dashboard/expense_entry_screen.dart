@@ -164,13 +164,10 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
       dirty: _dirty,
       fallback: widget.backTo,
       child: Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Back',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.maybePop(context),
-        ),
-        title: AppBarTitle(widget.title),
+      appBar: buildAppBar(
+        context: context,
+        title: widget.title,
+        fallback: widget.backTo,
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
@@ -200,6 +197,51 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    if (AppLayout.isDesktop(context))
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey('expense-category-$i-${_rows[i].categoryId}'),
+                              initialValue: _categoryValue(_rows[i].categoryId),
+                              isExpanded: true,
+                              decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
+                              items: [
+                                for (final item in _categories)
+                                  DropdownMenuItem<String>(
+                                    value: item.id,
+                                    child: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ),
+                              ],
+                              onChanged: (value) => setState(() => _rows[i].categoryId = value),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: TextField(
+                              controller: _rows[i].amount,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              textInputAction: TextInputAction.next,
+                              decoration: const InputDecoration(labelText: 'Amount', prefixIcon: Icon(Icons.payments_outlined)),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: _rows[i].notes,
+                              textInputAction: TextInputAction.done,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
+                            ),
+                          ),
+                        ],
+                      )
+                    else ...[
                     DropdownButtonFormField<String>(
                       key: ValueKey('expense-category-$i-${_rows[i].categoryId}'),
                       initialValue: _categoryValue(_rows[i].categoryId),
@@ -229,6 +271,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
                     ),
+                    ],
                     if (_rows.length > 1)
                       Align(
                         alignment: Alignment.centerRight,

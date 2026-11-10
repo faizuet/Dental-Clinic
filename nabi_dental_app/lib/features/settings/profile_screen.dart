@@ -2,11 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/media/clinic_image_picker.dart';
 import '../../core/profile/avatar_validation.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_controls.dart';
@@ -108,15 +108,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.photo_library_outlined),
-                title: const Text('Choose from gallery'),
+                leading: const Icon(Icons.folder_open_rounded),
+                title: const Text('Choose from this computer'),
                 onTap: () => Navigator.pop(context, 'gallery'),
               ),
-              ListTile(
-                leading: const Icon(Icons.photo_camera_outlined),
-                title: const Text('Take a photo'),
-                onTap: () => Navigator.pop(context, 'camera'),
-              ),
+              if (clinicCameraAvailable)
+                ListTile(
+                  leading: const Icon(Icons.photo_camera_outlined),
+                  title: const Text('Take a photo'),
+                  onTap: () => Navigator.pop(context, 'camera'),
+                ),
               if (user?.hasAvatar == true)
                 ListTile(
                   leading: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
@@ -140,17 +141,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await _removePhoto();
       return;
     }
-    await _pickPhoto(action == 'camera' ? ImageSource.camera : ImageSource.gallery);
+    await _pickPhoto(fromCamera: action == 'camera');
   }
 
-  Future<void> _pickPhoto(ImageSource source) async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(source: source, imageQuality: 92);
+  Future<void> _pickPhoto({bool fromCamera = false}) async {
+    final file = await pickClinicImage(fromCamera: fromCamera);
     if (file == null || !mounted) {
       return;
     }
-    final bytes = await file.readAsBytes();
-    final filename = file.name.isEmpty ? 'photo.jpg' : file.name;
+    final bytes = file.bytes;
+    final filename = file.filename;
     final fileError = validateAvatarFile(filename: filename, byteLength: bytes.length);
     final imageError = fileError ?? await validateAvatarImage(Uint8List.fromList(bytes));
     if (!mounted) {
@@ -209,9 +209,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const Text('This photo will appear on your profile and in Settings.'),
         ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save photo')),
+      actions: (dialogContext) => [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Save photo')),
       ],
     );
   }
@@ -259,9 +259,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       dirty: _dirty,
       fallback: '/settings',
       child: Scaffold(
-        appBar: AppBar(
-          leading: const AppBackButton(fallback: '/settings'),
-          title: const AppBarTitle('Profile'),
+        appBar: buildAppBar(
+          context: context,
+          title: 'Profile',
+          fallback: '/settings',
         ),
         body: AppPageBody(
           padding: AppLayout.pagePadding(context, top: 8, bottom: 16),
@@ -368,13 +369,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         controller: _timezone,
                         textInputAction: TextInputAction.next,
                         decoration: const InputDecoration(labelText: 'Timezone', prefixIcon: Icon(Icons.schedule_rounded)),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _budget,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textInputAction: TextInputAction.done,
-                        decoration: const InputDecoration(labelText: 'Default home budget', prefixIcon: Icon(Icons.savings_outlined)),
                       ),
                     ],
                   ),

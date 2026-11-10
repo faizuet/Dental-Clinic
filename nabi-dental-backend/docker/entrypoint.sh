@@ -1,6 +1,11 @@
 #!/bin/sh
 set -e
 
+mkdir -p /app/uploads/xrays /app/uploads/avatars
+if [ "$(id -u)" = "0" ]; then
+  chown -R app:app /app/uploads 2>/dev/null || true
+fi
+
 if [ "${SKIP_DB_SETUP:-0}" != "1" ]; then
   python -c "from app.core.config import database_target, settings; print('entrypoint db', database_target(settings.DATABASE_URL), flush=True)"
   alembic upgrade head

@@ -5,7 +5,7 @@ import '../../app/theme/app_colors.dart';
 class BrandHeader extends StatelessWidget {
   const BrandHeader({
     super.key,
-    this.subtitle = 'Private finance for the clinic and home',
+    this.subtitle = 'Clinic management for laptop and desktop',
     this.compact = false,
   });
 

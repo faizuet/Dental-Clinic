@@ -26,6 +26,9 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          if (options.data is FormData) {
+            options.headers.remove(Headers.contentTypeHeader);
+          }
           final skipAuth = options.extra['skipAuth'] == true;
           if (!skipAuth) {
             final token = await _tokenStorage.readAccessToken();
@@ -38,8 +41,13 @@ class ApiClient {
         onError: (error, handler) async {
           final request = error.requestOptions;
           final alreadyRetried = request.extra['retried'] == true;
+          final path = request.path;
+          final skipRefresh = request.extra['skipRefresh'] == true ||
+              path.contains('/auth/change-password') ||
+              path.contains('/auth/login');
           if (error.response?.statusCode == 401 &&
               request.extra['skipAuth'] != true &&
+              !skipRefresh &&
               !alreadyRetried) {
             try {
               await _refresh();
@@ -53,6 +61,7 @@ class ApiClient {
               return;
             } catch (_) {
               await _tokenStorage.clear();
+              onSessionInvalid?.call();
             }
           }
           handler.next(error);
@@ -64,14 +73,24 @@ class ApiClient {
   final Dio _dio;
   final TokenStorage _tokenStorage;
   final DeviceIdentity _deviceIdentity;
+  void Function()? onSessionInvalid;
 
   Future<Response<T>> post<T>(
     String path, {
     Object? data,
     bool skipAuth = false,
+    bool skipRefresh = false,
+    ResponseType? responseType,
   }) {
     return _wrap(
-      () => _dio.post<T>(path, data: data, options: Options(extra: {'skipAuth': skipAuth})),
+      () => _dio.post<T>(
+        path,
+        data: data,
+        options: Options(
+          extra: {'skipAuth': skipAuth, 'skipRefresh': skipRefresh},
+          responseType: responseType,
+        ),
+      ),
     );
   }
 
@@ -81,12 +100,8 @@ class ApiClient {
         path,
         data: data,
         options: Options(
-          contentType: Headers.multipartFormDataContentType,
           sendTimeout: const Duration(seconds: 60),
           receiveTimeout: const Duration(seconds: 60),
-          headers: {
-            Headers.contentTypeHeader: Headers.multipartFormDataContentType,
-          },
         ),
       ),
     );

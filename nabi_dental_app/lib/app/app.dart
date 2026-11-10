@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/config/app_config.dart';
 import 'router.dart';
+import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 
 class NabiDentalApp extends ConsumerWidget {
@@ -25,7 +26,7 @@ class NabiDentalApp extends ConsumerWidget {
           child: GestureDetector(
             onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
             behavior: HitTestBehavior.translucent,
-            child: child ?? const SizedBox.shrink(),
+            child: child ?? const ColoredBox(color: AppColors.background),
           ),
         );
       },

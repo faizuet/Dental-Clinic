@@ -17,6 +17,7 @@ import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
 import '../../core/widgets/summary_card.dart';
+import '../../core/widgets/welcome_header.dart';
 
 class ClinicDashboardScreen extends ConsumerStatefulWidget {
   const ClinicDashboardScreen({super.key});
@@ -72,11 +73,24 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     final totals = _totals;
+    final desktop = AppLayout.isDesktop(context);
+    final session = ref.watch(sessionProvider);
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/modules'),
-        title: const AppBarTitle('Clinic Finance'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Dashboard',
+        isRoot: true,
+        fallback: '/clinic',
         actions: [
+          if (desktop)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilledButton.icon(
+                onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: const Text('Add treatment'),
+              ),
+            ),
           IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
@@ -88,6 +102,11 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
             children: [
+              WelcomeHeader(
+                title: 'Hello, ${session.user?.fullName ?? 'there'}',
+                subtitle: '${session.clinic?.name ?? 'Nabi Dental Clinic'}  ·  Clinic overview',
+              ),
+              const SizedBox(height: 20),
               PeriodSelector(
                 value: _period,
                 onChanged: (value) async {
@@ -142,64 +161,97 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                                 style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
                               ),
                               const SizedBox(height: 12),
-                              SummaryCard(
-                                label: 'Income',
-                                value: formatMoney(totals.income, currency: currency),
-                                color: AppColors.success,
-                                icon: Icons.trending_up_rounded,
-                              ),
-                              SummaryCard(
-                                label: 'Clinic expenses',
-                                value: formatMoney(totals.expenses, currency: currency),
-                                color: AppColors.danger,
-                                icon: Icons.trending_down_rounded,
-                              ),
-                              SummaryCard(
-                                label: moneyToDouble(totals.profit) < 0 ? 'Loss' : 'Profit',
-                                value: formatMoney(totals.profit, currency: currency),
-                                color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.purple,
-                                icon: Icons.account_balance_wallet_outlined,
+                              ResponsiveGrid(
+                                minItemWidth: 240,
+                                children: [
+                                  SummaryCard(
+                                    label: 'Income',
+                                    value: formatMoney(totals.income, currency: currency),
+                                    color: AppColors.success,
+                                    icon: Icons.trending_up_rounded,
+                                  ),
+                                  SummaryCard(
+                                    label: 'Clinic expenses',
+                                    value: formatMoney(totals.expenses, currency: currency),
+                                    color: AppColors.danger,
+                                    icon: Icons.trending_down_rounded,
+                                  ),
+                                  SummaryCard(
+                                    label: moneyToDouble(totals.profit) < 0 ? 'Loss' : 'Profit',
+                                    value: formatMoney(totals.profit, currency: currency),
+                                    color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.purple,
+                                    icon: Icons.account_balance_wallet_outlined,
+                                  ),
+                                ],
                               ),
                             ],
                           ),
                           ),
               ),
               const SectionHeader('Quick actions'),
-              Stretch(
-                child: FilledButton.icon(
-                  onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (desktop)
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
+                        icon: const Icon(Icons.receipt_long_outlined),
+                        label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
+                  ],
+                )
+              else ...[
+                Stretch(
+                  child: FilledButton.icon(
+                    onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Stretch(
-                child: OutlinedButton.icon(
-                  onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
-                  icon: const Icon(Icons.receipt_long_outlined),
-                  label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 10),
+                Stretch(
+                  child: OutlinedButton.icon(
+                    onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(height: 16),
-              ActionCard(
-                title: 'Treatment history',
-                subtitle: 'Patient visits, X-rays, and treatment fees',
-                icon: Icons.history_rounded,
-                onTap: () => appPushAndRefresh(context, '/clinic/income/history', () => _load(silent: true)),
-              ),
-              ActionCard(
-                title: 'Expense history',
-                subtitle: 'Review clinic spending by category',
-                icon: Icons.list_alt_rounded,
-                color: AppColors.pink,
-                soft: AppColors.pinkSoft,
-                onTap: () => appPushAndRefresh(context, '/clinic/expenses/history', () => _load(silent: true)),
-              ),
-              ActionCard(
-                title: 'Reports and exports',
-                subtitle: 'Breakdowns, timeline, PDF and Excel',
-                icon: Icons.picture_as_pdf_outlined,
-                onTap: () => appPushAndRefresh(context, '/clinic/reports', () => _load(silent: true)),
+              ResponsiveGrid(
+                minItemWidth: 280,
+                runSpacing: 0,
+                children: [
+                  ActionCard(
+                    title: 'Treatment history',
+                    subtitle: 'Patient visits, X-rays, and treatment fees',
+                    icon: Icons.history_rounded,
+                    onTap: () => appPushAndRefresh(context, '/clinic/income/history', () => _load(silent: true)),
+                  ),
+                  ActionCard(
+                    title: 'Expense history',
+                    subtitle: 'Review clinic spending by category',
+                    icon: Icons.list_alt_rounded,
+                    color: AppColors.pink,
+                    soft: AppColors.pinkSoft,
+                    onTap: () => appPushAndRefresh(context, '/clinic/expenses/history', () => _load(silent: true)),
+                  ),
+                  ActionCard(
+                    title: 'Reports and exports',
+                    subtitle: 'Breakdowns, timeline, PDF and Excel',
+                    icon: Icons.picture_as_pdf_outlined,
+                    onTap: () => appPushAndRefresh(context, '/clinic/reports', () => _load(silent: true)),
+                  ),
+                ],
               ),
             ],
           ),

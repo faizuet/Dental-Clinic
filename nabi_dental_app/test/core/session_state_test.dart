@@ -20,23 +20,8 @@ void main() {
     expect(state.gate, AppRouteGate.login);
   });
 
-  test('tokens without a PIN require setup', () {
+  test('tokens take the owner to the clinic dashboard', () {
     const state = SessionState(initialized: true, hasTokens: true);
-    expect(state.gate, AppRouteGate.pinSetup);
-  });
-
-  test('tokens and PIN require local unlock', () {
-    const state = SessionState(initialized: true, hasTokens: true, hasPin: true);
-    expect(state.gate, AppRouteGate.unlock);
-  });
-
-  test('unlocked session is ready', () {
-    const state = SessionState(
-      initialized: true,
-      hasTokens: true,
-      hasPin: true,
-      unlocked: true,
-    );
     expect(state.gate, AppRouteGate.ready);
   });
 }

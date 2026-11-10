@@ -18,7 +18,7 @@ class AppException implements Exception {
 class OfflineException extends AppException {
   const OfflineException()
       : super(
-          'No internet connection. Please check your connection and try again.',
+          'No connection to the local clinic server. Start Docker and try again.',
           code: 'NETWORK',
         );
 }

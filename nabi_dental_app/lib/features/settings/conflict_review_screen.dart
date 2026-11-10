@@ -50,9 +50,10 @@ class _ConflictReviewScreenState extends ConsumerState<ConflictReviewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/settings'),
-        title: const AppBarTitle('Conflict review'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Conflict review',
+        fallback: '/settings',
       ),
       body: _loading
           ? const Center(child: LoadingView(message: 'Checking conflicts…'))
@@ -67,7 +68,7 @@ class _ConflictReviewScreenState extends ConsumerState<ConflictReviewScreen> {
               : Align(
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: AppSpacing.maxContent),
+                    constraints: BoxConstraints(maxWidth: AppLayout.maxContent(context)),
                     child: ListView.builder(
                   padding: AppLayout.pagePadding(context),
                   itemCount: _items.length,

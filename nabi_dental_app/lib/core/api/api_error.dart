@@ -17,11 +17,19 @@ AppException parseApiError(Object? data, int? statusCode) {
       }
     }
     final code = error['code']?.toString();
+    final humanFields = <String, String>{
+      for (final entry in details.entries) entry.key: _humanizeFieldError(entry.key, entry.value),
+    };
+    var message = sanitizeErrorMessage(error['message'], statusCode: statusCode, code: code);
+    if (humanFields.isNotEmpty &&
+        (message == 'The request contains invalid values.' || message == _genericFailure)) {
+      message = humanFields.values.toSet().join(' ');
+    }
     return AppException(
-      sanitizeErrorMessage(error['message'], statusCode: statusCode, code: code),
+      message,
       code: code,
       statusCode: statusCode,
-      fieldErrors: details,
+      fieldErrors: humanFields.isEmpty ? details : humanFields,
     );
   }
   if (statusCode == 401) {
@@ -80,6 +88,27 @@ String _fallbackMessage({int? statusCode, String? code}) {
     return _serverUnavailable;
   }
   return _genericFailure;
+}
+
+String _humanizeFieldError(String field, String message) {
+  final lower = message.toLowerCase();
+  final name = field.toLowerCase();
+  if (lower.contains('at least 10') || (name.contains('new_password') && lower.contains('min_length'))) {
+    return 'The new password must be at least 10 characters.';
+  }
+  if (lower.contains('field required') || lower.contains('missing')) {
+    if (name.contains('current')) {
+      return 'Enter your current password.';
+    }
+    if (name.contains('new')) {
+      return 'Enter a new password.';
+    }
+    return 'This field is required.';
+  }
+  if (_looksTechnical(message)) {
+    return 'Invalid value.';
+  }
+  return message;
 }
 
 String? _codeForStatus(int? statusCode) {

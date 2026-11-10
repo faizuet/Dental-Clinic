@@ -12,7 +12,7 @@ String? validateAvatarFile({required String filename, required int byteLength}) 
   final name = filename.trim().toLowerCase();
   final dot = name.lastIndexOf('.');
   final extension = dot >= 0 ? name.substring(dot) : '';
-  if (!AvatarLimits.allowedExtensions.contains(extension)) {
+  if (extension.isNotEmpty && !AvatarLimits.allowedExtensions.contains(extension)) {
     return 'Use a JPG, PNG, or WebP image.';
   }
   if (byteLength <= 0) {

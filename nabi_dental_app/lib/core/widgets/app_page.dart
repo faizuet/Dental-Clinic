@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
 import 'app_layout.dart';
 
 class AppPageBody extends StatelessWidget {
@@ -19,7 +18,7 @@ class AppPageBody extends StatelessWidget {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: AppSpacing.maxContent),
+          constraints: BoxConstraints(maxWidth: AppLayout.maxContent(context)),
           child: SizedBox(
             width: double.infinity,
             child: Padding(padding: padding ?? AppLayout.pagePadding(context), child: child),

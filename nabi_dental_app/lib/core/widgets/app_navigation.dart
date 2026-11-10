@@ -5,6 +5,27 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme/app_colors.dart';
 import 'app_layout.dart';
 
+class AppShellController extends InheritedWidget {
+  const AppShellController({
+    super.key,
+    required this.hasSidebar,
+    required this.openDrawer,
+    required super.child,
+  });
+
+  final bool hasSidebar;
+  final VoidCallback? openDrawer;
+
+  static AppShellController? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<AppShellController>();
+  }
+
+  @override
+  bool updateShouldNotify(AppShellController oldWidget) {
+    return hasSidebar != oldWidget.hasSidebar || openDrawer != oldWidget.openDrawer;
+  }
+}
+
 Future<T?> appPush<T extends Object?>(BuildContext context, String location) {
   return context.push<T>(location);
 }
@@ -45,11 +66,44 @@ class AppBackButton extends StatelessWidget {
   }
 }
 
+AppBar buildAppBar({
+  required BuildContext context,
+  required String title,
+  String? fallback,
+  bool isRoot = false,
+  List<Widget>? actions,
+  PreferredSizeWidget? bottom,
+}) {
+  final shell = AppShellController.maybeOf(context);
+  Widget? leading;
+  var imply = true;
+  if (isRoot && shell != null && shell.hasSidebar) {
+    leading = null;
+    imply = false;
+  } else if (isRoot && shell?.openDrawer != null) {
+    leading = IconButton(
+      tooltip: 'Menu',
+      icon: const Icon(Icons.menu_rounded),
+      onPressed: shell!.openDrawer,
+    );
+    imply = false;
+  } else {
+    leading = AppBackButton(fallback: fallback);
+  }
+  return AppBar(
+    automaticallyImplyLeading: imply,
+    leading: leading,
+    title: AppBarTitle(title),
+    actions: actions,
+    bottom: bottom,
+  );
+}
+
 Future<bool> showExitAppDialog(BuildContext context) {
   return showAppConfirmDialog(
     context: context,
     title: 'Exit the app?',
-    message: 'Are you sure you want to exit? You can open Nabi Dental again from the home screen.',
+    message: 'Are you sure you want to exit? You can open Nabi Dental Clinic again whenever you need it.',
     cancelLabel: 'Cancel',
     confirmLabel: 'Exit',
     icon: Icons.logout_rounded,

@@ -100,9 +100,10 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     final entry = _entry;
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/clinic/income/history'),
-        title: const AppBarTitle('Treatment record'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Treatment record',
+        fallback: '/clinic/income/history',
         actions: [
           IconButton(
             tooltip: 'Export PDF',
@@ -130,7 +131,8 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                     : ListView(
                         key: const ValueKey('detail-body'),
                         children: [
-                          _section('Patient information', [
+                          AppSplit(
+                            primary: _section('Patient information', [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
                             _row('Patient', entry.patientName ?? 'Walk-in'),
                             if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
@@ -144,8 +146,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                                 '—'),
                             _row('Fee', formatMoney(entry.amount, currency: currency)),
                           ]),
-                          const SizedBox(height: 12),
-                          _section('Dental information', [
+                            secondary: _section('Dental information', [
                             _row(
                               'Details',
                               entry.detailsText ??
@@ -160,6 +161,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                             ),
                             if (entry.notes != null) _row('Notes', entry.notes!),
                           ]),
+                          ),
                           const SizedBox(height: 12),
                           Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
                           const SizedBox(height: 8),
@@ -220,6 +222,21 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
   }
 
   Widget _row(String label, String value) {
+    if (AppLayout.isDesktop(context)) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 140,
+              child: Text(label, style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600)),
+            ),
+            Expanded(child: Text(value)),
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Column(

@@ -27,8 +27,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _message;
   bool _busy = false;
-  bool _biometrics = false;
-  bool _canBiometrics = false;
   SyncStatus? _sync;
 
   @override
@@ -38,16 +36,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadExtras() async {
-    final pin = ref.read(pinServiceProvider);
     final sync = await ref.read(financeRepositoryProvider).syncStatus();
-    final canBio = await pin.canUseBiometrics();
-    final bio = await pin.biometricsEnabled();
     if (mounted) {
-      setState(() {
-        _sync = sync;
-        _canBiometrics = canBio;
-        _biometrics = bio;
-      });
+      setState(() => _sync = sync);
     }
   }
 
@@ -56,8 +47,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       title: allDevices ? 'Sign out everywhere?' : 'Sign out?',
       message: allDevices
-          ? 'Every signed-in device will return to the login screen. Records saved on this phone stay here.'
-          : 'This phone will return to the sign-in screen. Records saved here stay on the phone.',
+          ? 'Every signed-in device will return to the login screen. Records saved on this computer stay here.'
+          : 'This computer will return to the sign-in screen. Records saved here stay on this device.',
       confirmLabel: 'Sign out',
       destructive: true,
       icon: Icons.logout_rounded,
@@ -70,33 +61,92 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _changePassword() async {
     final current = TextEditingController();
     final next = TextEditingController();
+    final confirm = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var obscure = true;
     final confirmed = await showAppDialog<bool>(
       context: context,
       title: 'Change password',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: current,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Current password'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: next,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'New password'),
-          ),
-        ],
+      content: StatefulBuilder(
+        builder: (context, setDialogState) {
+          return Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: current,
+                  obscureText: obscure,
+                  decoration: const InputDecoration(labelText: 'Current password'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Enter your current password.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: next,
+                  obscureText: obscure,
+                  decoration: const InputDecoration(
+                    labelText: 'New password',
+                    helperText: 'At least 10 characters',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Enter a new password.';
+                    }
+                    if (value.length < 10) {
+                      return 'Use at least 10 characters.';
+                    }
+                    if (value == current.text) {
+                      return 'Choose a different password.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: confirm,
+                  obscureText: obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm new password',
+                    suffixIcon: IconButton(
+                      tooltip: obscure ? 'Show password' : 'Hide password',
+                      onPressed: () => setDialogState(() => obscure = !obscure),
+                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value != next.text) {
+                      return 'The new passwords do not match.';
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          );
+        },
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Update')),
+      actions: (dialogContext) => [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () {
+            if (formKey.currentState?.validate() != true) {
+              return;
+            }
+            Navigator.pop(dialogContext, true);
+          },
+          child: const Text('Update'),
+        ),
       ],
     );
     if (confirmed != true) {
       current.dispose();
       next.dispose();
+      confirm.dispose();
       return;
     }
     setState(() {
@@ -108,8 +158,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             currentPassword: current.text,
             newPassword: next.text,
           );
+      await ref.read(sessionProvider.notifier).logout();
       if (mounted) {
-        showAppSnack(context, 'Password updated.');
+        showAppSnack(context, 'Password updated. Sign in with the new password.');
       }
     } catch (error) {
       if (mounted) {
@@ -118,6 +169,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       current.dispose();
       next.dispose();
+      confirm.dispose();
       if (mounted) {
         setState(() => _busy = false);
       }
@@ -141,7 +193,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if ((_sync?.conflicts ?? 0) > 0) {
       return '${_sync!.conflicts} conflicts need a review';
     }
-    return 'Keep this phone in sync with the clinic';
+    return 'Keep this computer in sync with the clinic';
   }
 
   @override
@@ -152,9 +204,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/modules'),
-        title: const AppBarTitle('Settings'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Settings',
+        isRoot: true,
+        fallback: '/clinic',
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
@@ -239,36 +293,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SectionHeader('Security'),
             Card(
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.pin_outlined,
-                    title: 'Change PIN',
-                    subtitle: 'This PIN stays on this device',
-                    onTap: () => appPush(context, '/settings/pin'),
-                  ),
-                  if (_canBiometrics) ...[
-                    const Divider(indent: 68),
-                    SwitchListTile(
-                      value: _biometrics,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                      onChanged: (value) async {
-                        await ref.read(pinServiceProvider).setBiometricsEnabled(value);
-                        setState(() => _biometrics = value);
-                      },
-                      title: const Text('Unlock with biometrics', maxLines: 2),
-                      subtitle: const Text('Use fingerprint or Face ID on this phone'),
-                      secondary: const Icon(Icons.fingerprint_rounded),
-                    ),
-                  ],
-                  const Divider(indent: 68),
-                  _SettingsTile(
-                    icon: Icons.lock_reset_rounded,
-                    title: 'Change password',
-                    subtitle: 'Updates the owner password on the server',
-                    onTap: _busy ? null : _changePassword,
-                  ),
-                ],
+              child: _SettingsTile(
+                icon: Icons.lock_reset_rounded,
+                title: 'Change password',
+                subtitle: 'Updates the owner password on the server',
+                onTap: _busy ? null : _changePassword,
               ),
             ),
             const SectionHeader('Account'),
@@ -287,7 +316,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   _SettingsTile(
                     icon: Icons.phonelink_erase_rounded,
                     title: 'Sign out all devices',
-                    subtitle: 'Revoke access on every signed-in phone',
+                    subtitle: 'Revoke access on every signed-in device',
                     iconColor: AppColors.danger,
                     titleColor: AppColors.danger,
                     onTap: () => _confirmLogout(allDevices: true),

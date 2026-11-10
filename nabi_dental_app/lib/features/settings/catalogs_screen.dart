@@ -23,12 +23,11 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
   List<CatalogItem> _categories = [];
   List<CatalogItem> _treatments = [];
   List<CatalogItem> _clinic = [];
-  List<CatalogItem> _home = [];
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _load();
   }
 
@@ -44,13 +43,11 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
     final categories = await repo.treatmentCategories();
     final treatments = await repo.treatments();
     final clinic = await repo.clinicExpenseCategories();
-    final home = await repo.homeExpenseCategories();
     if (mounted) {
       setState(() {
         _categories = categories;
         _treatments = treatments;
         _clinic = clinic;
-        _home = home;
       });
     }
   }
@@ -161,9 +158,10 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/settings'),
-        title: const AppBarTitle('Catalogs'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Catalogs',
+        fallback: '/settings',
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
@@ -171,8 +169,7 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
           tabs: const [
             Tab(text: 'Categories'),
             Tab(text: 'Treatments'),
-            Tab(text: 'Clinic'),
-            Tab(text: 'Home'),
+            Tab(text: 'Clinic expenses'),
           ],
         ),
       ),
@@ -206,15 +203,6 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
               collection: 'clinic_expense_categories',
               entityType: 'clinic_expense_category',
               label: 'clinic category',
-            ),
-          ),
-          _list(
-            _home,
-            onAdd: () => _add(
-              path: '/api/v1/home-expense-categories',
-              collection: 'home_expense_categories',
-              entityType: 'home_expense_category',
-              label: 'home category',
             ),
           ),
         ],

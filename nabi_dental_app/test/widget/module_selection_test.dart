@@ -1,35 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:nabi_dental_app/core/auth/auth_repository.dart';
 import 'package:nabi_dental_app/core/auth/session_controller.dart';
 import 'package:nabi_dental_app/core/auth/token_storage.dart';
 import 'package:nabi_dental_app/core/database/app_database.dart';
 import 'package:nabi_dental_app/core/models/session_models.dart';
-import 'package:nabi_dental_app/core/security/pin_service.dart';
-import 'package:nabi_dental_app/features/module_selection/module_selection_screen.dart';
+import 'package:nabi_dental_app/core/widgets/app_shell.dart';
 
 class _Auth extends Mock implements AuthRepository {}
 
 class _Tokens extends Mock implements TokenStorage {}
 
-class _Pin extends Mock implements PinService {}
-
 class _Db extends Mock implements AppDatabase {}
 
 void main() {
-  testWidgets('shows clinic and home modules', (tester) async {
+  testWidgets('desktop shell shows clinic navigation without construction', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final controller = SessionController(
       auth: _Auth(),
       tokens: _Tokens(),
-      pin: _Pin(),
       database: _Db(),
     )..state = const SessionState(
         initialized: true,
         hasTokens: true,
-        hasPin: true,
-        unlocked: true,
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
@@ -50,14 +50,33 @@ void main() {
         overrides: [
           sessionProvider.overrideWith((ref) => controller),
         ],
-        child: const MaterialApp(home: ModuleSelectionScreen()),
+        child: MaterialApp.router(
+          routerConfig: GoRouter(
+            initialLocation: '/clinic',
+            routes: [
+              ShellRoute(
+                builder: (context, state, child) => ClinicAppShell(child: child),
+                routes: [
+                  GoRoute(
+                    path: '/clinic',
+                    builder: (_, __) => const Scaffold(body: Text('Clinic dashboard')),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
 
-    expect(find.text('Clinic Finance'), findsOneWidget);
-    expect(find.text('Home Finance'), findsOneWidget);
-    expect(find.text('Construction Finance'), findsOneWidget);
-    expect(find.text('Nabi Dental'), findsOneWidget);
-    expect(find.text('Hello, Dr Owner'), findsOneWidget);
+    expect(find.text('Dashboard'), findsWidgets);
+    expect(find.text('Treatments'), findsOneWidget);
+    expect(find.text('Expenses'), findsOneWidget);
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Nabi Dental'), findsWidgets);
+    expect(find.text('Construction Finance'), findsNothing);
+    expect(find.text('Home Finance'), findsNothing);
+    expect(find.text('Clinic dashboard'), findsOneWidget);
   });
 }

@@ -1,8 +1,8 @@
 # Nabi Dental Clinic API
 
-FastAPI + PostgreSQL service for the clinic, home, and construction modules.
+FastAPI + PostgreSQL service for the local Nabi Dental Clinic desktop app.
 
-Full project documentation (features, data model, environment, and how to run the Flutter app) is in the [repository README](../README.md).
+Full project documentation is in the [repository README](../README.md).
 
 ## Quick start
 

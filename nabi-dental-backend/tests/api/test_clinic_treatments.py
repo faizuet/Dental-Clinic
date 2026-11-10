@@ -8,8 +8,32 @@ from tests.api.conftest import auth_header, login
 
 
 def _png_bytes() -> bytes:
+    from PIL import ImageDraw
+
+    image = Image.new("L", (240, 240), color=18)
+    ImageDraw.Draw(image).ellipse((36, 28, 204, 212), fill=170)
     buffer = io.BytesIO()
-    Image.new("RGB", (240, 240), color=(80, 80, 80)).save(buffer, format="PNG")
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _landscape_bytes() -> bytes:
+    image = Image.new("RGB", (240, 240), color=(70, 160, 240))
+    for y in range(120, 240):
+        for x in range(240):
+            image.putpixel((x, y), (40, 150, 55))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _intraoral_bytes() -> bytes:
+    image = Image.new("RGB", (240, 240), color=(180, 70, 80))
+    for y in range(70, 170):
+        for x in range(50, 190):
+            image.putpixel((x, y), (245, 240, 230))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 
@@ -153,3 +177,20 @@ async def test_xray_upload_and_treatment_pdf(client):
         headers=headers,
     )
     assert leaked.status_code == 404
+
+    rejected = await client.post(
+        f"/api/v1/treatment-transactions/{tx_id}/attachments",
+        headers=headers,
+        files={"file": ("park.png", _landscape_bytes(), "image/png")},
+        data={"label": "before"},
+    )
+    assert rejected.status_code == 422, rejected.text
+    assert "dental" in rejected.json()["error"]["message"].lower()
+
+    intraoral = await client.post(
+        f"/api/v1/treatment-transactions/{tx_id}/attachments",
+        headers=headers,
+        files={"file": ("mouth.png", _intraoral_bytes(), "image/png")},
+        data={"label": "after"},
+    )
+    assert intraoral.status_code == 201, intraoral.text

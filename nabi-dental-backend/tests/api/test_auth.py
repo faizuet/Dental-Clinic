@@ -114,3 +114,34 @@ async def test_change_password_revokes_sessions(client):
         },
     )
     assert new_login.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_change_password_rejects_wrong_current_password(client):
+    login = (
+        await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": settings.OWNER_EMAIL,
+                "password": settings.OWNER_PASSWORD,
+                "device_id": "device-1",
+            },
+        )
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        headers=headers,
+        json={"current_password": "WrongPassword1", "new_password": "ANewPassword9"},
+    )
+    assert changed.status_code == 400
+    assert "current password" in changed.json()["error"]["message"].lower()
+    old_login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": settings.OWNER_EMAIL,
+            "password": settings.OWNER_PASSWORD,
+            "device_id": "device-2",
+        },
+    )
+    assert old_login.status_code == 200

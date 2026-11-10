@@ -1,6 +1,6 @@
 import 'app_exception.dart';
 
-const _offline = 'No internet connection. Please check your connection and try again.';
+const _offline = 'No connection to the local clinic server. Start Docker and try again.';
 const _timeout = 'The request timed out. Please try again.';
 const _upload = 'The selected image could not be uploaded. Please try another image.';
 const _report = 'Unable to generate the report. Please try again.';

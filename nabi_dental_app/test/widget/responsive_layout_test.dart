@@ -39,4 +39,39 @@ void main() {
     expect(find.text('Clinic expenses'), findsOneWidget);
     expect(find.text('Income history'), findsOneWidget);
   });
+
+  testWidgets('cards layout on a laptop width', (tester) async {
+    tester.view.physicalSize = const Size(1366, 768);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              const SummaryCard(
+                label: 'Clinic expenses',
+                value: 'PKR 1,234,567.89',
+                icon: Icons.trending_down_rounded,
+              ),
+              ActionCard(
+                title: 'Income history',
+                subtitle: 'Search, edit, or delete treatment income',
+                icon: Icons.history_rounded,
+                onTap: () {},
+              ),
+              const TotalBar(label: 'Total', value: 'PKR 9,999,999.00'),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Clinic expenses'), findsOneWidget);
+  });
 }

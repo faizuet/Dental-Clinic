@@ -3,12 +3,30 @@ import 'package:flutter/material.dart';
 import '../../app/theme/app_colors.dart';
 
 class AppLayout {
-  static bool isCompact(BuildContext context) => MediaQuery.sizeOf(context).width < 360;
+  static const double compactWidth = 360;
+  static const double desktopWidth = 900;
+  static const double wideWidth = 1180;
+
+  static bool isCompact(BuildContext context) => MediaQuery.sizeOf(context).width < compactWidth;
+
+  static bool isDesktop(BuildContext context) => MediaQuery.sizeOf(context).width >= desktopWidth;
+
+  static bool isWide(BuildContext context) => MediaQuery.sizeOf(context).width >= wideWidth;
+
+  static bool showSidebar(BuildContext context) => MediaQuery.sizeOf(context).width >= 840;
+
+  static bool showExtendedSidebar(BuildContext context) => MediaQuery.sizeOf(context).width >= 1100;
 
   static double horizontalPadding(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    if (width < 360) {
+    if (width < compactWidth) {
       return 16;
+    }
+    if (width >= wideWidth) {
+      return 32;
+    }
+    if (width >= desktopWidth) {
+      return 28;
     }
     if (width >= 600) {
       return 24;
@@ -21,9 +39,36 @@ class AppLayout {
     return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
   }
 
-  static double keySize(BuildContext context) {
-    final shortest = MediaQuery.sizeOf(context).shortestSide;
-    return (shortest / 5.2).clamp(56.0, 76.0);
+  static double maxContent(BuildContext context) {
+    if (isWide(context)) {
+      return 1280;
+    }
+    if (isDesktop(context)) {
+      return 1080;
+    }
+    return AppSpacing.maxContent;
+  }
+
+  static double dialogWidth(BuildContext context) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width < 480) {
+      return width - 32;
+    }
+    if (isDesktop(context)) {
+      return 520;
+    }
+    return 400;
+  }
+
+  static int columnsFor(BuildContext context, {double minWidth = 280}) {
+    final width = MediaQuery.sizeOf(context).width;
+    if (width >= minWidth * 3 + 48) {
+      return 3;
+    }
+    if (width >= minWidth * 2 + 24) {
+      return 2;
+    }
+    return 1;
   }
 }
 
@@ -35,6 +80,102 @@ class Stretch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(width: double.infinity, child: child);
+  }
+}
+
+class AppSplit extends StatelessWidget {
+  const AppSplit({
+    super.key,
+    required this.primary,
+    required this.secondary,
+    this.breakpoint = 840,
+    this.spacing = 20,
+    this.primaryFlex = 5,
+    this.secondaryFlex = 6,
+  });
+
+  final Widget primary;
+  final Widget secondary;
+  final double breakpoint;
+  final double spacing;
+  final int primaryFlex;
+  final int secondaryFlex;
+
+  Widget _shrink(Widget child) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [child],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < breakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              primary,
+              SizedBox(height: spacing),
+              secondary,
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: primaryFlex, child: _shrink(primary)),
+            SizedBox(width: spacing),
+            Expanded(flex: secondaryFlex, child: _shrink(secondary)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class ResponsiveGrid extends StatelessWidget {
+  const ResponsiveGrid({
+    super.key,
+    required this.children,
+    this.minItemWidth = 260,
+    this.spacing = 12,
+    this.runSpacing = 0,
+  });
+
+  final List<Widget> children;
+  final double minItemWidth;
+  final double spacing;
+  final double runSpacing;
+
+  @override
+  Widget build(BuildContext context) {
+    if (children.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        var columns = (width / minItemWidth).floor();
+        if (columns < 1) {
+          columns = 1;
+        }
+        if (columns > children.length) {
+          columns = children.length;
+        }
+        final itemWidth = columns == 1 ? width : (width - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: runSpacing,
+          children: [
+            for (final child in children)
+              SizedBox(width: itemWidth, child: child),
+          ],
+        );
+      },
+    );
   }
 }
 
@@ -83,12 +224,13 @@ Future<T?> showAppDialog<T>({
   required BuildContext context,
   required String title,
   required Widget content,
-  required List<Widget> actions,
+  required List<Widget> Function(BuildContext dialogContext) actions,
   IconData? icon,
   AppDialogTone tone = AppDialogTone.neutral,
 }) {
   return showDialog<T>(
     context: context,
+    useRootNavigator: true,
     builder: (dialogContext) {
       final size = MediaQuery.sizeOf(dialogContext);
       final inset = size.width < 360 ? 16.0 : 24.0;
@@ -123,7 +265,7 @@ Future<T?> showAppDialog<T>({
           ],
         ),
         content: SizedBox(
-          width: size.width < 480 ? size.width - inset * 2 : 400,
+          width: AppLayout.dialogWidth(dialogContext),
           child: SingleChildScrollView(
             child: DefaultTextStyle(
               style: Theme.of(dialogContext).textTheme.bodyMedium!.copyWith(color: AppColors.muted, height: 1.45),
@@ -131,7 +273,7 @@ Future<T?> showAppDialog<T>({
             ),
           ),
         ),
-        actions: actions,
+        actions: actions(dialogContext),
         actionsOverflowButtonSpacing: 8,
         actionsAlignment: MainAxisAlignment.end,
       );
@@ -154,11 +296,11 @@ Future<bool> showAppConfirmDialog({
     icon: icon ?? (destructive ? Icons.warning_amber_rounded : Icons.help_outline_rounded),
     tone: destructive ? AppDialogTone.danger : AppDialogTone.neutral,
     content: Text(message),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context, false), child: Text(cancelLabel)),
+    actions: (dialogContext) => [
+      TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: Text(cancelLabel)),
       FilledButton(
         style: destructive ? FilledButton.styleFrom(backgroundColor: AppColors.danger) : null,
-        onPressed: () => Navigator.pop(context, true),
+        onPressed: () => Navigator.pop(dialogContext, true),
         child: Text(confirmLabel),
       ),
     ],
@@ -191,49 +333,3 @@ Future<DateTimeRange?> pickInclusiveDateRange(
   );
 }
 
-class PinScreenScaffold extends StatelessWidget {
-  const PinScreenScaffold({
-    super.key,
-    required this.header,
-    required this.keypad,
-    this.footer,
-  });
-
-  final Widget header;
-  final Widget keypad;
-  final Widget? footer;
-
-  @override
-  Widget build(BuildContext context) {
-    final padding = AppLayout.pagePadding(context, top: 12, bottom: 16);
-    return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            padding: padding,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: (constraints.maxHeight - padding.vertical).clamp(0.0, double.infinity),
-                  maxWidth: AppSpacing.maxContent,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      header,
-                      keypad,
-                      if (footer != null) footer!,
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}

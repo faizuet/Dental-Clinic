@@ -19,6 +19,33 @@ void main() {
     expect(error.fieldErrors['email'], 'Invalid email.');
   });
 
+  test('explains generic password validation errors', () {
+    final error = parseApiError({
+      'error': {
+        'code': 'VALIDATION_ERROR',
+        'message': 'The request contains invalid values.',
+        'details': [
+          {'field': 'new_password', 'message': 'String should have at least 10 characters'},
+        ],
+      },
+    }, 422);
+
+    expect(error.message, 'The new password must be at least 10 characters.');
+    expect(error.fieldErrors['new_password'], 'The new password must be at least 10 characters.');
+  });
+
+  test('keeps a wrong current-password message', () {
+    final error = parseApiError({
+      'error': {
+        'code': 'VALIDATION_ERROR',
+        'message': 'The current password is incorrect.',
+      },
+    }, 400);
+
+    expect(error.message, 'The current password is incorrect.');
+    expect(error.statusCode, 400);
+  });
+
   test('maps 401 without a body to unauthorized', () {
     final error = parseApiError(null, 401);
     expect(error, isA<UnauthorizedException>());

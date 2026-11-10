@@ -1,11 +1,14 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:uuid/uuid.dart';
 
 import '../api/api_client.dart';
 import '../auth/session_controller.dart';
 import '../database/app_database.dart';
 import '../errors/app_exception.dart';
+import '../errors/friendly_error.dart';
+import '../media/clinic_image_picker.dart';
 import '../models/finance_models.dart';
 import '../security/device_id.dart';
 import '../utils/money.dart';
@@ -679,23 +682,44 @@ class FinanceRepository {
       saved['sub_treatment'] = saved['sub_treatment'] ?? subTreatment;
       saved['patient_name'] = saved['patient_name'] ?? patientName;
       saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
+      var failedImages = 0;
+      Object? lastImageError;
       for (final xray in xrays) {
-        final form = FormData.fromMap({
-          'label': xray.label,
-          'file': MultipartFile.fromBytes(xray.bytes, filename: xray.filename),
-        });
-        final uploaded = await _api.postMultipart(
-          '/api/v1/treatment-transactions/${saved['id']}/attachments',
-          data: form,
-        );
-        final attachment = _asMap(uploaded.data);
-        if (attachment != null) {
-          final current = jsonMapList(saved['attachments']);
-          current.add(attachment);
-          saved['attachments'] = current;
+        final filename = clinicUploadFilename(xray.filename);
+        try {
+          final form = FormData.fromMap({
+            'label': xray.label,
+            'file': MultipartFile.fromBytes(
+              xray.bytes,
+              filename: filename,
+              contentType: MediaType.parse(sniffImageContentType(xray.bytes, filename)),
+            ),
+          });
+          final uploaded = await _api.postMultipart(
+            '/api/v1/treatment-transactions/${saved['id']}/attachments',
+            data: form,
+          );
+          final attachment = _asMap(uploaded.data);
+          if (attachment != null) {
+            final current = jsonMapList(saved['attachments']);
+            current.add(attachment);
+            saved['attachments'] = current;
+          }
+        } catch (error) {
+          failedImages += 1;
+          lastImageError = error;
         }
       }
       await _db.upsert('treatment_transactions', saved);
+      if (failedImages > 0) {
+        final detail = lastImageError == null ? '' : ' ${friendlyError(lastImageError, feature: 'upload')}';
+        throw AppException(
+          failedImages == 1
+              ? 'Treatment saved, but the image could not be uploaded.$detail Open the visit to add it again.'
+              : 'Treatment saved, but $failedImages images could not be uploaded.$detail Open the visit to add them again.',
+          code: 'IMAGE_UPLOAD_PARTIAL',
+        );
+      }
       return 'Treatment saved.';
     } on OfflineException {
       payload['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? 'Treatment';
