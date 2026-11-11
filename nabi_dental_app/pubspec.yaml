@@ -35,17 +35,25 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: true
+  windows:
+    generate: true
+    image_path: assets/icon/app_icon.png
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: assets/icon/app_icon.png
   image_path: assets/icon/app_icon.png
-  adaptive_icon_background: "#7C3AED"
+  adaptive_icon_background: "#2F80ED"
   adaptive_icon_foreground: assets/icon/app_icon.png
   min_sdk_android: 21
   web:
     generate: true
     image_path: assets/icon/app_icon.png
-    background_color: "#F8F5FF"
-    theme_color: "#7C3AED"
+    background_color: "#F3F7FF"
+    theme_color: "#2F80ED"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icon/app_icon.png
+    - assets/brand/clinic_portrait.jpg

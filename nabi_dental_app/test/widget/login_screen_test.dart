@@ -56,6 +56,12 @@ void main() {
     await pumpLogin(tester);
 
     expect(find.text('Nabi Dental Clinic'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Image && widget.image is AssetImage && (widget.image as AssetImage).assetName.contains('clinic_portrait'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Sign in'), findsWidgets);
     expect(find.text('Email'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);

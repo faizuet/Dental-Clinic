@@ -9,6 +9,8 @@ import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/error_banner.dart';
 
+const _clinicPortrait = 'assets/brand/clinic_portrait.jpg';
+
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -125,54 +127,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Widget _brandPanel(String clinicName, {required bool wide}) {
-    final panel = Column(
-      crossAxisAlignment: wide ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(AppRadii.md),
-          ),
-          child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 34),
-        ),
-        const SizedBox(height: 28),
-        Text(
-          clinicName,
-          textAlign: wide ? TextAlign.left : TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            height: 1.2,
-            letterSpacing: -0.4,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Clinic management for the front desk',
-          textAlign: wide ? TextAlign.left : TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.88),
-            fontSize: 16,
-            height: 1.45,
-          ),
-        ),
-        if (wide) ...[
-          const SizedBox(height: 36),
-          _brandPoint(Icons.people_alt_outlined, 'Patient records and treatment history'),
-          _brandPoint(Icons.healing_outlined, 'Treatments, RCT details, and X-rays'),
-          _brandPoint(Icons.payments_outlined, 'Clinic income, expenses, and reports'),
-        ],
-      ],
-    );
-
     if (!wide) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
+        padding: const EdgeInsets.fromLTRB(28, 28, 28, 28),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
@@ -181,21 +139,98 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
           borderRadius: BorderRadius.circular(AppRadii.xl),
         ),
-        child: panel,
+        child: Column(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              child: SizedBox(
+                width: 112,
+                height: 112,
+                child: Image.asset(
+                  _clinicPortrait,
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.18),
+                  filterQuality: FilterQuality.medium,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              clinicName,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.w700,
+                height: 1.2,
+                letterSpacing: -0.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Clinic management for the front desk',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 15, height: 1.45),
+            ),
+          ],
+        ),
       );
     }
 
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1B4F9C), AppColors.primaryDark, AppColors.primary],
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(56, 48, 48, 48),
-        child: panel,
+    return ColoredBox(
+      color: const Color(0xFF1B4F9C),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            _clinicPortrait,
+            fit: BoxFit.cover,
+            alignment: const Alignment(0, -0.16),
+            filterQuality: FilterQuality.medium,
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x330A274F),
+                  Color(0x140A274F),
+                  Color(0xF20A274F),
+                ],
+                stops: [0, 0.45, 1],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(48, 40, 40, 40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Spacer(),
+                Text(
+                  clinicName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Clinic management for the front desk',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 16, height: 1.45),
+                ),
+                const SizedBox(height: 28),
+                _brandPoint(Icons.people_alt_outlined, 'Patient records and treatment history'),
+                _brandPoint(Icons.healing_outlined, 'Treatments, RCT details, and X-rays'),
+                _brandPoint(Icons.payments_outlined, 'Clinic income, expenses, and reports'),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

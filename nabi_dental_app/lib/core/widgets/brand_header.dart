@@ -2,6 +2,29 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
 
+class ClinicMark extends StatelessWidget {
+  const ClinicMark({super.key, required this.size, this.radius});
+
+  static const asset = 'assets/icon/app_icon.png';
+
+  final double size;
+  final double? radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius ?? size * 0.22),
+      child: Image.asset(
+        asset,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+      ),
+    );
+  }
+}
+
 class BrandHeader extends StatelessWidget {
   const BrandHeader({
     super.key,
@@ -19,19 +42,9 @@ class BrandHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Column(
         children: [
-          Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.primary, AppColors.secondary],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(compact ? AppRadii.md : AppRadii.lg),
-              boxShadow: AppShadows.soft,
-            ),
-            child: Icon(Icons.local_hospital_rounded, color: Colors.white, size: compact ? 24 : 34),
+          DecoratedBox(
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(compact ? AppRadii.md : AppRadii.lg), boxShadow: AppShadows.soft),
+            child: ClinicMark(size: size, radius: compact ? AppRadii.md : AppRadii.lg),
           ),
           SizedBox(height: compact ? 12 : 18),
           Text(

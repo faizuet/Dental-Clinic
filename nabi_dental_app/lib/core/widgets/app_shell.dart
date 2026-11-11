@@ -6,6 +6,7 @@ import '../../app/theme/app_colors.dart';
 import '../auth/session_controller.dart';
 import 'app_layout.dart';
 import 'app_navigation.dart';
+import 'brand_header.dart';
 
 class ClinicDestination {
   const ClinicDestination({
@@ -178,7 +179,7 @@ class _Sidebar extends StatelessWidget {
             child: extended
                 ? Row(
                     children: [
-                      const _BrandMark(size: 40),
+                      const ClinicMark(size: 40),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
@@ -201,7 +202,7 @@ class _Sidebar extends StatelessWidget {
                       ),
                     ],
                   )
-                : const Center(child: _BrandMark(size: 40)),
+                : const Center(child: ClinicMark(size: 40)),
           ),
           const SizedBox(height: 8),
           Expanded(
@@ -258,29 +259,6 @@ class _Sidebar extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _BrandMark extends StatelessWidget {
-  const _BrandMark({required this.size});
-
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.secondary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(AppRadii.sm),
-      ),
-      child: const Icon(Icons.local_hospital_rounded, color: Colors.white, size: 22),
     );
   }
 }
