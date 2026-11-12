@@ -36,6 +36,11 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _load(silent: true);
+      }
+    });
     _load();
   }
 

@@ -60,19 +60,23 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
   Future<void> _bootstrap() async {
     final repo = ref.read(financeRepositoryProvider);
     try {
-      await repo.refresh();
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = friendlyError(error));
-      }
-    }
-    try {
       final items = await widget.loadCategories(repo);
       if (mounted) {
         setState(() => _categories = items);
       }
     } catch (error) {
       if (mounted) {
+        setState(() => _error = friendlyError(error));
+      }
+    }
+    try {
+      await repo.refresh();
+      final items = await widget.loadCategories(repo);
+      if (mounted) {
+        setState(() => _categories = items);
+      }
+    } catch (error) {
+      if (mounted && _categories.isEmpty) {
         setState(() => _error = friendlyError(error));
       }
     }

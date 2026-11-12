@@ -77,9 +77,10 @@ bool _isReports(String location) => location.startsWith('/clinic/reports');
 bool _isSettings(String location) => location.startsWith('/settings');
 
 class ClinicAppShell extends ConsumerStatefulWidget {
-  const ClinicAppShell({super.key, required this.child});
+  const ClinicAppShell({super.key, required this.child, this.navigationShell});
 
   final Widget child;
+  final StatefulNavigationShell? navigationShell;
 
   @override
   ConsumerState<ClinicAppShell> createState() => _ClinicAppShellState();
@@ -91,6 +92,12 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
   String get _location => GoRouterState.of(context).uri.path;
 
   void _open(String path) {
+    final shell = widget.navigationShell;
+    final index = clinicDestinations.indexWhere((item) => item.path == path);
+    if (shell != null && index >= 0) {
+      shell.goBranch(index, initialLocation: index == shell.currentIndex);
+      return;
+    }
     if (_location == path) {
       return;
     }

@@ -50,38 +50,83 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
       appRoute('/login', () => const LoginScreen()),
-      ShellRoute(
-        builder: (context, state, child) => ClinicAppShell(child: child),
-        routes: [
-          appRoute('/clinic', () => const ClinicDashboardScreen()),
-          appRoute('/clinic/patients', () => const PatientsScreen()),
-          GoRoute(
-            path: '/clinic/patients/:id',
-            pageBuilder: (context, state) => buildAppPage(
-              state,
-              PatientRecordScreen(patientId: state.pathParameters['id']!),
-            ),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, navigationShell) => ClinicAppShell(
+          navigationShell: navigationShell,
+          child: navigationShell,
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              appRoute('/clinic', () => const ClinicDashboardScreen()),
+            ],
           ),
-          appRoute('/clinic/income', () => const TreatmentEntryScreen()),
-          appRoute('/clinic/income/history', () => const TreatmentHistoryScreen()),
-          GoRoute(
-            path: '/clinic/income/:id/edit',
-            pageBuilder: (context, state) => buildAppPage(
-              state,
-              TreatmentEntryScreen(visitId: state.pathParameters['id']!),
-            ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/clinic/patients',
+                pageBuilder: (context, state) => buildAppPage(state, const PatientsScreen()),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    pageBuilder: (context, state) => buildAppPage(
+                      state,
+                      PatientRecordScreen(patientId: state.pathParameters['id']!),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          GoRoute(
-            path: '/clinic/income/:id',
-            pageBuilder: (context, state) => buildAppPage(state, TreatmentDetailScreen(id: state.pathParameters['id']!)),
+          StatefulShellBranch(
+            routes: [
+              appRoute('/clinic/income/history', () => const TreatmentHistoryScreen()),
+              GoRoute(
+                path: '/clinic/income',
+                pageBuilder: (context, state) => buildAppPage(state, const TreatmentEntryScreen()),
+                routes: [
+                  GoRoute(
+                    path: ':id/edit',
+                    pageBuilder: (context, state) => buildAppPage(
+                      state,
+                      TreatmentEntryScreen(visitId: state.pathParameters['id']!),
+                    ),
+                  ),
+                  GoRoute(
+                    path: ':id',
+                    pageBuilder: (context, state) => buildAppPage(
+                      state,
+                      TreatmentDetailScreen(id: state.pathParameters['id']!),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-          appRoute('/clinic/expenses', () => const ClinicExpenseEntryScreen()),
-          appRoute('/clinic/expenses/history', () => const ClinicExpenseHistoryScreen()),
-          appRoute('/clinic/reports', () => const ClinicReportsScreen()),
-          appRoute('/settings', () => const SettingsScreen()),
-          appRoute('/settings/profile', () => const ProfileScreen()),
-          appRoute('/settings/catalogs', () => const CatalogsScreen()),
-          appRoute('/settings/conflicts', () => const ConflictReviewScreen()),
+          StatefulShellBranch(
+            routes: [
+              appRoute('/clinic/expenses/history', () => const ClinicExpenseHistoryScreen()),
+              appRoute('/clinic/expenses', () => const ClinicExpenseEntryScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              appRoute('/clinic/reports', () => const ClinicReportsScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/settings',
+                pageBuilder: (context, state) => buildAppPage(state, const SettingsScreen()),
+                routes: [
+                  appRoute('profile', () => const ProfileScreen()),
+                  appRoute('catalogs', () => const CatalogsScreen()),
+                  appRoute('conflicts', () => const ConflictReviewScreen()),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     ],

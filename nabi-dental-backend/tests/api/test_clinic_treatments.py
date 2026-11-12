@@ -400,3 +400,76 @@ async def test_multi_treatment_visit_is_one_record(client):
     assert pdf.status_code == 200, pdf.text
     assert pdf.headers["content-type"].startswith("application/pdf")
     assert pdf.content[:4] == b"%PDF"
+
+
+@pytest.mark.asyncio
+async def test_patient_phone_must_be_pakistani_mobile(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    for phone in ["0300123456", "030012345678", "923001234567", "0300ABC4567", "0300 1234567"]:
+        created = await client.post("/api/v1/patients", headers=headers, json={"name": "Phone Check", "phone": phone})
+        assert created.status_code == 422, created.text
+    created = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Phone Check", "phone": "03123456789"},
+    )
+    assert created.status_code == 201, created.text
+    patched = await client.patch(
+        f"/api/v1/patients/{created.json()['id']}",
+        headers=headers,
+        json={"version": created.json()["version"], "phone": "0300123456"},
+    )
+    assert patched.status_code == 422, patched.text
+
+
+@pytest.mark.asyncio
+async def test_deleting_patient_keeps_treatment_payments(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+    patient = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Paid Patient", "phone": "03001234567"},
+    )
+    assert patient.status_code == 201, patient.text
+    patient_id = patient.json()["id"]
+    visit = await client.post(
+        "/api/v1/treatment-transactions",
+        headers=headers,
+        json={
+            "treatment_id": rct_id,
+            "patient_id": patient_id,
+            "transaction_date": "2026-09-20",
+            "amount": "8000.00",
+            "sub_treatment": "Root Canal Treatment (RCT)",
+        },
+    )
+    assert visit.status_code == 201, visit.text
+    tx_id = visit.json()["id"]
+
+    deleted = await client.delete(
+        f"/api/v1/patients/{patient_id}",
+        headers=headers,
+        params={"version": patient.json()["version"]},
+    )
+    assert deleted.status_code == 204, deleted.text
+    missing = await client.get(f"/api/v1/patients/{patient_id}", headers=headers)
+    assert missing.status_code == 404
+
+    kept = await client.get(f"/api/v1/treatment-transactions/{tx_id}", headers=headers)
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["id"] == tx_id
+    assert kept.json()["amount"] == "8000.00"
+    assert kept.json()["patient_id"] == patient_id
+    assert kept.json()["patient_name"] == "Paid Patient"
+    assert kept.json()["patient_phone"] == "03001234567"
+
+    dashboard = await client.get(
+        "/api/v1/dashboard/clinic",
+        headers=headers,
+        params={"period": "custom", "from_date": "2026-09-20", "to_date": "2026-09-20"},
+    )
+    assert dashboard.status_code == 200
+    assert dashboard.json()["total_income"] == "8000.00"

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +13,7 @@ import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
+import '../../core/widgets/app_memory_image.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
 
@@ -42,41 +41,62 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_patient == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final repo = ref.read(financeRepositoryProvider);
-      final patient = await repo.patientById(widget.patientId);
+      var patient = await repo.patientById(widget.patientId);
       if (patient == null) {
         throw Exception('Patient was not found.');
       }
-      final treatments = await repo.patientTreatments(patient.id);
-      final images = <String, List<int>>{};
-      for (final visit in treatments) {
-        for (final attachment in visit.attachments) {
-          try {
-            images[attachment.id] = await repo.treatmentAttachmentBytes(visit.id, attachment.id);
-          } catch (_) {}
-        }
-      }
+      var treatments = await repo.patientTreatments(patient.id);
       if (mounted) {
         setState(() {
           _patient = patient;
           _treatments = treatments;
-          _images
-            ..clear()
-            ..addAll(images);
           _loading = false;
         });
       }
+      final remotePatient = await repo.patientById(widget.patientId, remote: true);
+      if (remotePatient != null) {
+        patient = remotePatient;
+      }
+      treatments = await repo.patientTreatments(patient.id, remote: true);
+      if (mounted) {
+        setState(() {
+          _patient = patient;
+          _treatments = treatments;
+        });
+      }
+      await _loadImages(treatments);
     } catch (error) {
       if (mounted) {
         setState(() {
           _error = friendlyError(error);
           _loading = false;
         });
+      }
+    }
+  }
+
+  Future<void> _loadImages(List<MoneyEntry> treatments) async {
+    final repo = ref.read(financeRepositoryProvider);
+    for (final visit in treatments) {
+      for (final attachment in visit.attachments) {
+        if (_images.containsKey(attachment.id)) {
+          continue;
+        }
+        try {
+          final bytes = await repo.treatmentAttachmentBytes(visit.id, attachment.id);
+          if (!mounted) {
+            return;
+          }
+          setState(() => _images[attachment.id] = bytes);
+        } catch (_) {}
       }
     }
   }
@@ -338,8 +358,10 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
                       )
                     : Padding(
                         padding: const EdgeInsets.all(8),
-                        child: Image.memory(
-                          Uint8List.fromList(bytes),
+                        child: AppMemoryImage(
+                          bytes: bytes,
+                          width: frameWidth - 16,
+                          height: frameHeight - 16,
                           fit: BoxFit.contain,
                           filterQuality: FilterQuality.medium,
                         ),
@@ -373,8 +395,10 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
           borderRadius: BorderRadius.circular(AppRadii.sm),
           child: ColoredBox(
             color: AppColors.inputFill,
-            child: Image.memory(
-              Uint8List.fromList(bytes),
+            child: AppMemoryImage(
+              bytes: bytes,
+              width: 420,
+              height: 320,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.medium,
             ),

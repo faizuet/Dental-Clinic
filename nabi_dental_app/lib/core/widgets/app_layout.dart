@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_colors.dart';
+import '../errors/friendly_error.dart';
 
 class AppLayout {
   static const double compactWidth = 360;
@@ -306,6 +307,132 @@ Future<bool> showAppConfirmDialog({
     ],
   );
   return result ?? false;
+}
+
+Future<bool> showAppDeleteDialog({
+  required BuildContext context,
+  required String title,
+  required String message,
+  String cancelLabel = 'Cancel',
+  String confirmLabel = 'Delete',
+  required Future<void> Function() onConfirm,
+}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    useRootNavigator: true,
+    builder: (dialogContext) => _DeleteConfirmDialog(
+      title: title,
+      message: message,
+      cancelLabel: cancelLabel,
+      confirmLabel: confirmLabel,
+      onConfirm: onConfirm,
+    ),
+  );
+  return result ?? false;
+}
+
+class _DeleteConfirmDialog extends StatefulWidget {
+  const _DeleteConfirmDialog({
+    required this.title,
+    required this.message,
+    required this.cancelLabel,
+    required this.confirmLabel,
+    required this.onConfirm,
+  });
+
+  final String title;
+  final String message;
+  final String cancelLabel;
+  final String confirmLabel;
+  final Future<void> Function() onConfirm;
+
+  @override
+  State<_DeleteConfirmDialog> createState() => _DeleteConfirmDialogState();
+}
+
+class _DeleteConfirmDialogState extends State<_DeleteConfirmDialog> {
+  var _busy = false;
+  String? _error;
+
+  Future<void> _confirm() async {
+    if (_busy) {
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onConfirm();
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = friendlyError(error);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final inset = size.width < 360 ? 16.0 : 24.0;
+    return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(horizontal: inset, vertical: 24),
+      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(color: AppColors.dangerSoft, borderRadius: BorderRadius.circular(AppRadii.md)),
+            child: const Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+          ),
+          const SizedBox(height: 14),
+          Text(widget.title, maxLines: 2, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+      content: SizedBox(
+        width: AppLayout.dialogWidth(context),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.message, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted, height: 1.45)),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.danger)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context, false),
+          child: Text(widget.cancelLabel),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
+          onPressed: _busy ? null : _confirm,
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : Text(widget.confirmLabel),
+        ),
+      ],
+    );
+  }
 }
 
 Future<DateTimeRange?> pickInclusiveDateRange(

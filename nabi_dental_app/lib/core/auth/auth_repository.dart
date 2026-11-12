@@ -49,11 +49,6 @@ class AuthRepository {
     final user = UserProfile.fromJson(body['user'] as Map<String, dynamic>);
     final clinic = ClinicProfile.fromJson(body['clinic'] as Map<String, dynamic>);
     await _database.saveSnapshot(user: user, clinic: clinic);
-    try {
-      await _api.post('/api/v1/sync/bootstrap');
-    } catch (_) {
-      // Cached profile is enough to open the clinic; finance sync can catch up later.
-    }
     return (user, clinic);
   }
 

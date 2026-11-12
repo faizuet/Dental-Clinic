@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
+import '../../core/utils/phone.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
@@ -26,10 +28,13 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   final _search = TextEditingController();
   List<PatientRecord> _patients = [];
   bool _loading = true;
+  bool _syncing = false;
   bool _busy = false;
+  bool _deleting = false;
   bool _opening = false;
   String? _loadError;
   String? _message;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -39,6 +44,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -55,19 +61,31 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         .toList();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent) {
+  Future<void> _load({bool silent = false, bool force = false}) async {
+    if (!silent && _patients.isEmpty) {
       setState(() {
         _loading = true;
         _loadError = null;
       });
     }
+    final repo = ref.read(financeRepositoryProvider);
     try {
-      final items = await ref.read(financeRepositoryProvider).patients();
+      final local = await repo.patients();
+      if (mounted) {
+        setState(() {
+          _patients = local;
+          _loading = false;
+          _syncing = true;
+          _loadError = null;
+        });
+      }
+      await repo.refresh(force: force);
+      final items = await repo.patients();
       if (mounted) {
         setState(() {
           _patients = items;
           _loading = false;
+          _syncing = false;
         });
       }
     } catch (error) {
@@ -75,6 +93,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;
+          _syncing = false;
         });
       }
     }
@@ -161,33 +180,30 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   }
 
   Future<void> _delete(PatientRecord patient) async {
-    final ok = await showAppConfirmDialog(
-      context: context,
-      title: 'Delete this patient?',
-      message: '${patient.name} will be removed from the patient list. Existing treatments stay linked to this record.',
-      confirmLabel: 'Delete',
-      destructive: true,
-      icon: Icons.delete_outline_rounded,
-    );
-    await _afterDialog();
-    if (!mounted || ok != true) {
+    if (_busy || _deleting) {
       return;
     }
-    setState(() => _busy = true);
+    _deleting = true;
     try {
-      await ref.read(financeRepositoryProvider).deletePatient(patient);
-      await _load(silent: true);
-      if (mounted) {
-        showAppSnack(context, 'Patient deleted.');
+      final ok = await showAppDeleteDialog(
+        context: context,
+        title: 'Delete Patient?',
+        message:
+            'Are you sure you want to delete ${patient.name}? This action will remove the patient from the active patient list. Associated payment history will be preserved.',
+        confirmLabel: 'Delete Patient',
+        onConfirm: () => ref.read(financeRepositoryProvider).deletePatient(patient),
+      );
+      if (!mounted || !ok) {
+        return;
       }
-    } catch (error) {
-      if (mounted) {
-        setState(() => _message = friendlyError(error));
-      }
+      setState(() {
+        _patients = [for (final item in _patients) if (item.id != patient.id) item];
+        _message = null;
+      });
+      ref.read(financeEpochProvider.notifier).state++;
+      showAppSnack(context, 'Patient deleted successfully.');
     } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
+      _deleting = false;
     }
   }
 
@@ -343,7 +359,14 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                       icon: const Icon(Icons.arrow_forward_rounded),
                     ),
                   ),
-                  onChanged: (_) => setState(() {}),
+                  onChanged: (_) {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(const Duration(milliseconds: 160), () {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    });
+                  },
                 ),
               ),
               if (_message != null)
@@ -351,13 +374,13 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                   padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 0, AppLayout.horizontalPadding(context), 8),
                   child: ErrorBanner(message: _message!),
                 ),
-              if (_busy)
+              if (_busy || _syncing)
                 const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: AppStateSwitch(
-                  child: _loading
+                  child: _loading && _patients.isEmpty
                       ? const Center(key: ValueKey('patients-loading'), child: SkeletonCards())
-                      : _loadError != null
+                      : _patients.isEmpty && _loadError != null
                           ? Center(
                               key: const ValueKey('patients-error'),
                               child: EmptyState(
@@ -480,7 +503,15 @@ class _PatientFormDialogState extends State<_PatientFormDialog> {
               TextFormField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Phone number'),
+                inputFormatters: pakistaniMobileInputFormatters,
+                maxLength: 11,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                decoration: const InputDecoration(
+                  labelText: 'Phone number',
+                  hintText: '03XXXXXXXXX',
+                  counterText: '',
+                ),
+                validator: validateOptionalPakistaniMobile,
                 onFieldSubmitted: (_) => _submit(),
               ),
             ],

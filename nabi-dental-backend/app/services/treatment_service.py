@@ -162,6 +162,7 @@ class TreatmentService:
     async def delete_patient(self, user: User, patient_id: uuid.UUID, version: int) -> None:
         record = await self.get_patient(user, patient_id)
         ensure_version(record, version)
+        # Soft-delete only. Treatment/payment rows keep patient_id and stay in history.
         record.soft_delete()
         await self.session.flush()
         return record

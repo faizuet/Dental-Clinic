@@ -32,31 +32,48 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   DateTime? _customTo;
   ClinicTotals? _totals;
   bool _loading = true;
+  bool _syncing = false;
   bool _online = true;
   String? _loadError;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _load(silent: true);
+      }
+    });
     _load();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent || _totals == null) {
+  Future<void> _load({bool silent = false, bool force = false}) async {
+    if (!silent && _totals == null) {
       setState(() {
         _loading = true;
         _loadError = null;
       });
     }
+    final repo = ref.read(financeRepositoryProvider);
+    final range = DateRange.forPeriod(_period, customFrom: _customFrom, customTo: _customTo);
     try {
-      final online = await ref.read(financeRepositoryProvider).refresh();
-      final range = DateRange.forPeriod(_period, customFrom: _customFrom, customTo: _customTo);
-      final totals = await ref.read(financeRepositoryProvider).clinicTotals(range);
+      final local = await repo.clinicTotals(range);
+      if (mounted) {
+        setState(() {
+          _totals = local;
+          _loading = false;
+          _syncing = true;
+          _loadError = null;
+        });
+      }
+      final online = await repo.refresh(force: force);
+      final totals = await repo.clinicTotals(range);
       if (mounted) {
         setState(() {
           _online = online;
           _totals = totals;
           _loading = false;
+          _syncing = false;
         });
       }
     } catch (error) {
@@ -64,6 +81,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;
+          _syncing = false;
         });
       }
     }
@@ -82,13 +100,17 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
         isRoot: true,
         fallback: '/clinic',
         actions: [
-          IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _syncing ? null : () => _load(force: true),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
         ],
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 0, bottom: 8),
         child: RefreshIndicator(
-          onRefresh: _load,
+          onRefresh: () => _load(force: true),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
@@ -127,16 +149,20 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                   await _load();
                 },
               ),
+              if (_syncing) ...[
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(minHeight: 2),
+              ],
               if (_loadError != null) ...[
                 const SizedBox(height: 12),
-                StatusBanner.error(_loadError!, onRetry: _load),
+                StatusBanner.error(_loadError!, onRetry: () => _load(force: true)),
               ] else if (!_online) ...[
                 const SizedBox(height: 12),
-                StatusBanner.offline('Showing local records. Sync when you are back online.', onRetry: _load),
+                StatusBanner.offline('Showing local records. Sync when you are back online.', onRetry: () => _load(force: true)),
               ],
               const SizedBox(height: 16),
               AppStateSwitch(
-                child: _loading
+                child: _loading && totals == null
                     ? const SkeletonCards(key: ValueKey('clinic-skeleton'))
                     : totals == null
                         ? const EmptyState(key: ValueKey('clinic-empty'), message: 'No clinic totals yet.')

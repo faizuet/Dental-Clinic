@@ -112,9 +112,31 @@ class AppDatabase {
   }
 
   Future<void> upsertAll(String collection, List<Map<String, dynamic>> rows) async {
-    for (final row in rows) {
-      await upsert(collection, row);
+    if (rows.isEmpty) {
+      return;
     }
+    if (kIsWeb) {
+      for (final row in rows) {
+        await upsert(collection, row);
+      }
+      return;
+    }
+    final db = await instance;
+    final batch = db.batch();
+    for (final row in rows) {
+      final id = row['id'].toString();
+      batch.insert(
+        'kv',
+        {
+          'collection': collection,
+          'id': id,
+          'json': jsonEncode(row),
+          'deleted': row['deleted_at'] != null ? 1 : 0,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> upsert(String collection, Map<String, dynamic> row) async {
@@ -158,13 +180,25 @@ class AppDatabase {
   }
 
   Future<Map<String, dynamic>?> get(String collection, String id) async {
-    final rows = await list(collection, includeDeleted: true);
-    for (final row in rows) {
-      if (row['id'].toString() == id) {
-        return row;
+    if (kIsWeb) {
+      final row = _memory[collection]?[id];
+      if (row == null) {
+        return null;
       }
+      final copy = Map<String, dynamic>.from(row);
+      copy.remove('_deleted');
+      return copy;
     }
-    return null;
+    final db = await instance;
+    final rows = await db.query(
+      'kv',
+      where: 'collection = ? AND id = ?',
+      whereArgs: [collection, id],
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return jsonDecode(rows.first['json'] as String) as Map<String, dynamic>;
   }
 
   Future<void> markDeleted(String collection, String id) async {

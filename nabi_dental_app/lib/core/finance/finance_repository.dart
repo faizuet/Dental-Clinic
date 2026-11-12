@@ -13,6 +13,7 @@ import '../models/finance_models.dart';
 import '../security/device_id.dart';
 import '../utils/money.dart';
 import '../utils/period.dart';
+import '../utils/phone.dart';
 import 'construction_defaults.dart';
 
 const _collections = {
@@ -144,48 +145,87 @@ class FinanceRepository {
   final DeviceIdentity _device;
   static const _uuid = Uuid();
   final _serverCatalogIds = <String>{};
+  final _attachmentBytes = <String, List<int>>{};
+  Future<bool>? _refreshing;
+  static const _freshSync = Duration(seconds: 60);
+  static const _fullHydrateEvery = Duration(minutes: 15);
 
-  Future<bool> refresh() async {
+  Future<bool> refresh({bool force = false}) {
+    if (!force && _refreshing != null) {
+      return _refreshing!;
+    }
+    final future = _refreshNow(force: force);
+    _refreshing = future;
+    return future.whenComplete(() {
+      if (identical(_refreshing, future)) {
+        _refreshing = null;
+      }
+    });
+  }
+
+  Future<bool> _refreshNow({required bool force}) async {
     try {
       await pushPending();
+      if (!force && await _syncedRecently(_freshSync)) {
+        return true;
+      }
       final cursor = await _db.meta('sync_cursor');
+      var needsHydrate = force || cursor == null || await _clinicCacheEmpty();
       if (cursor == null) {
         await _bootstrap();
+        needsHydrate = true;
       } else {
         await _pull(cursor);
+        needsHydrate = needsHydrate || await _hydrateIsStale();
       }
-      await _hydrateRest();
-      await _decorateNames();
+      if (needsHydrate) {
+        await _hydrateRest();
+      }
       await _pruneDuplicateFinanceCatalogs();
-      await ensureConstructionCatalog();
+      await _pruneDuplicateMonthBudgets();
       await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
       await _db.setMeta('sync_state', 'synced');
       return true;
     } on OfflineException {
       await _db.setMeta('sync_state', 'offline');
       await _pruneDuplicateFinanceCatalogs();
-      await ensureConstructionCatalog();
       return false;
     } on AppException {
       try {
-        await _hydrateRest();
-        await _decorateNames();
+        if (force || await _clinicCacheEmpty()) {
+          await _hydrateRest();
+        }
         await _pruneDuplicateFinanceCatalogs();
-        await ensureConstructionCatalog();
         await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
         return true;
       } on OfflineException {
         await _db.setMeta('sync_state', 'offline');
         await _pruneDuplicateFinanceCatalogs();
-        await ensureConstructionCatalog();
         return false;
       } on AppException {
         await _db.setMeta('sync_state', 'failed');
         await _pruneDuplicateFinanceCatalogs();
-        await ensureConstructionCatalog();
         return false;
       }
     }
+  }
+
+  Future<bool> _syncedRecently(Duration maxAge) async {
+    final last = DateTime.tryParse(await _db.meta('last_sync') ?? '');
+    if (last == null) {
+      return false;
+    }
+    return DateTime.now().toUtc().difference(last.toUtc()) < maxAge;
+  }
+
+  Future<bool> _hydrateIsStale() async {
+    return !await _syncedRecently(_fullHydrateEvery);
+  }
+
+  Future<bool> _clinicCacheEmpty() async {
+    final treatments = await _db.list('treatments');
+    final patients = await _db.list('patients');
+    return treatments.isEmpty || patients.isEmpty;
   }
 
   Future<void> ensureConstructionCatalog() async {
@@ -372,7 +412,7 @@ class FinanceRepository {
       await _db.upsert(collection, conflict.server);
     }
     await _db.markDeleted('conflicts', conflict.id);
-    await refresh();
+    await refresh(force: true);
   }
 
   Future<List<CatalogItem>> treatments() async {
@@ -546,8 +586,8 @@ class FinanceRepository {
   }
 
   Future<ClinicTotals> clinicTotals(DateRange range) async {
-    final income = _sum(await incomeHistory(range: range));
-    final expenses = _sum(await clinicExpenseHistory(range: range));
+    final income = _sumRows(await _db.list('treatment_transactions'), range);
+    final expenses = _sumRows(await _db.list('clinic_expenses'), range);
     return ClinicTotals(
       income: moneyFromDouble(income),
       expenses: moneyFromDouble(expenses),
@@ -575,25 +615,26 @@ class FinanceRepository {
     );
   }
 
-  Future<List<PatientRecord>> patients({String? search}) async {
+  Future<List<PatientRecord>> patients({String? search, bool remote = false}) async {
     final needle = search?.trim();
+    if (!remote) {
+      return _localPatients(search: needle);
+    }
     try {
-      final remote = await _allPages(
-        '/api/v1/patients',
-        extra: {
-          'page_size': 100,
-          'sort': '-created_at',
-          if (needle != null && needle.isNotEmpty) 'search': needle,
-        },
-      );
-      await _replacePatients(remote);
-      final items = remote.map(PatientRecord.fromJson).toList();
+      final extra = {
+        'page_size': 100,
+        'sort': '-created_at',
+        if (needle != null && needle.isNotEmpty) 'search': needle,
+      };
+      final remoteRows = await _allPages('/api/v1/patients', extra: extra);
+      await _replacePatients(remoteRows);
+      final items = remoteRows.map(PatientRecord.fromJson).toList();
       _sortPatients(items);
       return items;
     } on OfflineException {
-      return await _localPatients(search: needle);
+      return _localPatients(search: needle);
     } on AppException {
-      return await _localPatients(search: needle);
+      return _localPatients(search: needle);
     }
   }
 
@@ -603,6 +644,10 @@ class FinanceRepository {
       throw const AppException('Enter the patient name.', code: 'VALIDATION_ERROR', statusCode: 400);
     }
     final phoneValue = phone?.trim();
+    final phoneError = validateOptionalPakistaniMobile(phoneValue);
+    if (phoneError != null) {
+      throw AppException(phoneError, code: 'VALIDATION_ERROR', statusCode: 400);
+    }
     final existing = await patients();
     for (final item in existing) {
       final sameName = item.name.toLowerCase() == trimmed.toLowerCase();
@@ -627,9 +672,14 @@ class FinanceRepository {
   }
 
   Future<PatientRecord> updatePatient(PatientRecord patient, {String? name, String? phone}) async {
+    final phoneValue = phone?.trim();
+    final phoneError = validateOptionalPakistaniMobile(phoneValue);
+    if (phoneError != null) {
+      throw AppException(phoneError, code: 'VALIDATION_ERROR', statusCode: 400);
+    }
     final patch = {
       if (name != null) 'name': name.trim(),
-      'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+      'phone': phoneValue == null || phoneValue.isEmpty ? null : phoneValue,
     };
     final response = await _api.patch(
       '/api/v1/patients/${patient.id}',
@@ -651,6 +701,19 @@ class FinanceRepository {
       id: patient.id,
       version: patient.version,
     );
+    await _snapshotDeletedPatient(patient);
+  }
+
+  Future<void> _snapshotDeletedPatient(PatientRecord patient) async {
+    final rows = await _db.list('treatment_transactions');
+    for (final row in rows) {
+      if (row['patient_id']?.toString() != patient.id) {
+        continue;
+      }
+      row['patient_name'] = patient.name;
+      row['patient_phone'] = patient.phone;
+      await _db.upsert('treatment_transactions', row);
+    }
   }
 
   Future<List<MoneyEntry>> incomeHistory({DateRange? range, String? search}) async {
@@ -658,40 +721,45 @@ class FinanceRepository {
     return _filterEntries(rows, range: range, search: search);
   }
 
-  Future<MoneyEntry?> treatmentById(String id) async {
-    try {
-      final response = await _api.get('/api/v1/treatment-transactions/$id');
-      final row = _asMap(response.data);
-      if (row != null) {
-        final named = (await _namedTransactions([row])).first;
-        await _db.upsert('treatment_transactions', named);
-        return MoneyEntry.fromJson(named);
-      }
-    } catch (_) {}
+  Future<MoneyEntry?> treatmentById(String id, {bool remote = false}) async {
+    if (remote) {
+      try {
+        final response = await _api.get('/api/v1/treatment-transactions/$id');
+        final row = _asMap(response.data);
+        if (row != null) {
+          final named = (await _namedTransactions([row])).first;
+          await _db.upsert('treatment_transactions', named);
+          return MoneyEntry.fromJson(named);
+        }
+      } catch (_) {}
+    }
     final local = await _db.get('treatment_transactions', id);
     return local == null ? null : MoneyEntry.fromJson(local);
   }
 
-  Future<PatientRecord?> patientById(String id) async {
-    try {
-      final response = await _api.get('/api/v1/patients/$id');
-      final row = _asMap(response.data);
-      if (row != null) {
-        await _db.upsert('patients', row);
-        return PatientRecord.fromJson(row);
-      }
-    } catch (_) {}
+  Future<PatientRecord?> patientById(String id, {bool remote = false}) async {
+    if (remote) {
+      try {
+        final response = await _api.get('/api/v1/patients/$id');
+        final row = _asMap(response.data);
+        if (row != null) {
+          await _db.upsert('patients', row);
+          return PatientRecord.fromJson(row);
+        }
+      } catch (_) {}
+    }
     final local = await _db.get('patients', id);
     return local == null ? null : PatientRecord.fromJson(local);
   }
 
-  Future<List<MoneyEntry>> patientTreatments(String patientId) async {
+  Future<List<MoneyEntry>> patientTreatments(String patientId, {bool remote = false}) async {
+    if (!remote) {
+      return _localPatientTreatments(patientId);
+    }
     try {
       final rows = await _allPages('/api/v1/patients/$patientId/treatments', extra: {'page_size': 100});
       final named = await _namedTransactions(rows);
-      for (final row in named) {
-        await _db.upsert('treatment_transactions', row);
-      }
+      await _db.upsertAll('treatment_transactions', named);
       return [for (final row in named) MoneyEntry.fromJson(row)];
     } on OfflineException {
       return _localPatientTreatments(patientId);
@@ -709,8 +777,17 @@ class FinanceRepository {
   }
 
   Future<List<int>> treatmentAttachmentBytes(String transactionId, String attachmentId) async {
+    final key = '$transactionId:$attachmentId';
+    final cached = _attachmentBytes[key];
+    if (cached != null) {
+      return cached;
+    }
     final response = await _api.getBytes('/api/v1/treatment-transactions/$transactionId/attachments/$attachmentId/file');
-    return response.data ?? <int>[];
+    final bytes = response.data ?? <int>[];
+    if (bytes.isNotEmpty) {
+      _attachmentBytes[key] = bytes;
+    }
+    return bytes;
   }
 
   Future<ResponseBytes> exportTreatment(String id) async {
@@ -1112,10 +1189,11 @@ class FinanceRepository {
     required String entityType,
     required MoneyEntry entry,
   }) async {
-    await _db.markDeleted(collection, entry.id);
     try {
       await _api.delete(path, query: {'version': entry.version});
+      await _db.markDeleted(collection, entry.id);
     } on OfflineException {
+      await _db.markDeleted(collection, entry.id);
       await _db.enqueueChange(
         clientChangeId: _uuid.v4(),
         entityType: entityType,
@@ -1443,10 +1521,11 @@ class FinanceRepository {
     required String id,
     required int version,
   }) async {
-    await _db.markDeleted(collection, id);
     try {
       await _api.delete(path, query: {'version': version});
+      await _db.markDeleted(collection, id);
     } on OfflineException {
+      await _db.markDeleted(collection, id);
       await _db.enqueueChange(
         clientChangeId: _uuid.v4(),
         entityType: entityType,
@@ -1712,8 +1791,20 @@ class FinanceRepository {
   }
 
   Future<void> _hydrateRest() async {
-    final treatments = await _allPages('/api/v1/treatments', extra: {'page_size': 100});
-    final treatmentCats = await _allPages('/api/v1/treatment-categories', extra: {'page_size': 100});
+    final pages = await Future.wait([
+      _allPages('/api/v1/treatments', extra: {'page_size': 100}),
+      _allPages('/api/v1/treatment-categories', extra: {'page_size': 100}),
+      _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100}),
+      _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': '-created_at'}),
+      _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'}),
+      _allPages('/api/v1/clinic-expenses', extra: {'page_size': 100, 'sort': '-expense_date'}),
+    ]);
+    final treatments = pages[0];
+    final treatmentCats = pages[1];
+    final clinicCats = pages[2];
+    final patients = pages[3];
+    final transactions = pages[4];
+    final clinicExpenses = pages[5];
     final catNames = {
       for (final item in treatmentCats) item['id'].toString(): item['name'].toString(),
     };
@@ -1726,42 +1817,19 @@ class FinanceRepository {
               })
           .toList(),
     );
-    final clinicCats = await _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100});
-    final homeCats = await _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100});
-    final patients = await _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': '-created_at'});
     await _db.upsertAll('treatment_categories', treatmentCats);
     await _db.upsertAll('clinic_expense_categories', clinicCats);
-    await _db.upsertAll('home_expense_categories', homeCats);
     await _replacePatients(patients);
-    await _db.upsertAll(
-      'treatment_transactions',
-      await _namedTransactions(await _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'})),
-    );
+    await _db.upsertAll('treatment_transactions', await _namedTransactions(transactions));
     await _db.upsertAll(
       'clinic_expenses',
-      await _namedExpenses(
-        await _allPages('/api/v1/clinic-expenses', extra: {'page_size': 100, 'sort': '-expense_date'}),
-        'clinic_expense_categories',
-      ),
+      await _namedExpenses(clinicExpenses, 'clinic_expense_categories'),
     );
-    await _db.upsertAll(
-      'home_expenses',
-      await _namedExpenses(
-        await _allPages('/api/v1/home-expenses', extra: {'page_size': 100, 'sort': '-expense_date'}),
-        'home_expense_categories',
-      ),
-    );
-    final budgets = await _allPages('/api/v1/home-budgets', extra: {'page_size': 100});
-    await _db.upsertAll('home_budgets', budgets);
-    await _hydrateConstruction();
     _serverCatalogIds
       ..addAll(treatments.map((item) => item['id'].toString()))
       ..addAll(treatmentCats.map((item) => item['id'].toString()))
       ..addAll(clinicCats.map((item) => item['id'].toString()))
-      ..addAll(homeCats.map((item) => item['id'].toString()))
-      ..addAll(patients.map((item) => item['id'].toString()))
-      ..addAll(budgets.map((item) => item['id'].toString()));
-    await _pruneDuplicateMonthBudgets();
+      ..addAll(patients.map((item) => item['id'].toString()));
   }
 
   Future<void> _hydrateConstruction() async {
@@ -1780,6 +1848,8 @@ class FinanceRepository {
     );
   }
 
+  // Kept for one-off repairs if local catalog names are missing after a partial sync.
+  // ignore: unused_element
   Future<void> _decorateNames() async {
     final treatmentNames = {for (final item in await treatments()) item.id: item.name};
     final clinicNames = {for (final item in await clinicExpenseCategories()) item.id: item.name};
@@ -1851,6 +1921,18 @@ class FinanceRepository {
   }
 
   Future<List<Map<String, dynamic>>> _namedTransactions(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) {
+      return rows;
+    }
+    final needsNames = rows.any((row) {
+      final named = (row['catalog_name']?.toString() ?? '').isNotEmpty;
+      final hasPatient = row['patient_id'] != null && row['patient_id'].toString().isNotEmpty;
+      final patientNamed = (row['patient_name']?.toString() ?? '').isNotEmpty;
+      return !named || (hasPatient && !patientNamed);
+    });
+    if (!needsNames) {
+      return rows;
+    }
     final items = await treatments();
     final names = {for (final item in items) item.id: item.name};
     final categories = {for (final item in items) item.id: item.categoryName};
@@ -1936,6 +2018,19 @@ class FinanceRepository {
   }
 
   double _sum(List<MoneyEntry> entries) => entries.fold(0, (sum, entry) => sum + moneyToDouble(entry.amount));
+
+  double _sumRows(List<Map<String, dynamic>> rows, DateRange range) {
+    var total = 0.0;
+    for (final row in rows) {
+      final raw = (row['transaction_date'] ?? row['expense_date'] ?? row['date'] ?? '').toString();
+      final date = raw.length >= 10 ? raw.substring(0, 10) : raw;
+      if (!range.containsIso(date)) {
+        continue;
+      }
+      total += moneyToDouble(row['amount']?.toString() ?? '0');
+    }
+    return total;
+  }
 
   List<NamedAmount> _materialSpend(List<ConstructionPurchase> items) {
     final quantities = <String, double>{};
@@ -2100,3 +2195,5 @@ final financeRepositoryProvider = Provider((ref) {
     device: ref.watch(deviceIdentityProvider),
   );
 });
+
+final financeEpochProvider = StateProvider<int>((ref) => 0);

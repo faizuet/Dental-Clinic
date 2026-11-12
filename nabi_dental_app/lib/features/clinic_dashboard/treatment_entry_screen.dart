@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
+import '../../core/utils/phone.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -73,7 +75,6 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
 
   Future<void> _bootstrap() async {
     try {
-      await ref.read(financeRepositoryProvider).refresh();
       final repo = ref.read(financeRepositoryProvider);
       final treatments = await repo.treatments();
       final patients = await repo.patients();
@@ -82,7 +83,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       if (_editing) {
         visit = await repo.treatmentById(widget.visitId!);
         if (visit != null) {
-          lines = await _seedsFromVisit(repo, visit, treatments);
+          lines = await _seedsFromVisit(repo, visit, treatments, loadBytes: false);
         }
       }
       if (!mounted) {
@@ -114,6 +115,13 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
           _refreshTotal();
         }
       });
+      if (visit != null) {
+        final withImages = await _seedsFromVisit(repo, visit, treatments);
+        if (mounted) {
+          setState(() => _lines = withImages);
+        }
+      }
+      unawaited(_refreshCatalogs());
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -124,17 +132,39 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     }
   }
 
+  Future<void> _refreshCatalogs() async {
+    final repo = ref.read(financeRepositoryProvider);
+    try {
+      await repo.refresh();
+      final treatments = await repo.treatments();
+      final patients = await repo.patients();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _treatments = treatments;
+        _patients = patients;
+        if (_patient != null && _patients.every((item) => item.id != _patient!.id)) {
+          _patients = [_patient!, ..._patients];
+        }
+      });
+    } catch (_) {}
+  }
+
   Future<List<TreatmentLineSeed>> _seedsFromVisit(
     FinanceRepository repo,
     MoneyEntry visit,
-    List<CatalogItem> treatments,
-  ) async {
+    List<CatalogItem> treatments, {
+    bool loadBytes = true,
+  }) async {
     final images = <String, TreatmentLineXray>{};
     for (final attachment in visit.attachments) {
       var bytes = Uint8List(0);
-      try {
-        bytes = Uint8List.fromList(await repo.treatmentAttachmentBytes(visit.id, attachment.id));
-      } catch (_) {}
+      if (loadBytes) {
+        try {
+          bytes = Uint8List.fromList(await repo.treatmentAttachmentBytes(visit.id, attachment.id));
+        } catch (_) {}
+      }
       images[attachment.id] = TreatmentLineXray(
         bytes: bytes,
         filename: attachment.originalName ?? 'xray.jpg',
@@ -635,7 +665,7 @@ class _AddPatientDialog extends StatefulWidget {
 class _AddPatientDialogState extends State<_AddPatientDialog> {
   late final TextEditingController _name;
   final _phone = TextEditingController();
-  String? _nameError;
+  final _formKey = GlobalKey<FormState>();
 
   @override
   void initState() {
@@ -648,6 +678,13 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
     _name.dispose();
     _phone.dispose();
     super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState?.validate() != true) {
+      return;
+    }
+    Navigator.pop(context, (name: _name.text.trim(), phone: _phone.text.trim()));
   }
 
   @override
@@ -674,43 +711,52 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
       ),
       content: SizedBox(
         width: AppLayout.dialogWidth(context),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _name,
-                textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  labelText: 'Patient name',
-                  prefixIcon: const Icon(Icons.person_outline_rounded),
-                  errorText: _nameError,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _name,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: const InputDecoration(
+                    labelText: 'Patient name',
+                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  ),
+                  autofocus: true,
+                  validator: (value) {
+                    if (value == null || value.trim().length < 2) {
+                      return 'Enter the patient name.';
+                    }
+                    return null;
+                  },
+                  onFieldSubmitted: (_) => _submit(),
                 ),
-                autofocus: true,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _phone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined)),
-              ),
-            ],
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _phone,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: pakistaniMobileInputFormatters,
+                  maxLength: 11,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone number',
+                    hintText: '03XXXXXXXXX',
+                    prefixIcon: Icon(Icons.phone_outlined),
+                    counterText: '',
+                  ),
+                  validator: validateOptionalPakistaniMobile,
+                  onFieldSubmitted: (_) => _submit(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            final name = _name.text.trim();
-            if (name.length < 2) {
-              setState(() => _nameError = 'Enter the patient name.');
-              return;
-            }
-            Navigator.pop(context, (name: name, phone: _phone.text.trim()));
-          },
-          child: const Text('Save'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Save')),
       ],
     );
   }

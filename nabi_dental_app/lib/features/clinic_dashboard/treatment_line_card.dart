@@ -10,6 +10,7 @@ import '../../core/media/clinic_image_picker.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/app_layout.dart';
+import '../../core/widgets/app_memory_image.dart';
 
 class TreatmentLineXray {
   TreatmentLineXray({required this.bytes, required this.filename, this.id, this.label = 'before'});
@@ -360,7 +361,7 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
       title: 'Selected image',
       content: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.memory(item.bytes, fit: BoxFit.contain, height: 280),
+        child: AppMemoryImage(bytes: item.bytes, height: 280, fit: BoxFit.contain),
       ),
       actions: (dialogContext) => [
         TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
@@ -702,7 +703,7 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
                               height: 56,
                               child: Icon(Icons.image_not_supported_outlined, color: AppColors.muted),
                             )
-                          : Image.memory(_xrays[i].bytes, width: 56, height: 56, fit: BoxFit.cover),
+                          : AppMemoryImage(bytes: _xrays[i].bytes, width: 56, height: 56),
                     ),
                     title: _xrays[i].isSaved
                         ? Text(_xrays[i].label.replaceAll('_', ' '))

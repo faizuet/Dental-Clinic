@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +13,7 @@ import '../../core/utils/money.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
+import '../../core/widgets/app_memory_image.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
 
@@ -41,30 +40,39 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (_entry == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final repo = ref.read(financeRepositoryProvider);
-      final entry = await repo.treatmentById(widget.id);
+      var entry = await repo.treatmentById(widget.id);
       if (entry == null) {
         throw Exception('Treatment was not found.');
-      }
-      final images = <String, List<int>>{};
-      for (final attachment in entry.attachments) {
-        try {
-          images[attachment.id] = await repo.treatmentAttachmentBytes(entry.id, attachment.id);
-        } catch (_) {}
       }
       if (mounted) {
         setState(() {
           _entry = entry;
-          _images
-            ..clear()
-            ..addAll(images);
           _loading = false;
         });
+      }
+      entry = await repo.treatmentById(widget.id, remote: true) ?? entry;
+      if (mounted) {
+        setState(() => _entry = entry);
+      }
+      for (final attachment in entry.attachments) {
+        if (_images.containsKey(attachment.id)) {
+          continue;
+        }
+        try {
+          final bytes = await repo.treatmentAttachmentBytes(entry.id, attachment.id);
+          if (!mounted) {
+            return;
+          }
+          setState(() => _images[attachment.id] = bytes);
+        } catch (_) {}
       }
     } catch (error) {
       if (mounted) {
@@ -309,8 +317,10 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                       )
                     : Padding(
                         padding: const EdgeInsets.all(8),
-                        child: Image.memory(
-                          Uint8List.fromList(bytes),
+                        child: AppMemoryImage(
+                          bytes: bytes,
+                          width: frameWidth - 16,
+                          height: frameHeight - 16,
                           fit: BoxFit.contain,
                           filterQuality: FilterQuality.medium,
                         ),
@@ -344,8 +354,10 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
           borderRadius: BorderRadius.circular(AppRadii.sm),
           child: ColoredBox(
             color: AppColors.inputFill,
-            child: Image.memory(
-              Uint8List.fromList(bytes),
+            child: AppMemoryImage(
+              bytes: bytes,
+              width: 420,
+              height: 320,
               fit: BoxFit.contain,
               filterQuality: FilterQuality.medium,
             ),

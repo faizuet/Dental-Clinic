@@ -45,6 +45,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   List<NamedAmount> _expenseBreakdown = [];
   List<NamedAmount> _timeline = [];
   bool _loading = true;
+  bool _syncing = false;
   bool _exporting = false;
   String? _exportFormat;
   String? _loadError;
@@ -54,11 +55,39 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _load(silent: true);
+      }
+    });
     _load();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent) {
+  Future<void> _apply(FinanceRepository repo) async {
+    final income = await repo.incomeHistory(range: _range);
+    final expenses = await repo.clinicExpenseHistory(range: _range);
+    final incomeTotal = income.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    final expenseTotal = expenses.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    final byTreatment = await repo.breakdown(income);
+    final byCategory = await repo.breakdown(expenses);
+    final incomeTimeline = await repo.timeline(income);
+    final expenseTimeline = await repo.timeline(expenses);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _income = moneyFromDouble(incomeTotal);
+      _expenses = moneyFromDouble(expenseTotal);
+      _profit = moneyFromDouble(incomeTotal - expenseTotal);
+      _incomeBreakdown = byTreatment;
+      _expenseBreakdown = byCategory;
+      _timeline = [...incomeTimeline, ...expenseTimeline];
+      _loading = false;
+    });
+  }
+
+  Future<void> _load({bool silent = false, bool force = false}) async {
+    if (!silent && _incomeBreakdown.isEmpty && _expenseBreakdown.isEmpty) {
       setState(() {
         _loading = true;
         _loadError = null;
@@ -66,30 +95,21 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     }
     try {
       final repo = ref.read(financeRepositoryProvider);
-      await repo.refresh();
-      final totals = await repo.clinicTotals(_range);
-      final income = await repo.incomeHistory(range: _range);
-      final expenses = await repo.clinicExpenseHistory(range: _range);
-      final byTreatment = await repo.breakdown(income);
-      final byCategory = await repo.breakdown(expenses);
-      final incomeTimeline = await repo.timeline(income);
-      final expenseTimeline = await repo.timeline(expenses);
+      await _apply(repo);
       if (mounted) {
-        setState(() {
-          _income = totals.income;
-          _expenses = totals.expenses;
-          _profit = totals.profit;
-          _incomeBreakdown = byTreatment;
-          _expenseBreakdown = byCategory;
-          _timeline = [...incomeTimeline, ...expenseTimeline];
-          _loading = false;
-        });
+        setState(() => _syncing = true);
+      }
+      await repo.refresh(force: force);
+      await _apply(repo);
+      if (mounted) {
+        setState(() => _syncing = false);
       }
     } catch (error) {
       if (mounted) {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;
+          _syncing = false;
         });
       }
     }
@@ -140,7 +160,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
         child: RefreshIndicator(
-          onRefresh: _load,
+          onRefresh: () => _load(force: true),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
@@ -168,8 +188,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 12),
+              if (_syncing) ...[
+                const LinearProgressIndicator(minHeight: 2),
+                const SizedBox(height: 12),
+              ],
               if (_loadError != null) ...[
-                StatusBanner.error(_loadError!, onRetry: _load),
+                StatusBanner.error(_loadError!, onRetry: () => _load(force: true)),
                 const SizedBox(height: 12),
               ],
               AppStateSwitch(

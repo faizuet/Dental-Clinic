@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -56,7 +57,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   DateTime? _from;
   DateTime? _to;
   bool _loading = true;
+  bool _syncing = false;
+  bool _deleting = false;
   String? _loadError;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -66,25 +70,40 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _search.dispose();
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent || _items.isEmpty) {
+  Future<void> _load({bool silent = false, bool network = true, bool force = false}) async {
+    if (!silent && _items.isEmpty) {
       setState(() {
         _loading = true;
         _loadError = null;
       });
     }
+    final repo = ref.read(financeRepositoryProvider);
+    final range = _from == null || _to == null ? null : DateRange(from: _from!, to: _to!, period: FinancePeriod.custom);
     try {
-      await ref.read(financeRepositoryProvider).refresh();
-      final range = _from == null || _to == null ? null : DateRange(from: _from!, to: _to!, period: FinancePeriod.custom);
-      final items = await widget.loader(ref.read(financeRepositoryProvider), range: range, search: _search.text);
+      final local = await widget.loader(repo, range: range, search: _search.text);
+      if (mounted) {
+        setState(() {
+          _items = local;
+          _loading = false;
+          _syncing = network;
+          _loadError = null;
+        });
+      }
+      if (!network) {
+        return;
+      }
+      await repo.refresh(force: force);
+      final items = await widget.loader(repo, range: range, search: _search.text);
       if (mounted) {
         setState(() {
           _items = items;
           _loading = false;
+          _syncing = false;
         });
       }
     } catch (error) {
@@ -92,6 +111,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;
+          _syncing = false;
         });
       }
     }
@@ -109,25 +129,67 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     await _load();
   }
 
+  ({String title, String message, String confirm, String success}) get _deleteCopy {
+    switch (widget.entityType) {
+      case 'treatment_transaction':
+        return (
+          title: 'Delete Treatment?',
+          message:
+              'Are you sure you want to delete this treatment record? The fee will be removed from clinic income. The patient record will be kept.',
+          confirm: 'Delete Treatment',
+          success: 'Treatment deleted successfully.',
+        );
+      case 'clinic_expense':
+        return (
+          title: 'Delete Clinic Expense?',
+          message: 'Are you sure you want to delete this clinic expense? This action cannot be undone.',
+          confirm: 'Delete Expense',
+          success: 'Clinic expense deleted successfully.',
+        );
+      case 'home_expense':
+        return (
+          title: 'Delete Home Expense?',
+          message: 'Are you sure you want to delete this home expense? This action cannot be undone.',
+          confirm: 'Delete Expense',
+          success: 'Home expense deleted successfully.',
+        );
+      default:
+        return (
+          title: 'Delete Record?',
+          message: 'Are you sure you want to delete this record? This action cannot be undone.',
+          confirm: 'Delete',
+          success: 'Record deleted successfully.',
+        );
+    }
+  }
+
   Future<void> _delete(MoneyEntry entry) async {
-    final ok = await showAppConfirmDialog(
-      context: context,
-      title: 'Delete this record?',
-      message: 'This entry will be removed from the list and synced when you are online.',
-      confirmLabel: 'Delete',
-      destructive: true,
-      icon: Icons.delete_outline_rounded,
-    );
-    if (ok != true) {
+    if (_deleting) {
       return;
     }
-    await ref.read(financeRepositoryProvider).deleteEntry(
-          collection: widget.collection,
-          path: widget.deletePath(entry.id),
-          entityType: widget.entityType,
-          entry: entry,
-        );
-    await _load(silent: true);
+    _deleting = true;
+    final copy = _deleteCopy;
+    final ok = await showAppDeleteDialog(
+      context: context,
+      title: copy.title,
+      message: copy.message,
+      confirmLabel: copy.confirm,
+      onConfirm: () => ref.read(financeRepositoryProvider).deleteEntry(
+            collection: widget.collection,
+            path: widget.deletePath(entry.id),
+            entityType: widget.entityType,
+            entry: entry,
+          ),
+    );
+    _deleting = false;
+    if (!mounted || !ok) {
+      return;
+    }
+    setState(() {
+      _items = [for (final item in _items) if (item.id != entry.id) item];
+    });
+    ref.read(financeEpochProvider.notifier).state++;
+    showAppSnack(context, copy.success);
   }
 
   Future<void> _open(MoneyEntry entry) async {
@@ -136,7 +198,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     }
     await widget.onOpen!(context, entry);
     if (mounted) {
-      await _load(silent: true);
+      await _load(silent: true, network: false);
     }
   }
 
@@ -144,7 +206,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (widget.onEdit != null) {
       await widget.onEdit!(context, entry);
       if (mounted) {
-        await _load(silent: true);
+        await _load(silent: true, network: false);
       }
       return;
     }
@@ -233,7 +295,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (mounted) {
       showAppSnack(context, message);
     }
-    await _load(silent: true);
+    await _load(silent: true, network: false);
   }
 
   String _subtitle(MoneyEntry item) {
@@ -487,13 +549,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     prefixIcon: const Icon(Icons.search_rounded),
                     suffixIcon: IconButton(
                       tooltip: 'Search',
-                      onPressed: _load,
+                      onPressed: () => _load(network: false),
                       icon: const Icon(Icons.arrow_forward_rounded),
                     ),
                   ),
-                  onSubmitted: (_) => _load(),
+                  onSubmitted: (_) => _load(network: false),
+                  onChanged: (_) {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(const Duration(milliseconds: 160), () {
+                      if (mounted) {
+                        _load(silent: true, network: false);
+                      }
+                    });
+                  },
                 ),
               ),
+              if (_syncing) const LinearProgressIndicator(minHeight: 2),
               if (_from != null && _to != null)
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: AppLayout.horizontalPadding(context)),
@@ -518,9 +589,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               Expanded(
                 child: AppStateSwitch(
-                  child: _loading
+                  child: _loading && _items.isEmpty
                     ? const Center(key: ValueKey('history-loading'), child: SkeletonCards())
-                    : _loadError != null
+                    : _items.isEmpty && _loadError != null
                         ? Center(
                             key: const ValueKey('history-error'),
                             child: EmptyState(
@@ -541,7 +612,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                           )
                         : RefreshIndicator(
-                            onRefresh: _load,
+                            onRefresh: () => _load(force: true),
                             child: AppLayout.isDesktop(context)
                                 ? _desktopTable(currency)
                                 : ListView.builder(

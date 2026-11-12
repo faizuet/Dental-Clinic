@@ -39,10 +39,20 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
 
   Future<void> _load() async {
     final repo = ref.read(financeRepositoryProvider);
-    await repo.refresh();
-    final categories = await repo.treatmentCategories();
-    final treatments = await repo.treatments();
-    final clinic = await repo.clinicExpenseCategories();
+    var categories = await repo.treatmentCategories();
+    var treatments = await repo.treatments();
+    var clinic = await repo.clinicExpenseCategories();
+    if (mounted) {
+      setState(() {
+        _categories = categories;
+        _treatments = treatments;
+        _clinic = clinic;
+      });
+    }
+    await repo.refresh(force: true);
+    categories = await repo.treatmentCategories();
+    treatments = await repo.treatments();
+    clinic = await repo.clinicExpenseCategories();
     if (mounted) {
       setState(() {
         _categories = categories;

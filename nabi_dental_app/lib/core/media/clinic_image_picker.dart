@@ -56,7 +56,11 @@ String sniffImageContentType(List<int> bytes, String filename) {
 
 Future<ClinicPickedImage?> pickClinicImage({bool fromCamera = false}) async {
   if (fromCamera && clinicCameraAvailable) {
-    final picked = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 92);
+    final picked = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      maxWidth: 1600,
+      imageQuality: 80,
+    );
     if (picked == null) {
       return null;
     }

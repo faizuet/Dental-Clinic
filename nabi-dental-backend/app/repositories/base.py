@@ -21,7 +21,7 @@ class BaseRepository:
         return result.all()
 
     async def paginate(self, stmt: Select[Any], *, page: int, page_size: int) -> tuple[Sequence[Any], int]:
-        count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
+        count_stmt = stmt.order_by(None).with_only_columns(func.count(), maintain_column_froms=True)
         total = int(await self.session.scalar(count_stmt) or 0)
         items = (await self.session.scalars(stmt.offset((page - 1) * page_size).limit(page_size))).all()
         return items, total

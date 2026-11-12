@@ -178,7 +178,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _retrySync() async {
     setState(() => _busy = true);
-    await ref.read(financeRepositoryProvider).refresh();
+    await ref.read(financeRepositoryProvider).refresh(force: true);
     await _loadExtras();
     ref.invalidate(pendingCountProvider);
     if (mounted) {
