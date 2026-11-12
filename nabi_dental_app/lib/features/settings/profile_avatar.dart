@@ -55,10 +55,12 @@ class ProfileAvatar extends StatelessWidget {
               )
             : null,
         image: image == null ? null : DecorationImage(image: image, fit: BoxFit.cover),
-        border: Border.all(color: AppColors.card, width: 3),
-        boxShadow: const [
-          BoxShadow(color: AppColors.overlay, blurRadius: 8, offset: Offset(0, 2)),
-        ],
+        border: Border.all(color: AppColors.card, width: size <= 40 ? 2 : 3),
+        boxShadow: size <= 40
+            ? const []
+            : const [
+                BoxShadow(color: AppColors.overlay, blurRadius: 8, offset: Offset(0, 2)),
+              ],
       ),
       alignment: Alignment.center,
       child: image == null

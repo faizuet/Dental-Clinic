@@ -7,6 +7,7 @@ class AppColors {
   static const Color secondary = Color(0xFF5AA0FF);
   static const Color secondarySoft = Color(0xFFEDF5FF);
   static const Color background = Color(0xFFF3F7FF);
+  static const Color sidebar = Color(0xFFE7F0FA);
   static const Color surface = Color(0xFFFFFFFF);
   static const Color card = Color(0xFFFFFFFF);
   static const Color text = Color(0xFF1B2430);
@@ -28,6 +29,8 @@ class AppColors {
   static const Color pinkSoft = secondarySoft;
   static const Color teal = Color(0xFF3D8BFF);
   static const Color tealSoft = Color(0xFFEAF3FF);
+  static const Color lavenderSoft = Color(0xFFF0EDFA);
+  static const Color mintSoft = Color(0xFFE6F5EC);
 }
 
 class AppSpacing {

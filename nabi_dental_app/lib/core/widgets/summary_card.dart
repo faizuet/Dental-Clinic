@@ -10,17 +10,27 @@ class SummaryCard extends StatelessWidget {
     required this.label,
     required this.value,
     this.color = AppColors.primary,
+    this.background,
     this.icon,
   });
 
   final String label;
   final String value;
   final Color color;
+  final Color? background;
   final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Card(
+      color: background,
+      elevation: background == null ? null : 0,
+      shape: background == null
+          ? null
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              side: const BorderSide(color: AppColors.border),
+            ),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Row(
@@ -30,7 +40,7 @@ class SummaryCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
+                  color: background == null ? color.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(AppRadii.sm),
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -45,7 +55,10 @@ class SummaryCard extends StatelessWidget {
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.muted,
+                          fontWeight: background == null ? null : FontWeight.w600,
+                        ),
                   ),
                   const SizedBox(height: 6),
                   AnimatedSwitcher(
@@ -54,7 +67,9 @@ class SummaryCard extends StatelessWidget {
                       value,
                       key: ValueKey(value),
                       align: TextAlign.left,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: background == null
+                          ? Theme.of(context).textTheme.titleLarge
+                          : Theme.of(context).textTheme.headlineSmall,
                       color: color,
                     ),
                   ),
@@ -77,6 +92,7 @@ class ActionCard extends StatelessWidget {
     required this.onTap,
     this.color = AppColors.primary,
     this.soft = AppColors.primarySoft,
+    this.background,
   });
 
   final String title;
@@ -85,11 +101,20 @@ class ActionCard extends StatelessWidget {
   final VoidCallback onTap;
   final Color color;
   final Color soft;
+  final Color? background;
 
   @override
   Widget build(BuildContext context) {
     return AppPressScale(
       child: Card(
+      color: background,
+      elevation: background == null ? null : 0,
+      shape: background == null
+          ? null
+          : RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              side: const BorderSide(color: AppColors.border),
+            ),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.lg),
         splashColor: color.withValues(alpha: 0.10),
@@ -102,7 +127,10 @@ class ActionCard extends StatelessWidget {
               Container(
                 width: 52,
                 height: 52,
-                decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(AppRadii.md)),
+                decoration: BoxDecoration(
+                  color: background == null ? soft : Colors.white.withValues(alpha: 0.72),
+                  borderRadius: BorderRadius.circular(AppRadii.md),
+                ),
                 child: Icon(icon, color: color, size: 26),
               ),
               const SizedBox(width: 14),

@@ -31,6 +31,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   DateTime? _customFrom;
   DateTime? _customTo;
   ClinicTotals? _totals;
+  int _patientCount = 0;
   bool _loading = true;
   bool _syncing = false;
   bool _online = true;
@@ -58,9 +59,11 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
     final range = DateRange.forPeriod(_period, customFrom: _customFrom, customTo: _customTo);
     try {
       final local = await repo.clinicTotals(range);
+      final localCounts = await _counts(repo);
       if (mounted) {
         setState(() {
           _totals = local;
+          _patientCount = localCounts;
           _loading = false;
           _syncing = true;
           _loadError = null;
@@ -68,10 +71,12 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       }
       final online = await repo.refresh(force: force);
       final totals = await repo.clinicTotals(range);
+      final counts = await _counts(repo);
       if (mounted) {
         setState(() {
           _online = online;
           _totals = totals;
+          _patientCount = counts;
           _loading = false;
           _syncing = false;
         });
@@ -182,21 +187,31 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                                 minItemWidth: 240,
                                 children: [
                                   SummaryCard(
-                                    label: 'Income',
-                                    value: formatMoney(totals.income, currency: currency),
-                                    color: AppColors.success,
-                                    icon: Icons.trending_up_rounded,
+                                    label: 'Total patients',
+                                    value: '$_patientCount',
+                                    color: AppColors.primary,
+                                    background: AppColors.lavenderSoft,
+                                    icon: Icons.people_outline_rounded,
                                   ),
                                   SummaryCard(
-                                    label: 'Clinic expenses',
+                                    label: 'Total payments',
+                                    value: formatMoney(totals.income, currency: currency),
+                                    color: AppColors.success,
+                                    background: AppColors.mintSoft,
+                                    icon: Icons.payments_outlined,
+                                  ),
+                                  SummaryCard(
+                                    label: 'Total clinic expenses',
                                     value: formatMoney(totals.expenses, currency: currency),
-                                    color: AppColors.danger,
-                                    icon: Icons.trending_down_rounded,
+                                    color: AppColors.warning,
+                                    background: AppColors.warningSoft,
+                                    icon: Icons.receipt_long_outlined,
                                   ),
                                   SummaryCard(
                                     label: moneyToDouble(totals.profit) < 0 ? 'Loss' : 'Profit',
                                     value: formatMoney(totals.profit, currency: currency),
-                                    color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.purple,
+                                    color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.primary,
+                                    background: moneyToDouble(totals.profit) < 0 ? AppColors.dangerSoft : AppColors.tealSoft,
                                     icon: Icons.account_balance_wallet_outlined,
                                   ),
                                 ],
@@ -256,26 +271,32 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                     title: 'Patients',
                     subtitle: 'Registered names, phone numbers, and records',
                     icon: Icons.people_outline_rounded,
+                    color: AppColors.primary,
+                    background: AppColors.lavenderSoft,
                     onTap: () => appPushAndRefresh(context, '/clinic/patients', () => _load(silent: true)),
                   ),
                   ActionCard(
                     title: 'Treatment history',
                     subtitle: 'Patient visits, X-rays, and treatment fees',
                     icon: Icons.history_rounded,
+                    color: AppColors.primaryDark,
+                    background: AppColors.primarySoft,
                     onTap: () => appPushAndRefresh(context, '/clinic/income/history', () => _load(silent: true)),
                   ),
                   ActionCard(
                     title: 'Expense history',
                     subtitle: 'Review clinic spending by category',
                     icon: Icons.list_alt_rounded,
-                    color: AppColors.pink,
-                    soft: AppColors.pinkSoft,
+                    color: AppColors.warning,
+                    background: AppColors.warningSoft,
                     onTap: () => appPushAndRefresh(context, '/clinic/expenses/history', () => _load(silent: true)),
                   ),
                   ActionCard(
                     title: 'Reports and exports',
                     subtitle: 'Breakdowns, timeline, PDF and Excel',
                     icon: Icons.picture_as_pdf_outlined,
+                    color: AppColors.success,
+                    background: AppColors.mintSoft,
                     onTap: () => appPushAndRefresh(context, '/clinic/reports', () => _load(silent: true)),
                   ),
                 ],
@@ -285,6 +306,11 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
         ),
       ),
     );
+  }
+
+  Future<int> _counts(FinanceRepository repo) async {
+    final patients = await repo.patients();
+    return patients.length;
   }
 
   static final ButtonStyle _primaryActionStyle = FilledButton.styleFrom(

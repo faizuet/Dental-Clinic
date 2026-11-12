@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../auth/session_controller.dart';
+import '../../features/settings/profile_avatar.dart';
 import 'app_layout.dart';
 import 'app_navigation.dart';
 import 'brand_header.dart';
@@ -122,6 +123,7 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
           drawer: showSidebar
               ? null
               : Drawer(
+                  backgroundColor: AppColors.sidebar,
                   child: SafeArea(
                     child: _Sidebar(
                       extended: true,
@@ -131,6 +133,10 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
                       onSelect: (path) {
                         Navigator.of(context).pop();
                         _open(path);
+                      },
+                      onProfile: () {
+                        Navigator.of(context).pop();
+                        context.go('/settings/profile');
                       },
                     ),
                   ),
@@ -144,8 +150,9 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
                   userName: name,
                   location: _location,
                   onSelect: _open,
+                  onProfile: () => context.go('/settings/profile'),
                 ),
-                const VerticalDivider(width: 1),
+                const VerticalDivider(width: 1, color: AppColors.border),
               ],
               Expanded(child: widget.child),
             ],
@@ -163,6 +170,7 @@ class _Sidebar extends StatelessWidget {
     required this.userName,
     required this.location,
     required this.onSelect,
+    required this.onProfile,
   });
 
   final bool extended;
@@ -170,6 +178,7 @@ class _Sidebar extends StatelessWidget {
   final String userName;
   final String location;
   final ValueChanged<String> onSelect;
+  final VoidCallback onProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -177,7 +186,7 @@ class _Sidebar extends StatelessWidget {
     return AnimatedContainer(
       duration: AppMotion.fast,
       width: extended ? 248 : 84,
-      color: AppColors.card,
+      color: AppColors.sidebar,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -226,43 +235,39 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: AppColors.border),
           Padding(
-            padding: EdgeInsets.fromLTRB(extended ? 16 : 12, 12, extended ? 16 : 12, 16),
-            child: extended
-                ? Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: AppColors.primarySoft,
-                        foregroundColor: AppColors.primary,
-                        child: Text(
-                          userName.trim().isEmpty ? 'N' : userName.trim()[0].toUpperCase(),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          userName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall,
-                        ),
-                      ),
-                    ],
-                  )
-                : Center(
-                    child: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AppColors.primarySoft,
-                      foregroundColor: AppColors.primary,
-                      child: Text(
-                        userName.trim().isEmpty ? 'N' : userName.trim()[0].toUpperCase(),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
+            padding: EdgeInsets.fromLTRB(extended ? 8 : 8, 8, extended ? 8 : 8, 12),
+            child: Tooltip(
+              message: 'Open profile',
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                  onTap: onProfile,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(extended ? 8 : 4, 8, extended ? 8 : 4, 8),
+                    child: extended
+                        ? Row(
+                            children: [
+                              SessionAvatar(size: 40, onTap: onProfile),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  userName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                              ),
+                            ],
+                          )
+                        : Center(child: SessionAvatar(size: 40, onTap: onProfile)),
                   ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -287,8 +292,11 @@ class _NavTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? AppColors.primary : AppColors.muted;
     final tile = Material(
-      color: selected ? AppColors.primarySoft : Colors.transparent,
-      borderRadius: BorderRadius.circular(AppRadii.sm),
+      color: selected ? AppColors.card : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        side: selected ? const BorderSide(color: AppColors.border) : BorderSide.none,
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.sm),
         onTap: onTap,
