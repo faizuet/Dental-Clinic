@@ -27,6 +27,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   List<PatientRecord> _patients = [];
   bool _loading = true;
   bool _busy = false;
+  bool _opening = false;
   String? _loadError;
   String? _message;
 
@@ -81,6 +82,40 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
 
   Future<void> _afterDialog() async {
     await Future<void>.delayed(const Duration(milliseconds: 220));
+  }
+
+  Future<void> _openRecord(PatientRecord patient) async {
+    if (_opening || _busy) {
+      return;
+    }
+    _opening = true;
+    try {
+      await appPush(context, '/clinic/patients/${patient.id}');
+      if (mounted) {
+        await _load(silent: true);
+      }
+    } finally {
+      _opening = false;
+    }
+  }
+
+  Widget _patientName(PatientRecord patient, {int? maxLines}) {
+    return Tooltip(
+      message: 'Double-click to open this patient record',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: () => _openRecord(patient),
+          child: Text(
+            patient.name,
+            maxLines: maxLines ?? 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _savePatient({PatientRecord? existing}) async {
@@ -189,12 +224,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                           DataCell(
                             SizedBox(
                               width: 240,
-                              child: Text(
-                                items[index].name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
+                              child: _patientName(items[index]),
                             ),
                           ),
                           DataCell(Text(items[index].phone ?? '—')),
@@ -248,7 +278,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                 foregroundColor: AppColors.primary,
                 child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
-              title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: _patientName(item, maxLines: 1),
               subtitle: Text(
                 [
                   if (item.phone != null) item.phone,

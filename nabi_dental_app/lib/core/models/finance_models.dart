@@ -61,6 +61,40 @@ class CatalogItem {
       };
 }
 
+CatalogItem? findCatalogMatch(
+  List<CatalogItem> catalog, {
+  String? id,
+  String? name,
+}) {
+  if (id != null && id.isNotEmpty) {
+    for (final item in catalog) {
+      if (item.id == id) {
+        return item;
+      }
+    }
+  }
+  final needle = name?.trim().toLowerCase();
+  if (needle != null && needle.isNotEmpty) {
+    for (final item in catalog) {
+      if (item.name.trim().toLowerCase() == needle) {
+        return item;
+      }
+    }
+  }
+  return null;
+}
+
+List<CatalogItem> uniqueCatalogById(List<CatalogItem> items, {CatalogItem? selected}) {
+  final unique = <String, CatalogItem>{};
+  for (final item in items) {
+    unique[item.id] = item;
+  }
+  if (selected != null) {
+    unique.putIfAbsent(selected.id, () => selected);
+  }
+  return unique.values.toList();
+}
+
 Map<String, dynamic> jsonMap(Object? value) {
   if (value is Map<String, dynamic>) {
     return value;
@@ -143,6 +177,14 @@ class TreatmentAttachment {
       byteSize: jsonInt(json['byte_size']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'transaction_id': transactionId,
+        'label': label,
+        'original_name': originalName,
+        'byte_size': byteSize,
+      };
 }
 
 class MoneyEntry {
@@ -235,6 +277,7 @@ class MoneyEntry {
         'category_name': categoryName,
         'details': details,
         'details_text': detailsText,
+        'attachments': [for (final item in attachments) item.toJson()],
       };
 }
 

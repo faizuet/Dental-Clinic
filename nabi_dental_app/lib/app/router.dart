@@ -8,6 +8,7 @@ import '../features/authentication/splash_screen.dart';
 import '../features/clinic_dashboard/clinic_dashboard_screen.dart';
 import '../features/clinic_dashboard/expense_entry_screen.dart';
 import '../features/clinic_dashboard/history_screen.dart';
+import '../features/clinic_dashboard/patient_record_screen.dart';
 import '../features/clinic_dashboard/patients_screen.dart';
 import '../features/clinic_dashboard/reports_screen.dart';
 import '../features/clinic_dashboard/treatment_detail_screen.dart';
@@ -54,8 +55,22 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           appRoute('/clinic', () => const ClinicDashboardScreen()),
           appRoute('/clinic/patients', () => const PatientsScreen()),
+          GoRoute(
+            path: '/clinic/patients/:id',
+            pageBuilder: (context, state) => buildAppPage(
+              state,
+              PatientRecordScreen(patientId: state.pathParameters['id']!),
+            ),
+          ),
           appRoute('/clinic/income', () => const TreatmentEntryScreen()),
           appRoute('/clinic/income/history', () => const TreatmentHistoryScreen()),
+          GoRoute(
+            path: '/clinic/income/:id/edit',
+            pageBuilder: (context, state) => buildAppPage(
+              state,
+              TreatmentEntryScreen(visitId: state.pathParameters['id']!),
+            ),
+          ),
           GoRoute(
             path: '/clinic/income/:id',
             pageBuilder: (context, state) => buildAppPage(state, TreatmentDetailScreen(id: state.pathParameters['id']!)),

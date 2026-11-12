@@ -3,13 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/dental/tooth_catalog.dart';
-import '../../core/dental/xray_validation.dart';
 import '../../core/errors/app_exception.dart';
 import '../../core/errors/friendly_error.dart';
-import '../../core/media/clinic_image_picker.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
@@ -18,50 +17,42 @@ import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
-import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/summary_card.dart';
-
-class _PendingXray {
-  _PendingXray({required this.bytes, required this.filename});
-
-  final Uint8List bytes;
-  final String filename;
-  String label = 'before';
-}
+import 'treatment_line_card.dart';
 
 class TreatmentEntryScreen extends ConsumerStatefulWidget {
-  const TreatmentEntryScreen({super.key});
+  const TreatmentEntryScreen({super.key, this.visitId});
+
+  final String? visitId;
 
   @override
   ConsumerState<TreatmentEntryScreen> createState() => _TreatmentEntryScreenState();
 }
 
 class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
+  static const _uuid = Uuid();
+
   DateTime _date = DateTime.now();
   List<CatalogItem> _treatments = [];
   List<PatientRecord> _patients = [];
   PatientRecord? _patient;
-  TreatmentFamily? _family;
-  CatalogItem? _treatment;
-  String? _tooth;
-  final _teeth = <String>[];
-  String _material = 'PFM';
-  String _arch = 'upper';
-  String _scope = 'full mouth';
-  final _amount = TextEditingController();
-  final _notes = TextEditingController();
-  final _length = TextEditingController();
-  final _units = TextEditingController(text: '1');
-  final _canals = TextEditingController(text: '3');
-  final _teethCount = TextEditingController();
-  final _partial = TextEditingController();
-  final _otherMaterial = TextEditingController();
   final _patientSearch = TextEditingController();
-  final _xrays = <_PendingXray>[];
+  final _lineKeys = <String, GlobalKey<TreatmentLineCardState>>{};
+  List<TreatmentLineSeed> _lines = [TreatmentLineSeed(id: _uuid.v4())];
+  MoneyEntry? _visit;
+  bool _ready = false;
+  bool _changed = false;
   bool _busy = false;
   bool _patientBusy = false;
   String? _error;
+  String _totalAmount = '0.00';
+
+  bool get _editing => widget.visitId != null && widget.visitId!.isNotEmpty;
+
+  GlobalKey<TreatmentLineCardState> _keyFor(String id) {
+    return _lineKeys.putIfAbsent(id, GlobalKey<TreatmentLineCardState>.new);
+  }
 
   @override
   void initState() {
@@ -69,85 +60,201 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     _bootstrap();
   }
 
+  @override
+  void setState(VoidCallback fn) {
+    final wasReady = _ready;
+    super.setState(() {
+      fn();
+      if (wasReady && _editing) {
+        _changed = true;
+      }
+    });
+  }
+
   Future<void> _bootstrap() async {
-    await ref.read(financeRepositoryProvider).refresh();
-    final repo = ref.read(financeRepositoryProvider);
-    final treatments = await repo.treatments();
-    final patients = await repo.patients();
-    if (mounted) {
+    try {
+      await ref.read(financeRepositoryProvider).refresh();
+      final repo = ref.read(financeRepositoryProvider);
+      final treatments = await repo.treatments();
+      final patients = await repo.patients();
+      MoneyEntry? visit;
+      var lines = [TreatmentLineSeed(id: _uuid.v4())];
+      if (_editing) {
+        visit = await repo.treatmentById(widget.visitId!);
+        if (visit != null) {
+          lines = await _seedsFromVisit(repo, visit, treatments);
+        }
+      }
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _treatments = treatments;
         _patients = patients;
+        _lines = lines;
+        _visit = visit;
+        if (visit != null) {
+          _date = DateTime.tryParse(visit.date) ?? DateTime.now();
+          if (visit.patientId != null) {
+            final matches = _patients.where((item) => item.id == visit!.patientId);
+            _patient = matches.isEmpty
+                ? PatientRecord(id: visit.patientId!, name: visit.displayPatientName, phone: visit.patientPhone)
+                : matches.first;
+            if (_patients.every((item) => item.id != _patient!.id)) {
+              _patients = [_patient!, ..._patients];
+            }
+          }
+        } else if (_editing) {
+          _error = 'This treatment record is not available.';
+        }
+        _ready = true;
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _refreshTotal();
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _error = friendlyError(error);
+        });
+      }
     }
+  }
+
+  Future<List<TreatmentLineSeed>> _seedsFromVisit(
+    FinanceRepository repo,
+    MoneyEntry visit,
+    List<CatalogItem> treatments,
+  ) async {
+    final images = <String, TreatmentLineXray>{};
+    for (final attachment in visit.attachments) {
+      var bytes = Uint8List(0);
+      try {
+        bytes = Uint8List.fromList(await repo.treatmentAttachmentBytes(visit.id, attachment.id));
+      } catch (_) {}
+      images[attachment.id] = TreatmentLineXray(
+        bytes: bytes,
+        filename: attachment.originalName ?? 'xray.jpg',
+        id: attachment.id,
+        label: attachment.label,
+      );
+    }
+    final assigned = <String>{};
+    final explicit = explicitVisitItems(visit.details);
+    final rawItems = explicit ??
+        [
+          {
+            ...visit.details,
+            'treatment_id': visit.catalogId,
+            'treatment_name': visit.catalogName,
+            'category_name': visit.categoryName,
+            'amount': visit.amount,
+            'notes': visit.notes,
+            'attachment_ids': [for (final item in visit.attachments) item.id],
+          },
+        ];
+    final seeds = <TreatmentLineSeed>[];
+    for (final item in rawItems) {
+      final lineId = item['id']?.toString() ?? _uuid.v4();
+      final treatmentId = item['treatment_id']?.toString() ?? visit.catalogId;
+      final treatmentName = item['treatment_name']?.toString() ?? item['sub_treatment']?.toString() ?? visit.catalogName;
+      final treatment = findCatalogMatch(
+            treatments,
+            id: treatmentId,
+            name: treatmentName,
+          ) ??
+          CatalogItem(
+            id: treatmentId,
+            name: treatmentName,
+            categoryName: item['category_name']?.toString() ?? visit.categoryName,
+          );
+      final attachmentIds = [
+        for (final value in item['attachment_ids'] is List ? item['attachment_ids'] as List : const []) value.toString(),
+      ];
+      final xrays = [
+        for (final id in attachmentIds)
+          if (images.containsKey(id)) images[id]!,
+      ];
+      assigned.addAll(attachmentIds);
+      seeds.add(
+        TreatmentLineSeed(
+          id: lineId,
+          treatment: treatment,
+          details: item,
+          amount: item['amount']?.toString() ?? (rawItems.length == 1 ? visit.amount : ''),
+          notes: item['notes']?.toString() ?? (rawItems.length == 1 ? visit.notes : null),
+          xrays: xrays,
+        ),
+      );
+    }
+    if (seeds.isEmpty) {
+      seeds.add(TreatmentLineSeed(id: _uuid.v4()));
+    }
+    final leftover = [
+      for (final attachment in visit.attachments)
+        if (!assigned.contains(attachment.id) && images.containsKey(attachment.id)) images[attachment.id]!,
+    ];
+    if (leftover.isNotEmpty) {
+      final first = seeds.first;
+      seeds[0] = TreatmentLineSeed(
+        id: first.id,
+        treatment: first.treatment,
+        details: first.details,
+        amount: first.amount,
+        notes: first.notes,
+        xrays: [...first.xrays, ...leftover],
+      );
+    }
+    return seeds;
   }
 
   @override
   void dispose() {
-    _amount.dispose();
-    _notes.dispose();
-    _length.dispose();
-    _units.dispose();
-    _canals.dispose();
-    _teethCount.dispose();
-    _partial.dispose();
-    _otherMaterial.dispose();
     _patientSearch.dispose();
     super.dispose();
   }
 
-  TreatmentKind get _kind {
-    final item = _treatment;
-    if (item == null) {
-      return TreatmentKind.general;
-    }
-    return kindOf(item.name, categoryName: item.categoryName);
-  }
-
-  List<CatalogItem> get _prostheticItems =>
-      _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.prosthetic).toList();
-
-  List<CatalogItem> get _perioItems =>
-      _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.perio).toList();
-
-  List<CatalogItem> get _generalItems =>
-      _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.general).toList();
-
-  List<CatalogItem> get _rctItems =>
-      _treatments.where((item) => familyOf(item.name, categoryName: item.categoryName) == TreatmentFamily.rct).toList();
-
-  CatalogItem? get _rctItem => _rctItems.isEmpty ? null : _rctItems.first;
-
   bool get _hasPatientInput => _patient != null || _patientSearch.text.trim().length >= 2;
 
-  bool get _canSave => _treatment != null && isValidMoney(_amount.text) && _hasPatientInput;
-
   bool get _dirty =>
-      _patient != null ||
-      _treatment != null ||
-      _amount.text.trim().isNotEmpty ||
-      _notes.text.trim().isNotEmpty ||
-      _xrays.isNotEmpty;
+      _editing
+          ? _changed
+          : _patient != null || _patientSearch.text.trim().isNotEmpty || _lines.length > 1;
 
-  void _selectFamily(TreatmentFamily? family) {
-    setState(() {
-      _family = family;
-      _treatment = switch (family) {
-        TreatmentFamily.rct => _rctItem,
-        TreatmentFamily.prosthetic => _prostheticItems.isEmpty ? null : _prostheticItems.first,
-        TreatmentFamily.perio => _perioItems.isEmpty ? null : _perioItems.first,
-        TreatmentFamily.general => null,
-        null => null,
-      };
-      _applyDefaultPrice();
+  List<TreatmentLineSnapshot> _snapshots() {
+    return [
+      for (final line in _lines)
+        if (_keyFor(line.id).currentState != null) _keyFor(line.id).currentState!.snapshot(),
+    ];
+  }
+
+  void _refreshTotal() {
+    final snapshots = _snapshots();
+    final total = snapshots.fold<double>(0, (sum, item) => sum + (isValidMoney(item.amount) ? moneyToDouble(item.amount) : 0));
+    setState(() => _totalAmount = moneyFromDouble(total));
+  }
+
+  void _addLine() {
+    setState(() => _lines = [..._lines, TreatmentLineSeed(id: _uuid.v4())]);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _refreshTotal();
+      }
     });
   }
 
-  void _applyDefaultPrice() {
-    final price = _treatment?.defaultPrice;
-    if (price != null && _amount.text.trim().isEmpty) {
-      _amount.text = price;
+  void _removeLine(String id) {
+    if (_lines.length <= 1) {
+      return;
     }
+    setState(() {
+      _lines = [for (final line in _lines) if (line.id != id) line];
+      _lineKeys.remove(id);
+    });
+    _refreshTotal();
   }
 
   Future<void> _addPatient({String? presetName}) async {
@@ -217,120 +324,44 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
     return _registerPatient(name: typed);
   }
 
-  Future<void> _pickXray({bool fromCamera = false}) async {
-    try {
-      final picked = await pickClinicImage(fromCamera: fromCamera);
-      if (picked == null) {
-        return;
-      }
-      final fileError = validateXrayFile(filename: picked.filename, byteLength: picked.bytes.length);
-      if (fileError != null) {
-        setState(() => _error = fileError);
-        return;
-      }
-      final imageError = await validateXrayImage(picked.bytes);
-      if (imageError != null) {
-        setState(() => _error = imageError);
-        return;
-      }
-      if (_xrays.length >= 8) {
-        setState(() => _error = 'A treatment can have at most 8 X-ray images.');
-        return;
-      }
-      setState(() {
-        _error = null;
-        _xrays.add(_PendingXray(bytes: picked.bytes, filename: picked.filename));
-      });
-    } catch (error) {
-      setState(() => _error = friendlyError(error, feature: 'upload'));
-    }
-  }
-
-  Future<void> _previewXray(_PendingXray item) async {
-    await showAppDialog<void>(
-      context: context,
-      title: 'Selected image',
-      content: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.memory(item.bytes, fit: BoxFit.contain, height: 280),
-      ),
-      actions: (dialogContext) => [
-        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Close')),
-      ],
-    );
-  }
-
-  Map<String, dynamic> _details() {
-    final kind = _kind;
-    final material = _material == 'Other' ? _otherMaterial.text.trim() : _material;
-    return switch (kind) {
-      TreatmentKind.rct => {
-          'kind': 'rct',
-          'tooth_number': _tooth,
-          'tooth_name': toothNameFor(_tooth),
-          'canals': int.tryParse(_canals.text) ?? 1,
-          'length_mm': _length.text.trim(),
-        },
-      TreatmentKind.crown => {
-          'kind': 'crown',
-          'tooth_number': _tooth,
-          'tooth_name': toothNameFor(_tooth),
-          'material': material,
-          'units': int.tryParse(_units.text) ?? 1,
-        },
-      TreatmentKind.bridge => {
-          'kind': 'bridge',
-          'tooth_numbers': List<String>.from(_teeth),
-          'tooth_names': [for (final tooth in _teeth) toothNameFor(tooth)].whereType<String>().toList(),
-          'material': material,
-          'units': int.tryParse(_units.text) ?? _teeth.length,
-        },
-      TreatmentKind.removableDenture => {
-          'kind': 'removable_denture',
-          'arch': _arch,
-          'partial_details': _partial.text.trim(),
-          'teeth_count': int.tryParse(_teethCount.text),
-          'material': material == 'PFM' ? null : material,
-        },
-      TreatmentKind.fullDenture => {
-          'kind': 'full_denture',
-          'arch': _arch,
-          'denture_type': _arch,
-        },
-      TreatmentKind.scaling => {
-          'kind': 'scaling',
-          'scope': _scope,
-        },
-      TreatmentKind.general => {
-          'kind': 'general',
-          if (_tooth != null) 'tooth_number': _tooth,
-          if (_tooth != null) 'tooth_name': toothNameFor(_tooth),
-        },
-    };
-  }
-
-  String? _validateClinical() {
-    return switch (_kind) {
-      TreatmentKind.rct when _tooth == null => 'Select the tooth for RCT.',
-      TreatmentKind.crown when _tooth == null => 'Select the tooth for the crown.',
-      TreatmentKind.bridge when _teeth.isEmpty => 'Select the teeth involved in the bridge.',
-      TreatmentKind.removableDenture || TreatmentKind.fullDenture when _arch.isEmpty => 'Select upper, lower, or both.',
-      _ => null,
-    };
-  }
-
   Future<void> _save() async {
-    if (_treatment == null || !isValidMoney(_amount.text)) {
-      setState(() => _error = 'Select a treatment and enter a fee greater than 0.');
+    final snapshots = _snapshots();
+    if (snapshots.length != _lines.length) {
+      setState(() => _error = 'Wait for every treatment to finish loading, then save again.');
       return;
     }
-    final clinicalError = _validateClinical();
-    if (clinicalError != null) {
-      setState(() => _error = clinicalError);
+    for (var index = 0; index < snapshots.length; index++) {
+      final error = snapshots[index].clinicalError;
+      if (error != null) {
+        setState(() => _error = 'Treatment ${index + 1}: $error');
+        return;
+      }
+    }
+    final seen = <String>{};
+    for (var index = 0; index < snapshots.length; index++) {
+      final item = snapshots[index];
+      final teeth = item.details['tooth_numbers'] is List
+          ? (item.details['tooth_numbers'] as List).join(',')
+          : item.details['tooth_number']?.toString() ?? '';
+      final key = '${item.treatment?.id}|$teeth';
+      if (!seen.add(key)) {
+        setState(() => _error = 'Treatment ${index + 1} is already on this record. Change the treatment or tooth.');
+        return;
+      }
+    }
+    final imageCount = snapshots.fold<int>(0, (sum, item) => sum + item.xrays.length);
+    if (imageCount > 24) {
+      setState(() => _error = 'A treatment record can have at most 24 X-ray images.');
       return;
     }
-    final patient = await _ensurePatient();
-    if (patient == null) {
+    PatientRecord? patient = _patient;
+    if (_hasPatientInput) {
+      patient = await _ensurePatient();
+      if (patient == null) {
+        return;
+      }
+    } else if (!_editing || _visit?.patientId != null) {
+      setState(() => _error = 'Select or add a patient before saving the treatment.');
       return;
     }
     setState(() {
@@ -338,32 +369,69 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
       _error = null;
     });
     try {
-      final details = _details();
-      details['sub_treatment'] = _treatment!.name;
-      final message = await ref.read(financeRepositoryProvider).saveTreatmentVisit(
-            date: DateFormat('yyyy-MM-dd').format(_date),
-            treatmentId: _treatment!.id,
-            amount: moneyFromDouble(moneyToDouble(_amount.text)),
-            patientId: patient.id,
-            patientName: patient.name,
-            patientPhone: patient.phone,
-            subTreatment: _treatment!.name,
-            details: details,
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            xrays: [
-              for (final item in _xrays) (bytes: item.bytes, filename: item.filename, label: item.label),
-            ],
-          );
+      final total = snapshots.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+      final items = [for (final item in snapshots) item.details];
+      final details = {
+        'kind': 'visit',
+        'items': items,
+      };
+      final names = [
+        for (final item in snapshots)
+          if (item.treatment?.name != null) item.treatment!.name,
+      ];
+      final uniqueNames = <String>[];
+      for (final name in names) {
+        if (!uniqueNames.contains(name)) {
+          uniqueNames.add(name);
+        }
+      }
+      final xrays = [
+        for (final item in snapshots)
+          for (final xray in item.xrays)
+            if (!xray.isSaved)
+              (bytes: xray.bytes, filename: xray.filename, label: xray.label, lineId: item.id),
+      ];
+      final removed = [
+        for (final item in snapshots) ...item.removedAttachmentIds,
+      ];
+      final notes = snapshots.map((item) => item.notes).whereType<String>().join(' | ');
+      final message = _editing
+          ? await ref.read(financeRepositoryProvider).updateTreatmentVisit(
+                entry: _visit!,
+                date: DateFormat('yyyy-MM-dd').format(_date),
+                treatmentId: snapshots.first.treatment!.id,
+                amount: moneyFromDouble(total),
+                patientId: patient?.id,
+                patientName: patient?.name,
+                patientPhone: patient?.phone,
+                subTreatment: uniqueNames.join(', '),
+                details: details,
+                notes: notes.isEmpty ? null : notes,
+                removeAttachmentIds: removed,
+                xrays: xrays,
+              )
+          : await ref.read(financeRepositoryProvider).saveTreatmentVisit(
+                date: DateFormat('yyyy-MM-dd').format(_date),
+                treatmentId: snapshots.first.treatment!.id,
+                amount: moneyFromDouble(total),
+                patientId: patient?.id,
+                patientName: patient?.name,
+                patientPhone: patient?.phone,
+                subTreatment: uniqueNames.join(', '),
+                details: details,
+                notes: notes.isEmpty ? null : notes,
+                xrays: xrays,
+              );
       if (mounted) {
         showAppSnack(context, message);
-        appPop(context, fallback: '/clinic');
+        appPop(context, fallback: _editing ? '/clinic/income/history' : '/clinic');
       }
     } catch (error) {
       if (error is AppException && error.code == 'IMAGE_UPLOAD_PARTIAL') {
         setState(() => _error = error.message);
         if (mounted) {
           showAppSnack(context, error.message, error: true);
-          appPop(context, fallback: '/clinic');
+          appPop(context, fallback: _editing ? '/clinic/income/history' : '/clinic');
         }
       } else {
         setState(() => _error = friendlyError(error, feature: 'upload'));
@@ -379,135 +447,85 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   Widget build(BuildContext context) {
     return AppDiscardScope(
       dirty: _dirty,
-      fallback: '/clinic',
+      fallback: _editing ? '/clinic/income/history' : '/clinic',
       child: Scaffold(
         appBar: buildAppBar(
           context: context,
-          title: 'New treatment',
-          fallback: '/clinic',
+          title: _editing ? 'Edit treatment' : 'New treatment',
+          fallback: _editing ? '/clinic/income/history' : '/clinic',
         ),
-        body: AppPageBody(
-          padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
-          child: ListView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
-            children: [
-              AppSplit(
-                primary: _patientCard(),
-                secondary: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+        body: !_ready
+            ? const Center(child: SkeletonCards(count: 2))
+            : AppPageBody(
+                padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
+                child: ListView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
                   children: [
-              DatePickerTile(
-                label: 'Treatment date',
-                value: formatDisplayDate(_date),
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _date,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now().add(const Duration(days: 30)),
-                  );
-                  if (picked != null) {
-                    setState(() => _date = picked);
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              _familyPicker(),
-              AppExpand(
-                child: _family == TreatmentFamily.rct && _rctItems.isNotEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: _catalogDropdown('Sub-treatment', _rctItems, _treatment, (value) {
-                          setState(() {
-                            _treatment = value;
-                            _applyDefaultPrice();
-                          });
-                        }),
-                      )
-                    : _family == TreatmentFamily.prosthetic
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: _catalogDropdown('Sub-treatment', _prostheticItems, _treatment, (value) {
-                          setState(() {
-                            _treatment = value;
-                            _applyDefaultPrice();
-                          });
-                        }),
-                      )
-                    : _family == TreatmentFamily.perio
-                        ? Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: _catalogDropdown('Sub-treatment', _perioItems, _treatment, (value) {
-                              setState(() {
-                                _treatment = value;
-                                _applyDefaultPrice();
-                              });
-                            }),
-                          )
-                        : _family == TreatmentFamily.general
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: _catalogDropdown('Sub-treatment', _generalItems, _treatment, (value) {
-                                  setState(() {
-                                    _treatment = value;
-                                    _applyDefaultPrice();
-                                  });
-                                }),
-                              )
-                            : const SizedBox.shrink(),
-              ),
-              AppExpand(
-                child: _treatment == null
-                    ? const SizedBox.shrink()
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const SizedBox(height: 16),
-                          Text('Clinical details', style: Theme.of(context).textTheme.titleMedium),
-                          const SizedBox(height: 8),
-                          ..._clinicalFields(),
-                          const SizedBox(height: 16),
-                          _xraySection(),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _amount,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: const InputDecoration(labelText: 'Treatment fee', prefixIcon: Icon(Icons.payments_outlined)),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _notes,
-                            textCapitalization: TextCapitalization.sentences,
-                            maxLines: 3,
-                            decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
-                          ),
-                        ],
+                    AppSplit(
+                      primary: _patientCard(),
+                      secondary: DatePickerTile(
+                        label: 'Treatment date',
+                        value: formatDisplayDate(_date),
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: context,
+                            initialDate: _date,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now().add(const Duration(days: 30)),
+                          );
+                          if (picked != null) {
+                            setState(() => _date = picked);
+                          }
+                        },
                       ),
-              ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text('Treatments', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add every treatment from this visit. Details stay with that tooth and treatment.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    for (var index = 0; index < _lines.length; index++) ...[
+                      TreatmentLineCard(
+                        key: _keyFor(_lines[index].id),
+                        seed: _lines[index],
+                        index: index,
+                        treatments: _treatments,
+                        canRemove: _lines.length > 1,
+                        onRemove: () => _removeLine(_lines[index].id),
+                        onChanged: _refreshTotal,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _addLine,
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Add another treatment'),
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      ErrorBanner(message: _error!),
+                    ],
+                    const SizedBox(height: 16),
+                    TotalBar(label: 'Total fee', value: formatMoney(_totalAmount)),
+                    const SizedBox(height: 12),
+                    Stretch(
+                      child: AppBusyButton(
+                        busy: _busy,
+                        busyLabel: 'Saving…',
+                        onPressed: _busy || (_editing && _visit == null) ? null : _save,
+                        label: _editing ? 'Save changes' : 'Save treatment',
+                      ),
+                    ),
                   ],
                 ),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                ErrorBanner(message: _error!),
-              ],
-              const SizedBox(height: 16),
-              TotalBar(label: 'Fee', value: formatMoney(isValidMoney(_amount.text) ? moneyFromDouble(moneyToDouble(_amount.text)) : '0.00')),
-              const SizedBox(height: 12),
-              Stretch(
-                child: AppBusyButton(
-                  busy: _busy,
-                  busyLabel: 'Saving…',
-                  onPressed: _busy || !_canSave ? null : _save,
-                  label: 'Save treatment',
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -537,7 +555,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                 onDeleted: () => setState(() => _patient = null),
               )
             else
-              const Text('Select a patient or add a new one. The treatment is saved under that patient name.'),
+              const Text('Select a patient or add a new one. Every treatment in this record is saved under that name.'),
             const SizedBox(height: 8),
             TextField(
               controller: _patientSearch,
@@ -601,260 +619,6 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _familyPicker() {
-    return DropdownButtonFormField<TreatmentFamily>(
-      initialValue: _family,
-      isExpanded: true,
-      decoration: const InputDecoration(labelText: 'Main treatment'),
-      items: [
-        if (_rctItem != null) const DropdownMenuItem(value: TreatmentFamily.rct, child: Text('RCT')),
-        if (_prostheticItems.isNotEmpty) const DropdownMenuItem(value: TreatmentFamily.prosthetic, child: Text('Prosthetic')),
-        if (_perioItems.isNotEmpty) const DropdownMenuItem(value: TreatmentFamily.perio, child: Text('Periodontal')),
-        if (_generalItems.isNotEmpty) const DropdownMenuItem(value: TreatmentFamily.general, child: Text('Other treatment')),
-      ],
-      onChanged: _selectFamily,
-    );
-  }
-
-  Widget _catalogDropdown(
-    String label,
-    List<CatalogItem> items,
-    CatalogItem? selected,
-    ValueChanged<CatalogItem?> onChanged,
-  ) {
-    return DropdownButtonFormField<String>(
-      initialValue: selected?.id,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: label),
-      items: [
-        for (final item in items)
-          DropdownMenuItem(
-            value: item.id,
-            child: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
-      ],
-      onChanged: (id) {
-        final match = items.where((item) => item.id == id);
-        onChanged(match.isEmpty ? null : match.first);
-      },
-    );
-  }
-
-  List<Widget> _clinicalFields() {
-    return switch (_kind) {
-      TreatmentKind.rct => [
-          _toothDropdown(single: true),
-          if (toothNameFor(_tooth) != null) ...[
-            const SizedBox(height: 12),
-            InputDecorator(
-              decoration: const InputDecoration(labelText: 'Tooth name'),
-              child: Text(toothNameFor(_tooth)!),
-            ),
-          ],
-          const SizedBox(height: 12),
-          TextField(
-            controller: _canals,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Number of canals'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _length,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Tooth / canal length (mm)'),
-          ),
-        ],
-      TreatmentKind.crown => [
-          _toothDropdown(single: true),
-          const SizedBox(height: 12),
-          _materialPicker(),
-          const SizedBox(height: 12),
-          TextField(controller: _units, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of units')),
-        ],
-      TreatmentKind.bridge => [
-          _toothDropdown(single: false),
-          const SizedBox(height: 12),
-          _materialPicker(),
-          const SizedBox(height: 12),
-          TextField(controller: _units, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of units')),
-        ],
-      TreatmentKind.removableDenture => [
-          _archPicker(),
-          const SizedBox(height: 12),
-          TextField(controller: _partial, decoration: const InputDecoration(labelText: 'Partial denture details')),
-          const SizedBox(height: 12),
-          TextField(controller: _teethCount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Number of teeth')),
-          const SizedBox(height: 12),
-          _materialPicker(includePfz: false),
-        ],
-      TreatmentKind.fullDenture => [_archPicker()],
-      TreatmentKind.scaling => [
-          DropdownButtonFormField<String>(
-            initialValue: _scope,
-            decoration: const InputDecoration(labelText: 'Scaling area'),
-            items: const [
-              DropdownMenuItem(value: 'full mouth', child: Text('Full mouth')),
-              DropdownMenuItem(value: 'upper', child: Text('Upper')),
-              DropdownMenuItem(value: 'lower', child: Text('Lower')),
-            ],
-            onChanged: (value) => setState(() => _scope = value ?? 'full mouth'),
-          ),
-        ],
-      TreatmentKind.general => const [],
-    };
-  }
-
-  Widget _toothDropdown({required bool single}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: single ? _tooth : null,
-          isExpanded: true,
-          decoration: InputDecoration(labelText: single ? 'Tooth number' : 'Add a tooth'),
-          items: [
-            for (final entry in toothQuadrants.entries)
-              for (final number in entry.value)
-                DropdownMenuItem(value: number, child: Text('#$number  ${toothNameFor(number)}')),
-          ],
-          onChanged: (value) {
-            if (value == null) {
-              return;
-            }
-            setState(() {
-              if (single) {
-                _tooth = value;
-              } else if (!_teeth.contains(value)) {
-                _teeth.add(value);
-                _units.text = '${_teeth.length}';
-              }
-            });
-          },
-        ),
-        if (!single && _teeth.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final tooth in _teeth)
-                Chip(
-                  label: Text('#$tooth'),
-                  onDeleted: () => setState(() {
-                    _teeth.remove(tooth);
-                    _units.text = '${_teeth.length}';
-                  }),
-                ),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _materialPicker({bool includePfz = true}) {
-    final options = [
-      if (includePfz) 'PFM',
-      'Zirconia',
-      'Other',
-    ];
-    return Column(
-      children: [
-        DropdownButtonFormField<String>(
-          initialValue: options.contains(_material) ? _material : options.first,
-          decoration: const InputDecoration(labelText: 'Material / type'),
-          items: [for (final item in options) DropdownMenuItem(value: item, child: Text(item))],
-          onChanged: (value) => setState(() => _material = value ?? options.first),
-        ),
-        if (_material == 'Other') ...[
-          const SizedBox(height: 12),
-          TextField(controller: _otherMaterial, decoration: const InputDecoration(labelText: 'Specify material')),
-        ],
-      ],
-    );
-  }
-
-  Widget _archPicker() {
-    return DropdownButtonFormField<String>(
-      initialValue: _arch,
-      decoration: const InputDecoration(labelText: 'Upper / Lower'),
-      items: const [
-        DropdownMenuItem(value: 'upper', child: Text('Upper')),
-        DropdownMenuItem(value: 'lower', child: Text('Lower')),
-        DropdownMenuItem(value: 'both', child: Text('Both')),
-      ],
-      onChanged: (value) => setState(() => _arch = value ?? 'upper'),
-    );
-  }
-
-  Widget _xraySection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Clinical images', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          'Attach a dental X-ray or intraoral photo from this computer.',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: () => _pickXray(),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('Choose image'),
-            ),
-            if (clinicCameraAvailable)
-              OutlinedButton.icon(
-                onPressed: () => _pickXray(fromCamera: true),
-                icon: const Icon(Icons.photo_camera_outlined),
-                label: const Text('Camera'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        AnimatedSize(
-          duration: AppMotion.of(context, AppMotion.medium),
-          curve: AppMotion.standard,
-          alignment: Alignment.topCenter,
-          child: Column(
-            children: [
-        for (var i = 0; i < _xrays.length; i++)
-          Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            child: ListTile(
-              onTap: () => _previewXray(_xrays[i]),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(_xrays[i].bytes, width: 56, height: 56, fit: BoxFit.cover),
-              ),
-              title: DropdownButton<String>(
-                value: _xrays[i].label,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'before', child: Text('Before')),
-                  DropdownMenuItem(value: 'working', child: Text('Working')),
-                  DropdownMenuItem(value: 'after', child: Text('After')),
-                  DropdownMenuItem(value: 'other', child: Text('Other')),
-                ],
-                onChanged: (value) => setState(() => _xrays[i].label = value ?? 'other'),
-              ),
-              trailing: IconButton(
-                tooltip: 'Remove',
-                onPressed: () => setState(() => _xrays.removeAt(i)),
-                icon: const Icon(Icons.close_rounded, color: AppColors.danger),
-              ),
-            ),
-          ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

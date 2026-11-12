@@ -31,6 +31,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
     required this.updatePath,
     required this.loader,
     this.onOpen,
+    this.onEdit,
     this.showPatient = false,
   });
 
@@ -42,6 +43,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String Function(String id) updatePath;
   final Future<List<MoneyEntry>> Function(FinanceRepository repo, {DateRange? range, String? search}) loader;
   final Future<void> Function(BuildContext context, MoneyEntry entry)? onOpen;
+  final Future<void> Function(BuildContext context, MoneyEntry entry)? onEdit;
   final bool showPatient;
 
   @override
@@ -139,6 +141,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Future<void> _edit(MoneyEntry entry) async {
+    if (widget.onEdit != null) {
+      await widget.onEdit!(context, entry);
+      if (mounted) {
+        await _load(silent: true);
+      }
+      return;
+    }
     final amount = TextEditingController(text: entry.amount);
     final notes = TextEditingController(text: entry.notes ?? '');
     DateTime date = DateTime.tryParse(entry.date) ?? DateTime.now();
@@ -247,6 +256,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   String _recordLabel(MoneyEntry item) {
+    final items = explicitVisitItems(item.details);
+    if (items != null && items.length > 1) {
+      final names = displaySubTreatment(details: item.details, catalogName: item.catalogName);
+      final extra = [
+        if (item.serialNo != null) '#${item.serialNo}',
+        '${items.length} treatments',
+        if (names != null) names,
+      ].join(' · ');
+      return extra;
+    }
     final extra = [
       if (item.serialNo != null) '#${item.serialNo}',
       if (item.subTreatment != null &&
@@ -287,7 +306,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           const SizedBox(height: 4),
                         ],
                         Text(
-                          item.catalogName,
+                          visitMainLabel(
+                            catalogName: item.catalogName,
+                            categoryName: item.categoryName,
+                            details: item.details,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: widget.showPatient
@@ -565,6 +588,9 @@ class TreatmentHistoryScreen extends StatelessWidget {
       showPatient: true,
       onOpen: (context, entry) async {
         await context.push('/clinic/income/${entry.id}');
+      },
+      onEdit: (context, entry) async {
+        await context.push('/clinic/income/${entry.id}/edit');
       },
     );
   }

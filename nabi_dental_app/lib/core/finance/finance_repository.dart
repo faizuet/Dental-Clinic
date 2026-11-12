@@ -518,9 +518,28 @@ class FinanceRepository {
       return;
     }
     for (final row in await _db.list(remapCollection)) {
+      var changed = false;
       final mapped = idMap[row[remapField]?.toString()];
       if (mapped != null) {
         row[remapField] = mapped;
+        changed = true;
+      }
+      if (remapCollection == 'treatment_transactions') {
+        final details = row['details'];
+        if (details is Map && details['items'] is List) {
+          for (final item in details['items']) {
+            if (item is Map) {
+              final nested = idMap[item['treatment_id']?.toString()];
+              if (nested != null) {
+                item['treatment_id'] = nested;
+                changed = true;
+              }
+            }
+          }
+          row['details'] = details;
+        }
+      }
+      if (changed) {
         await _db.upsert(remapCollection, row);
       }
     }
@@ -653,6 +672,42 @@ class FinanceRepository {
     return local == null ? null : MoneyEntry.fromJson(local);
   }
 
+  Future<PatientRecord?> patientById(String id) async {
+    try {
+      final response = await _api.get('/api/v1/patients/$id');
+      final row = _asMap(response.data);
+      if (row != null) {
+        await _db.upsert('patients', row);
+        return PatientRecord.fromJson(row);
+      }
+    } catch (_) {}
+    final local = await _db.get('patients', id);
+    return local == null ? null : PatientRecord.fromJson(local);
+  }
+
+  Future<List<MoneyEntry>> patientTreatments(String patientId) async {
+    try {
+      final rows = await _allPages('/api/v1/patients/$patientId/treatments', extra: {'page_size': 100});
+      final named = await _namedTransactions(rows);
+      for (final row in named) {
+        await _db.upsert('treatment_transactions', row);
+      }
+      return [for (final row in named) MoneyEntry.fromJson(row)];
+    } on OfflineException {
+      return _localPatientTreatments(patientId);
+    } on AppException {
+      return _localPatientTreatments(patientId);
+    }
+  }
+
+  Future<List<MoneyEntry>> _localPatientTreatments(String patientId) async {
+    final rows = await _namedTransactions(await _db.list('treatment_transactions'));
+    return [
+      for (final row in rows)
+        if (row['patient_id']?.toString() == patientId) MoneyEntry.fromJson(row),
+    ];
+  }
+
   Future<List<int>> treatmentAttachmentBytes(String transactionId, String attachmentId) async {
     final response = await _api.getBytes('/api/v1/treatment-transactions/$transactionId/attachments/$attachmentId/file');
     return response.data ?? <int>[];
@@ -667,6 +722,51 @@ class FinanceRepository {
     );
   }
 
+  Future<Map<String, dynamic>> _mergeLineAttachments({
+    required String transactionId,
+    required int version,
+    required Map<String, dynamic> details,
+    required Map<String, List<String>> uploadedByLine,
+  }) async {
+    if (uploadedByLine.isEmpty) {
+      return {'details': details, 'version': version};
+    }
+    final items = jsonMapList(details['items']);
+    if (items.isEmpty) {
+      return {'details': details, 'version': version};
+    }
+    var changed = false;
+    for (final item in items) {
+      final extra = uploadedByLine[item['id']?.toString()];
+      if (extra == null || extra.isEmpty) {
+        continue;
+      }
+      final current = [
+        for (final value in item['attachment_ids'] is List ? item['attachment_ids'] as List : const []) value.toString(),
+      ];
+      current.addAll(extra);
+      item['attachment_ids'] = current;
+      changed = true;
+    }
+    if (!changed) {
+      return {'details': details, 'version': version};
+    }
+    final next = {...details, 'items': items};
+    try {
+      final response = await _api.patch(
+        '/api/v1/treatment-transactions/$transactionId',
+        data: {'version': version, 'details': next},
+      );
+      final saved = _asMap(response.data);
+      return {
+        'details': saved != null && saved['details'] is Map ? Map<String, dynamic>.from(saved['details'] as Map) : next,
+        'version': saved == null ? version + 1 : jsonInt(saved['version'], fallback: version + 1),
+      };
+    } catch (_) {
+      return {'details': next, 'version': version};
+    }
+  }
+
   Future<String> saveTreatmentVisit({
     required String date,
     required String treatmentId,
@@ -677,7 +777,7 @@ class FinanceRepository {
     String? subTreatment,
     Map<String, dynamic>? details,
     String? notes,
-    List<({List<int> bytes, String filename, String label})> xrays = const [],
+    List<({List<int> bytes, String filename, String label, String? lineId})> xrays = const [],
   }) async {
     final resolvedTreatmentId = await _resolveCatalogId(
       collection: 'treatments',
@@ -707,6 +807,7 @@ class FinanceRepository {
       saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
       var failedImages = 0;
       Object? lastImageError;
+      final uploadedByLine = <String, List<String>>{};
       for (final xray in xrays) {
         final filename = clinicUploadFilename(xray.filename);
         try {
@@ -727,12 +828,25 @@ class FinanceRepository {
             final current = jsonMapList(saved['attachments']);
             current.add(attachment);
             saved['attachments'] = current;
+            final lineId = xray.lineId;
+            final attachmentId = attachment['id']?.toString();
+            if (lineId != null && attachmentId != null) {
+              uploadedByLine.putIfAbsent(lineId, () => []).add(attachmentId);
+            }
           }
         } catch (error) {
           failedImages += 1;
           lastImageError = error;
         }
       }
+      final merged = await _mergeLineAttachments(
+        transactionId: saved['id'].toString(),
+        version: jsonInt(saved['version'], fallback: 1),
+        details: saved['details'] is Map ? Map<String, dynamic>.from(saved['details'] as Map) : Map<String, dynamic>.from(details ?? {}),
+        uploadedByLine: uploadedByLine,
+      );
+      saved['details'] = merged['details'];
+      saved['version'] = merged['version'];
       await _db.upsert('treatment_transactions', saved);
       if (failedImages > 0) {
         final detail = lastImageError == null ? '' : ' ${friendlyError(lastImageError, feature: 'upload')}';
@@ -761,6 +875,136 @@ class FinanceRepository {
       return xrays.isEmpty
           ? 'Saved on this device and waiting to sync.'
           : 'Treatment saved on this device. Add X-rays again when you are online.';
+    }
+  }
+
+  Future<String> updateTreatmentVisit({
+    required MoneyEntry entry,
+    required String date,
+    required String treatmentId,
+    required String amount,
+    String? patientId,
+    String? patientName,
+    String? patientPhone,
+    String? subTreatment,
+    Map<String, dynamic>? details,
+    String? notes,
+    List<String> removeAttachmentIds = const [],
+    List<({List<int> bytes, String filename, String label, String? lineId})> xrays = const [],
+  }) async {
+    final resolvedTreatmentId = await _resolveCatalogId(
+      collection: 'treatments',
+      listPath: '/api/v1/treatments',
+      id: treatmentId,
+      extraKey: 'category_name',
+    );
+    final resolvedPatientId = await _resolvePatientId(patientId, name: patientName, phone: patientPhone);
+    final payload = {
+      'version': entry.version,
+      'treatment_id': resolvedTreatmentId,
+      'transaction_date': date,
+      'quantity': entry.quantity,
+      'amount': amount,
+      'notes': notes,
+      'patient_id': resolvedPatientId,
+      'sub_treatment': subTreatment,
+      'details': details ?? {},
+    };
+    final names = {for (final item in await treatments()) item.id: item.name};
+    try {
+      final response = await _api.patch('/api/v1/treatment-transactions/${entry.id}', data: payload);
+      final saved = _asMap(response.data) ?? {...entry.toJson(), ...payload, 'version': entry.version + 1};
+      saved['id'] = entry.id;
+      saved['serial_no'] = saved['serial_no'] ?? entry.serialNo;
+      saved['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? saved['treatment_name'] ?? entry.catalogName;
+      saved['sub_treatment'] = saved['sub_treatment'] ?? subTreatment;
+      saved['patient_name'] = saved['patient_name'] ?? patientName;
+      saved['patient_phone'] = saved['patient_phone'] ?? patientPhone;
+      final attachments = jsonMapList(saved['attachments']);
+      var failedImages = 0;
+      Object? lastImageError;
+      final uploadedByLine = <String, List<String>>{};
+      for (final attachmentId in removeAttachmentIds) {
+        try {
+          await _api.delete('/api/v1/treatment-transactions/${entry.id}/attachments/$attachmentId');
+          attachments.removeWhere((item) => item['id']?.toString() == attachmentId);
+        } catch (error) {
+          failedImages += 1;
+          lastImageError = error;
+        }
+      }
+      for (final xray in xrays) {
+        final filename = clinicUploadFilename(xray.filename);
+        try {
+          final form = FormData.fromMap({
+            'label': xray.label,
+            'file': MultipartFile.fromBytes(
+              xray.bytes,
+              filename: filename,
+              contentType: MediaType.parse(sniffImageContentType(xray.bytes, filename)),
+            ),
+          });
+          final uploaded = await _api.postMultipart(
+            '/api/v1/treatment-transactions/${entry.id}/attachments',
+            data: form,
+          );
+          final attachment = _asMap(uploaded.data);
+          if (attachment != null) {
+            attachments.add(attachment);
+            final lineId = xray.lineId;
+            final attachmentId = attachment['id']?.toString();
+            if (lineId != null && attachmentId != null) {
+              uploadedByLine.putIfAbsent(lineId, () => []).add(attachmentId);
+            }
+          }
+        } catch (error) {
+          failedImages += 1;
+          lastImageError = error;
+        }
+      }
+      saved['attachments'] = attachments;
+      final merged = await _mergeLineAttachments(
+        transactionId: entry.id,
+        version: jsonInt(saved['version'], fallback: entry.version + 1),
+        details: saved['details'] is Map ? Map<String, dynamic>.from(saved['details'] as Map) : Map<String, dynamic>.from(details ?? {}),
+        uploadedByLine: uploadedByLine,
+      );
+      saved['details'] = merged['details'];
+      saved['version'] = merged['version'];
+      await _db.upsert('treatment_transactions', saved);
+      if (failedImages > 0) {
+        final detail = lastImageError == null ? '' : ' ${friendlyError(lastImageError, feature: 'upload')}';
+        throw AppException(
+          failedImages == 1
+              ? 'Treatment updated, but one image change could not be saved.$detail'
+              : 'Treatment updated, but $failedImages image changes could not be saved.$detail',
+          code: 'IMAGE_UPLOAD_PARTIAL',
+        );
+      }
+      return 'Treatment updated.';
+    } on OfflineException {
+      final local = {
+        ...entry.toJson(),
+        ...payload,
+        'id': entry.id,
+        'catalog_name': names[resolvedTreatmentId] ?? names[treatmentId] ?? entry.catalogName,
+        'sub_treatment': subTreatment,
+        'patient_name': patientName,
+        'patient_phone': patientPhone,
+        'version': entry.version + 1,
+      };
+      await _db.upsert('treatment_transactions', local);
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'treatment_transaction',
+        entityId: entry.id,
+        operation: 'update',
+        payload: payload,
+        baseVersion: entry.version,
+      );
+      return xrays.isEmpty && removeAttachmentIds.isEmpty
+          ? 'Saved on this device and waiting to sync.'
+          : 'Treatment updated on this device. Add or remove X-rays again when you are online.';
     }
   }
 

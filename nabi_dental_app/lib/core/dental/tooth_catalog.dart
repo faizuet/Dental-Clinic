@@ -68,7 +68,7 @@ TreatmentFamily familyOf(String name, {String? categoryName}) {
 
 TreatmentKind kindOf(String name, {String? categoryName}) {
   final n = name.toLowerCase();
-  if (n.contains('rct') || n.contains('root canal')) {
+  if (n.contains('rct') || n.contains('root canal') || n.contains('obturation')) {
     return TreatmentKind.rct;
   }
   if (n.contains('bridge')) {
@@ -91,6 +91,71 @@ TreatmentKind kindOf(String name, {String? categoryName}) {
       : TreatmentKind.general;
 }
 
+const clinicTreatmentNames = <String>[
+  'Check Up / Consultation',
+  'Simple Extraction',
+  'Surgical Extraction',
+  'Root Canal Treatment (RCT)',
+  'Obturation (RCT)',
+  'Temporary Filling',
+  'Permanent Filling',
+  'Composite Filling',
+  'Scaling',
+  'Porcelain Bridge',
+  'Zirconia Crown',
+  'Braces Fresh',
+  'Braces Visits',
+  'Braces Retainer',
+  'Dental Gems',
+];
+
+int clinicTreatmentNumber(String name) {
+  final needle = name.trim().toLowerCase();
+  final index = clinicTreatmentNames.indexWhere((item) => item.toLowerCase() == needle);
+  return index < 0 ? 0 : index + 1;
+}
+
+int clinicTreatmentIndex(String name) {
+  final number = clinicTreatmentNumber(name);
+  return number == 0 ? 1000 : number;
+}
+
+bool isOfficialClinicTreatment(String name) => clinicTreatmentNumber(name) > 0;
+
+bool requiresToothSelection(String name) {
+  final kind = kindOf(name);
+  if (kind == TreatmentKind.rct || kind == TreatmentKind.crown) {
+    return true;
+  }
+  if (kind == TreatmentKind.bridge || kind == TreatmentKind.scaling) {
+    return false;
+  }
+  final n = name.toLowerCase();
+  if (n.contains('check') || n.contains('consult') || n.contains('braces')) {
+    return false;
+  }
+  return n.contains('extraction') || n.contains('filling') || n.contains('gem');
+}
+
+List<CatalogMatch> filterClinicTreatments(List<String> names, String query) {
+  final needle = query.trim().toLowerCase();
+  final results = <CatalogMatch>[];
+  for (var index = 0; index < names.length; index++) {
+    final name = names[index];
+    if (needle.isEmpty || name.toLowerCase().contains(needle)) {
+      results.add(CatalogMatch(number: index + 1, name: name));
+    }
+  }
+  return results;
+}
+
+class CatalogMatch {
+  const CatalogMatch({required this.number, required this.name});
+
+  final int number;
+  final String name;
+}
+
 String familyLabel(TreatmentFamily family) {
   return switch (family) {
     TreatmentFamily.rct => 'RCT',
@@ -109,6 +174,19 @@ String? displaySubTreatment({
   Map<String, dynamic> details = const {},
   String? catalogName,
 }) {
+  final items = explicitVisitItems(details);
+  if (items != null) {
+    final names = <String>[];
+    for (final item in items) {
+      final name = (item['sub_treatment'] ?? item['treatment_name'] ?? catalogName)?.toString().trim();
+      if (name != null && name.isNotEmpty && !names.contains(name)) {
+        names.add(name);
+      }
+    }
+    if (names.isNotEmpty) {
+      return names.join(', ');
+    }
+  }
   final fromField = subTreatment?.trim();
   if (fromField != null && fromField.isNotEmpty) {
     return fromField;
@@ -124,7 +202,45 @@ String? displaySubTreatment({
   return null;
 }
 
+List<Map<String, dynamic>>? explicitVisitItems(Map<String, dynamic> details) {
+  final raw = details['items'];
+  if (raw is! List) {
+    return null;
+  }
+  final items = [
+    for (final item in raw)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
+  return items.isEmpty ? null : items;
+}
+
+List<Map<String, dynamic>> visitItems(Map<String, dynamic> details) {
+  return explicitVisitItems(details) ?? (details.isEmpty ? const [] : [Map<String, dynamic>.from(details)]);
+}
+
+String visitMainLabel({required String catalogName, String? categoryName, Map<String, dynamic> details = const {}}) {
+  final items = explicitVisitItems(details);
+  if (items != null && items.length > 1) {
+    return '${items.length} treatments';
+  }
+  return displaySubTreatment(details: details, catalogName: catalogName) ?? catalogName;
+}
+
 String clinicalSummary(Map<String, dynamic> details, {String? subTreatment}) {
+  final items = explicitVisitItems(details);
+  if (items != null) {
+    return [
+      for (final item in items)
+        _lineClinicalSummary(
+          item,
+          subTreatment: item['sub_treatment']?.toString() ?? subTreatment,
+        ),
+    ].where((item) => item.isNotEmpty).join('; ');
+  }
+  return _lineClinicalSummary(details, subTreatment: subTreatment);
+}
+
+String _lineClinicalSummary(Map<String, dynamic> details, {String? subTreatment}) {
   final parts = <String>[];
   if (subTreatment != null && subTreatment.trim().isNotEmpty) {
     parts.add(subTreatment.trim());

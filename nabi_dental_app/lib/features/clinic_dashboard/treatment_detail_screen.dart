@@ -106,6 +106,18 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
         fallback: '/clinic/income/history',
         actions: [
           IconButton(
+            tooltip: 'Edit',
+            onPressed: entry == null
+                ? null
+                : () async {
+                    await appPush(context, '/clinic/income/${widget.id}/edit');
+                    if (mounted) {
+                      await _load();
+                    }
+                  },
+            icon: const Icon(Icons.edit_outlined),
+          ),
+          IconButton(
             tooltip: 'Export PDF',
             onPressed: entry == null || _exporting ? null : _export,
             icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -131,39 +143,34 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                     : ListView(
                         key: const ValueKey('detail-body'),
                         children: [
-                          AppSplit(
-                            primary: _section('Patient information', [
+                          _section('Patient information', [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
                             _row('Patient', entry.displayPatientName),
                             if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
                             _row('Date', formatDisplayDate(entry.date)),
-                            _row('Main treatment', displayMainTreatment(entry.catalogName, categoryName: entry.categoryName)),
-                            _row('Sub-treatment', displaySubTreatment(
-                                  subTreatment: entry.subTreatment,
-                                  details: entry.details,
-                                  catalogName: entry.catalogName,
-                                ) ??
-                                '—'),
-                            _row('Fee', formatMoney(entry.amount, currency: currency)),
-                          ]),
-                            secondary: _section('Dental information', [
                             _row(
-                              'Details',
-                              entry.detailsText ??
-                                  clinicalSummary(
-                                    entry.details,
-                                    subTreatment: displaySubTreatment(
-                                      subTreatment: entry.subTreatment,
-                                      details: entry.details,
+                              explicitVisitItems(entry.details) != null &&
+                                      explicitVisitItems(entry.details)!.length > 1
+                                  ? 'Treatments'
+                                  : 'Treatment',
+                              explicitVisitItems(entry.details) != null &&
+                                      explicitVisitItems(entry.details)!.length > 1
+                                  ? visitMainLabel(
                                       catalogName: entry.catalogName,
-                                    ),
-                                  ),
+                                      categoryName: entry.categoryName,
+                                      details: entry.details,
+                                    )
+                                  : displaySubTreatment(
+                                        subTreatment: entry.subTreatment,
+                                        details: entry.details,
+                                        catalogName: entry.catalogName,
+                                      ) ??
+                                      entry.catalogName,
                             ),
-                            if (entry.notes != null) _row('Notes', entry.notes!),
+                            _row('Total fee', formatMoney(entry.amount, currency: currency)),
                           ]),
-                          ),
                           const SizedBox(height: 12),
-                          _xraySection(entry),
+                          ..._treatmentSections(entry, currency),
                         ],
                       ),
         ),
@@ -171,7 +178,77 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
     );
   }
 
-  Widget _xraySection(MoneyEntry entry) {
+  List<Widget> _treatmentSections(MoneyEntry entry, String currency) {
+    final explicit = explicitVisitItems(entry.details);
+    final items = visitItems(entry.details);
+    if (explicit == null) {
+      return [
+        _section('Dental information', [
+          _row(
+            'Details',
+            entry.detailsText ??
+                clinicalSummary(
+                  entry.details,
+                  subTreatment: displaySubTreatment(
+                    subTreatment: entry.subTreatment,
+                    details: entry.details,
+                    catalogName: entry.catalogName,
+                  ),
+                ),
+          ),
+          if (entry.notes != null) _row('Notes', entry.notes!),
+        ]),
+        const SizedBox(height: 12),
+        _xraySection(entry, entry.attachments),
+      ];
+    }
+    final assigned = <String>{
+      for (final item in items)
+        for (final value in item['attachment_ids'] is List ? item['attachment_ids'] as List : const []) value.toString(),
+    };
+    final leftover = [
+      for (final attachment in entry.attachments)
+        if (!assigned.contains(attachment.id)) attachment,
+    ];
+    return [
+      for (var index = 0; index < items.length; index++) ...[
+        _itemSection(entry, items[index], index, currency),
+        const SizedBox(height: 12),
+      ],
+      if (leftover.isNotEmpty) _xraySection(entry, leftover),
+    ];
+  }
+
+  Widget _itemSection(MoneyEntry entry, Map<String, dynamic> item, int index, String currency) {
+    final name = item['sub_treatment']?.toString() ?? item['treatment_name']?.toString() ?? entry.catalogName;
+    final amount = item['amount']?.toString();
+    final notes = item['notes']?.toString();
+    final attachmentIds = {
+      for (final value in item['attachment_ids'] is List ? item['attachment_ids'] as List : const []) value.toString(),
+    };
+    final images = [
+      for (final attachment in entry.attachments)
+        if (attachmentIds.contains(attachment.id)) attachment,
+    ];
+    return _section('Treatment ${index + 1}', [
+      _row('Treatment', name),
+      _row('Details', clinicalSummary(item, subTreatment: name)),
+      if (amount != null && amount.isNotEmpty) _row('Fee', formatMoney(amount, currency: currency)),
+      if (notes != null && notes.isNotEmpty) _row('Notes', notes),
+      if (images.isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final attachment in images) _xrayTile(attachment),
+          ],
+        ),
+      ],
+    ]);
+  }
+
+  Widget _xraySection(MoneyEntry entry, List<TreatmentAttachment> attachments) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -180,7 +257,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
           children: [
             Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
-            if (entry.attachments.isEmpty)
+            if (attachments.isEmpty)
               Text(
                 'No X-ray attached to this treatment.',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
@@ -190,7 +267,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                 spacing: 12,
                 runSpacing: 12,
                 children: [
-                  for (final attachment in entry.attachments) _xrayTile(attachment),
+                  for (final attachment in attachments) _xrayTile(attachment),
                 ],
               ),
           ],

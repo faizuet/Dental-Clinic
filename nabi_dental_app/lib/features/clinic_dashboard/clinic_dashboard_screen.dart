@@ -82,15 +82,6 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
         isRoot: true,
         fallback: '/clinic',
         actions: [
-          if (desktop)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilledButton.icon(
-                onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('Add treatment'),
-              ),
-            ),
           IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
@@ -194,6 +185,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
+                        style: _primaryActionStyle,
                         onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
                         icon: const Icon(Icons.add_rounded),
                         label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -201,10 +193,11 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: FilledButton.icon(
+                        style: _expenseActionStyle,
                         onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
                         icon: const Icon(Icons.receipt_long_outlined),
-                        label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
                       ),
                     ),
                   ],
@@ -212,6 +205,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               else ...[
                 Stretch(
                   child: FilledButton.icon(
+                    style: _primaryActionStyle,
                     onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -219,10 +213,11 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 ),
                 const SizedBox(height: 10),
                 Stretch(
-                  child: OutlinedButton.icon(
+                  child: FilledButton.icon(
+                    style: _expenseActionStyle,
                     onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
                     icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Add clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
               ],
@@ -265,4 +260,40 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       ),
     );
   }
+
+  static final ButtonStyle _primaryActionStyle = FilledButton.styleFrom(
+    minimumSize: const Size(64, 48),
+    backgroundColor: AppColors.primary,
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: AppColors.primarySoft,
+    disabledForegroundColor: AppColors.muted,
+  ).copyWith(
+    overlayColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.pressed)) {
+        return Colors.white.withValues(alpha: 0.18);
+      }
+      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+        return Colors.white.withValues(alpha: 0.10);
+      }
+      return null;
+    }),
+  );
+
+  static final ButtonStyle _expenseActionStyle = FilledButton.styleFrom(
+    minimumSize: const Size(64, 48),
+    backgroundColor: AppColors.primaryDark,
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: AppColors.primarySoft,
+    disabledForegroundColor: AppColors.muted,
+  ).copyWith(
+    overlayColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.pressed)) {
+        return Colors.white.withValues(alpha: 0.18);
+      }
+      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+        return Colors.white.withValues(alpha: 0.12);
+      }
+      return null;
+    }),
+  );
 }
