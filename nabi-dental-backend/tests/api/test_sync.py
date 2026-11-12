@@ -10,7 +10,7 @@ async def test_sync_push_idempotent_and_conflict(client):
     tokens = await login(client)
     headers = auth_header(tokens)
     treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
-    treatment_id = next(item["id"] for item in treatments if item["name"] == "RCT")
+    treatment_id = next(item["id"] for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
     entity_id = str(uuid.uuid4())
     change_id = str(uuid.uuid4())
     payload = {

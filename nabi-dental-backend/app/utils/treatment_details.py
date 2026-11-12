@@ -52,8 +52,7 @@ def _as_list(value: Any) -> list[str]:
     return [text] if text else []
 
 
-def tooth_label(details: dict[str, Any] | None) -> str | None:
-    data = details or {}
+def _tooth_label_one(data: dict[str, Any]) -> str | None:
     numbers = _as_list(data.get("tooth_numbers") or data.get("tooth_number"))
     names = _as_list(data.get("tooth_names") or data.get("tooth_name"))
     if not numbers and not names:
@@ -63,6 +62,16 @@ def tooth_label(details: dict[str, Any] | None) -> str | None:
     if numbers:
         return ", ".join(f"#{number}" for number in numbers)
     return ", ".join(names)
+
+
+def tooth_label(details: dict[str, Any] | None) -> str | None:
+    data = details or {}
+    raw = data.get("items")
+    if isinstance(raw, list) and any(isinstance(item, dict) for item in raw):
+        labels = [_tooth_label_one(item) for item in visit_items(data)]
+        joined = ", ".join(label for label in labels if label)
+        return joined or None
+    return _tooth_label_one(data)
 
 
 def family_label(name: str | None, category_name: str | None = None) -> str:
@@ -83,9 +92,23 @@ def resolved_sub_treatment(
     details: dict[str, Any] | None = None,
     treatment_name: str | None = None,
 ) -> str | None:
+    data = details or {}
+    raw = data.get("items")
+    if isinstance(raw, list) and any(isinstance(item, dict) for item in raw):
+        names: list[str] = []
+        for item in visit_items(data):
+            name = (
+                str(item.get("sub_treatment") or item.get("treatment_name") or "").strip()
+                or treatment_name
+                or ""
+            )
+            if name and name not in names:
+                names.append(name)
+        if names:
+            return ", ".join(names)
     if sub_treatment and str(sub_treatment).strip():
         return str(sub_treatment).strip()
-    nested = (details or {}).get("sub_treatment")
+    nested = data.get("sub_treatment")
     if nested and str(nested).strip():
         return str(nested).strip()
     if treatment_name and str(treatment_name).strip():
@@ -93,12 +116,21 @@ def resolved_sub_treatment(
     return None
 
 
-def clinical_summary(details: dict[str, Any] | None, sub_treatment: str | None = None) -> str | None:
+def visit_items(details: dict[str, Any] | None) -> list[dict[str, Any]]:
     data = details or {}
+    raw = data.get("items")
+    if isinstance(raw, list):
+        items = [item for item in raw if isinstance(item, dict)]
+        if items:
+            return items
+    return [data] if data else []
+
+
+def _line_summary(data: dict[str, Any], sub_treatment: str | None = None) -> str | None:
     parts: list[str] = []
     if sub_treatment and sub_treatment.strip():
         parts.append(sub_treatment.strip())
-    tooth = tooth_label(data)
+    tooth = _tooth_label_one(data)
     if tooth:
         parts.append(tooth)
     if data.get("canals"):
@@ -119,3 +151,16 @@ def clinical_summary(details: dict[str, Any] | None, sub_treatment: str | None =
     if data.get("partial_details"):
         parts.append(str(data["partial_details"]))
     return ", ".join(parts) if parts else None
+
+
+def clinical_summary(details: dict[str, Any] | None, sub_treatment: str | None = None) -> str | None:
+    data = details or {}
+    raw = data.get("items")
+    if isinstance(raw, list) and any(isinstance(item, dict) for item in raw):
+        parts = [
+            _line_summary(item, item.get("sub_treatment") or sub_treatment)
+            for item in visit_items(data)
+        ]
+        joined = "; ".join(part for part in parts if part)
+        return joined or None
+    return _line_summary(data, sub_treatment)

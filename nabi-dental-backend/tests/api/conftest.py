@@ -15,6 +15,10 @@ from app.main import app
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
+    if "nabi_dental_test" not in settings.DATABASE_URL:
+        raise RuntimeError(
+            f"API tests must use nabi_dental_test, not the clinic database ({settings.DATABASE_URL})."
+        )
     env = os.environ.copy()
     env["DATABASE_URL"] = settings.DATABASE_URL
     subprocess.run(

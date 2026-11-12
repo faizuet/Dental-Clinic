@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.constants import (
     SEED_CLINIC_EXPENSE_CATEGORIES,
+    SEED_CLINIC_TREATMENTS,
     SEED_CONSTRUCTION_MATERIALS,
     SEED_HOME_EXPENSE_CATEGORIES,
     SEED_TREATMENTS,
@@ -90,6 +91,7 @@ async def _seed_treatments(session: AsyncSession, clinic: Clinic) -> None:
     )
     treatments_by_name = {item.name.lower(): item for item in existing_treatments.scalars()}
 
+    official = {name.lower() for name in SEED_CLINIC_TREATMENTS}
     for category_order, (category_name, treatment_names) in enumerate(SEED_TREATMENTS.items()):
         category = categories_by_name.get(category_name.lower())
         if category is None:
@@ -103,7 +105,11 @@ async def _seed_treatments(session: AsyncSession, clinic: Clinic) -> None:
             await session.flush()
             categories_by_name[category_name.lower()] = category
         for treatment_order, treatment_name in enumerate(treatment_names):
-            if treatment_name.lower() in treatments_by_name:
+            existing = treatments_by_name.get(treatment_name.lower())
+            if existing is not None:
+                existing.display_order = treatment_order
+                existing.category_id = category.id
+                existing.is_active = True
                 continue
             treatment = Treatment(
                 clinic_id=clinic.id,
@@ -114,6 +120,10 @@ async def _seed_treatments(session: AsyncSession, clinic: Clinic) -> None:
             )
             session.add(treatment)
             treatments_by_name[treatment_name.lower()] = treatment
+
+    for treatment in treatments_by_name.values():
+        if treatment.name.lower() not in official:
+            treatment.is_active = False
 
 
 async def _seed_clinic_expense_categories(session: AsyncSession, clinic: Clinic) -> None:

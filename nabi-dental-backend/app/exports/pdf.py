@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from reportlab.graphics.shapes import Drawing, Rect, String
 from reportlab.lib import colors
@@ -12,17 +13,24 @@ from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate
 
 from app.schemas.report import ClinicReport, ConstructionReport, HomeReport, NamedAmount
 from app.schemas.treatment_transaction import TreatmentTransactionRead
-from app.utils.treatment_details import clinical_summary, family_label, resolved_sub_treatment, tooth_label
+from app.utils.treatment_details import (
+    resolved_sub_treatment,
+    tooth_label,
+    visit_items,
+)
 from app.utils.dates import format_display_date, format_display_date_range
-from app.utils.money import format_money, format_quantity
+from app.utils.money import format_money, format_quantity, parse_money
 
-PURPLE = colors.HexColor("#7C3AED")
-PURPLE_SOFT = colors.HexColor("#F3E8FF")
-TEAL = colors.HexColor("#0F766E")
-TEXT = colors.HexColor("#1F2937")
-MUTED = colors.HexColor("#6B7280")
-BORDER = colors.HexColor("#E5E7EB")
-ROW_ALT = colors.HexColor("#FAF7FF")
+PRIMARY = colors.HexColor("#2F80ED")
+PRIMARY_DARK = colors.HexColor("#1B6CDE")
+PRIMARY_SOFT = colors.HexColor("#E8F2FF")
+BACKGROUND = colors.HexColor("#F3F7FF")
+TEXT = colors.HexColor("#1B2430")
+MUTED = colors.HexColor("#7A8699")
+BORDER = colors.HexColor("#E4ECF6")
+ROW_ALT = colors.HexColor("#F7FAFF")
+SUCCESS = colors.HexColor("#2F9E6A")
+DANGER = colors.HexColor("#D64545")
 WHITE = colors.white
 
 
@@ -30,38 +38,42 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
     generated = _generated_label()
     title = "Clinic Treatment Report"
     story = [
-        *_summary_block(
+        *_metric_cards(
+            [
+                ("Income", _money(report.total_income, report.currency), SUCCESS),
+                ("Clinic expenses", _money(report.total_expenses, report.currency), TEXT),
+                ("Profit / loss", _money(report.profit, report.currency), DANGER if report.profit < 0 else SUCCESS),
+            ]
+        ),
+        *_kv_section(
+            "Report details",
             [
                 ("Currency", report.currency),
                 ("Patients treated", str(report.patient_count)),
                 ("Treatments", str(report.income_count)),
                 ("Expense entries", str(report.expense_count)),
-                ("Total treatment income", _money(report.total_income, report.currency)),
-                ("Total clinic expenses", _money(report.total_expenses, report.currency)),
-                ("Profit / loss", _money(report.profit, report.currency)),
-            ]
+            ],
         ),
         *_named_section("Income by treatment", report.income_by_treatment, report.currency),
         *_named_section("Expenses by category", report.expenses_by_category, report.currency),
         *_chart_section("Expense mix", report.expenses_by_category),
         *_line_section(
             "Treatment records",
-            ["Sr.", "Patient", "Date", "Treatment", "Sub-treatment", "Tooth / teeth", "Details", "Fee"],
+            ["Sr.", "Patient", "Date", "Treatment", "Tooth / teeth", "Details", "Fee"],
             [
                 [
                     str(item.serial_no or "—"),
                     item.patient_name or "Walk-in",
                     format_display_date(item.entry_date),
-                    item.name,
-                    item.sub_treatment or "—",
+                    item.sub_treatment or item.name,
                     item.tooth or "—",
                     item.details_text or item.detail or "—",
                     _money(item.amount, report.currency),
                 ]
                 for item in report.income_lines
             ],
-            [28, 70, 52, 62, 58, 58, 80, 64],
-            [7],
+            [28, 82, 52, 100, 64, 86, 60],
+            [6],
         ),
         *_line_section(
             "Clinic expenses",
@@ -81,7 +93,7 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
         title=title,
         generated=generated,
         period=_period_label(report.period.from_date, report.period.to_date),
-        accent=PURPLE,
+        accent=PRIMARY,
     )
 
 
@@ -95,37 +107,46 @@ def render_treatment_pdf(
     generated = _generated_label()
     title = "Patient Treatment Record"
     details = visit.details or {}
-    tooth = tooth_label(details) or "—"
+    items = visit_items(details)
+    multi = isinstance(details.get("items"), list) and len(items) > 0
     sub_treatment = resolved_sub_treatment(
         sub_treatment=visit.sub_treatment,
         details=details,
         treatment_name=visit.treatment_name,
     )
-    summary = clinical_summary(details, sub_treatment) or "—"
     info_rows = [
         ("Sr. No.", str(visit.serial_no or "—")),
         ("Patient", visit.patient_name or "Walk-in"),
-        ("Treatment date", format_display_date(visit.transaction_date)),
-        ("Main treatment", family_label(visit.treatment_name, visit.category_name)),
-        ("Sub-treatment", sub_treatment or "—"),
-        ("Fee", _money(visit.amount, currency)),
     ]
-    dental_rows = [
-        ("Tooth / teeth", tooth),
-        ("Canals", str(details["canals"]) if details.get("canals") else "—"),
-        ("Length", f"{details['length_mm']} mm" if details.get("length_mm") else "—"),
-        ("Material", str(details["material"]) if details.get("material") else "—"),
-        ("Units", str(details["units"]) if details.get("units") else "—"),
-        ("Arch / type", str(details.get("arch") or details.get("denture_type") or "—").replace("_", " ").title()),
-        ("Scope", str(details.get("scope") or "—").replace("_", " ").title()),
-        ("Clinical details", summary),
-    ]
-    dental_rows = [row for row in dental_rows if row[1] not in {"—", "—".title()} or row[0] in {"Tooth / teeth", "Clinical details"}]
-    story = [
-        *_kv_section("Patient information", info_rows),
-        *_kv_section("Dental information", dental_rows),
-        *_kv_section("Treatment notes", [("Notes", visit.notes or "No notes recorded.")]),
-    ]
+    if visit.patient_phone:
+        info_rows.append(("Phone", visit.patient_phone))
+    info_rows.extend(
+        [
+            ("Date", format_display_date(visit.transaction_date)),
+            (
+                "Treatments" if multi else "Treatment",
+                f"{len(items)} treatments" if multi else (sub_treatment or visit.treatment_name or "—"),
+            ),
+            ("Total fee" if multi else "Fee", _money(visit.amount, currency)),
+        ]
+    )
+    story = [*_kv_section("Patient information", info_rows)]
+    if multi:
+        for index, item in enumerate(items, start=1):
+            name = str(item.get("sub_treatment") or item.get("treatment_name") or f"Treatment {index}")
+            story.extend(_kv_section(f"{index}. {name}", _item_dental_rows(item, currency)))
+    else:
+        name = sub_treatment or visit.treatment_name or "Treatment"
+        dental_rows = _item_dental_rows(
+            {
+                **details,
+                "sub_treatment": name,
+                "amount": visit.amount,
+                "notes": visit.notes,
+            },
+            currency,
+        )
+        story.extend(_kv_section(name, dental_rows or [("Details", "No clinical details recorded.")]))
     story.extend(_treatment_images(image_paths or []))
     return _build(
         story,
@@ -133,25 +154,47 @@ def render_treatment_pdf(
         title=title,
         generated=generated,
         period=format_display_date(visit.transaction_date),
-        accent=PURPLE,
+        accent=PRIMARY,
     )
+
+
+def _item_dental_rows(item: dict, currency: str) -> list[tuple[str, str]]:
+    amount = item.get("amount")
+    notes = str(item.get("notes") or "").strip()
+    rows = [
+        ("Tooth / teeth", tooth_label(item) or ""),
+        ("Canals", str(item["canals"]) if item.get("canals") else ""),
+        ("Length", f"{item['length_mm']} mm" if item.get("length_mm") else ""),
+        ("Material", str(item["material"]) if item.get("material") else ""),
+        ("Units", str(item["units"]) if item.get("units") else ""),
+        ("Arch / type", str(item.get("arch") or item.get("denture_type") or "").replace("_", " ").title()),
+        ("Scope", str(item.get("scope") or "").replace("_", " ").title()),
+        ("Fee", _money(amount, currency) if amount not in (None, "") else ""),
+        ("Notes", notes),
+    ]
+    return [(label, value) for label, value in rows if value and value not in {"—", "None"}]
 
 
 def _kv_section(title: str, rows: list[tuple[str, str]]) -> list:
     styles = _styles()
+    safe_rows = rows or [("Details", "—")]
     table = Table(
-        [[Paragraph(label, styles["cell"]), Paragraph(value, styles["cell"])] for label, value in rows],
+        [
+            [Paragraph(_pdf_text(label), styles["kvLabel"]), Paragraph(_pdf_text(value), styles["kvValue"])]
+            for label, value in safe_rows
+        ],
         colWidths=[140, 332],
     )
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, -1), PURPLE_SOFT),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("BACKGROUND", (0, 0), (0, -1), PRIMARY_SOFT),
+                ("BACKGROUND", (1, 0), (1, -1), WHITE),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
                 ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
             ]
@@ -175,7 +218,7 @@ def _treatment_images(image_paths: list[tuple[str, str]]) -> list:
             frame.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), PURPLE_SOFT),
+                        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY_SOFT),
                         ("BACKGROUND", (0, 1), (-1, 1), WHITE),
                         ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
@@ -193,7 +236,7 @@ def _treatment_images(image_paths: list[tuple[str, str]]) -> list:
         except Exception:
             continue
     if not frames:
-        return _kv_section("X-ray images", [("Attachments", "No X-ray attached.")])
+        return []
     rows: list[list] = []
     for index in range(0, len(frames), 2):
         pair = frames[index : index + 2]
@@ -227,15 +270,20 @@ def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:
     title = "Home Expense Report"
     used = f"{report.percentage_used:.2f}%" if report.percentage_used is not None else "n/a"
     story = [
-        *_summary_block(
+        *_metric_cards(
+            [
+                ("Spending", _money(report.total_expenses, report.currency), TEXT),
+                ("Budget", _money(report.budget, report.currency), PRIMARY_DARK),
+                ("Remaining", _money(report.remaining, report.currency), SUCCESS if report.remaining >= 0 else DANGER),
+            ]
+        ),
+        *_kv_section(
+            "Report details",
             [
                 ("Currency", report.currency),
                 ("Transactions", str(report.expense_count)),
-                ("Total spending", _money(report.total_expenses, report.currency)),
-                ("Budget", _money(report.budget, report.currency)),
-                ("Remaining", _money(report.remaining, report.currency)),
                 ("Budget used", used),
-            ]
+            ],
         ),
         *_named_section("Spending by category", report.expenses_by_category, report.currency),
         *_chart_section("Category mix", report.expenses_by_category),
@@ -257,7 +305,7 @@ def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:
         title=title,
         generated=generated,
         period=_period_label(report.period.from_date, report.period.to_date),
-        accent=PURPLE,
+        accent=PRIMARY,
     )
 
 
@@ -286,15 +334,20 @@ def render_construction_pdf(report: ConstructionReport, *, clinic_name: str) -> 
         for item in report.purchases
     ]
     story = [
-        *_summary_block(
+        *_metric_cards(
+            [
+                ("Total spend", _money(report.total_expenses, report.currency), TEXT),
+                ("Purchases", str(report.purchase_count), PRIMARY_DARK),
+                ("Highest category", report.top_categories[0].name if report.top_categories else "—", TEXT),
+            ]
+        ),
+        *_kv_section(
+            "Report details",
             [
                 ("Currency", report.currency),
-                ("Purchases", str(report.purchase_count)),
-                ("Total construction spend", _money(report.total_expenses, report.currency)),
                 ("Categories used", str(len(report.expenses_by_category))),
                 ("Suppliers", str(len(report.expenses_by_supplier))),
-                ("Highest category", report.top_categories[0].name if report.top_categories else "—"),
-            ]
+            ],
         ),
         *_named_section("Expenses by material category", report.expenses_by_category, report.currency),
         *_chart_section("Category mix", report.expenses_by_category),
@@ -322,7 +375,7 @@ def render_construction_pdf(report: ConstructionReport, *, clinic_name: str) -> 
         title=title,
         generated=generated,
         period=_period_label(report.period.from_date, report.period.to_date),
-        accent=TEAL,
+        accent=PRIMARY_DARK,
     )
 
 
@@ -332,10 +385,10 @@ def _build(story, *, clinic_name: str, title: str, generated: str, period: str, 
         buffer,
         pagesize=A4,
         title=f"{clinic_name} {title}",
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=24 * mm,
-        bottomMargin=16 * mm,
+        leftMargin=16 * mm,
+        rightMargin=16 * mm,
+        topMargin=26 * mm,
+        bottomMargin=18 * mm,
     )
 
     def _page(canvas, document):
@@ -362,24 +415,30 @@ def _build(story, *, clinic_name: str, title: str, generated: str, period: str, 
 def _draw_chrome(canvas, doc, *, clinic_name: str, title: str, generated: str, period: str, accent) -> None:
     width, height = A4
     canvas.saveState()
+    canvas.setFillColor(BACKGROUND)
+    canvas.rect(0, 0, width, height, fill=1, stroke=0)
     canvas.setFillColor(accent)
-    canvas.rect(0, height - 52, width, 52, fill=1, stroke=0)
+    canvas.rect(0, height - 54, width, 54, fill=1, stroke=0)
+    canvas.setFillColor(PRIMARY_DARK)
+    canvas.rect(0, height - 58, width, 4, fill=1, stroke=0)
     canvas.setFillColor(WHITE)
-    canvas.circle(28, height - 26, 11, fill=1, stroke=0)
+    canvas.roundRect(16, height - 40, 24, 24, 6, fill=1, stroke=0)
     canvas.setFillColor(accent)
-    canvas.setFont("Helvetica-Bold", 10)
-    canvas.drawCentredString(28, height - 30, "N")
+    canvas.setFont("Helvetica-Bold", 12)
+    canvas.drawCentredString(28, height - 33, "N")
     canvas.setFillColor(WHITE)
-    canvas.setFont("Helvetica-Bold", 11)
-    canvas.drawString(46, height - 20, clinic_name)
+    canvas.setFont("Helvetica-Bold", 12)
+    canvas.drawString(48, height - 22, clinic_name)
     canvas.setFont("Helvetica", 8)
-    canvas.drawString(46, height - 34, f"{title}  ·  {period}")
-    canvas.setFillColor(PURPLE_SOFT)
-    canvas.rect(0, 0, width, 28, fill=1, stroke=0)
+    canvas.drawString(48, height - 36, f"{title}  ·  {period}")
+    canvas.setFillColor(PRIMARY_SOFT)
+    canvas.rect(0, 0, width, 30, fill=1, stroke=0)
+    canvas.setFillColor(PRIMARY)
+    canvas.rect(0, 30, width, 2, fill=1, stroke=0)
     canvas.setFillColor(MUTED)
     canvas.setFont("Helvetica", 8)
-    canvas.drawString(18 * mm, 11, f"{clinic_name}  ·  {generated}")
-    canvas.drawRightString(width - 18 * mm, 11, f"Page {doc.page}")
+    canvas.drawString(16 * mm, 12, f"{clinic_name}  ·  {generated}")
+    canvas.drawRightString(width - 16 * mm, 12, f"Page {doc.page}")
     canvas.restoreState()
 
 
@@ -387,32 +446,51 @@ def _period_label(from_date, to_date) -> str:
     return f"{format_display_date_range(from_date, to_date)} (inclusive)"
 
 
-def _summary_block(rows: list[tuple[str, str]]) -> list:
+def _metric_cards(items: list[tuple[str, str, object]]) -> list:
     styles = _styles()
-    table_data = [[Paragraph(label, styles["cell"]), Paragraph(value, styles["value"])] for label, value in rows]
-    table = Table(table_data, colWidths=[200, 272])
+    cards = []
+    card_width = 154
+    for label, value, color in items:
+        value_style = ParagraphStyle(
+            f"MetricValue{len(cards)}",
+            parent=styles["summaryValue"],
+            textColor=color,
+            fontSize=11,
+            leading=14,
+        )
+        inner = Table(
+            [
+                [Paragraph(_pdf_text(label), styles["summaryLabel"])],
+                [Paragraph(_pdf_text(value), value_style)],
+            ],
+            colWidths=[card_width],
+        )
+        inner.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), PRIMARY_SOFT),
+                    ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (0, 0), 8),
+                    ("BOTTOMPADDING", (0, -1), (0, -1), 8),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        cards.append(inner)
+    table = Table([cards], colWidths=[card_width + 8] * len(cards))
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (0, -1), PURPLE_SOFT),
-                ("BACKGROUND", (1, 0), (1, -1), WHITE),
-                ("TEXTCOLOR", (0, 0), (-1, -1), TEXT),
-                ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("BOX", (0, 0), (-1, -1), 0.4, BORDER),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, BORDER),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-2, -1), 8),
+                ("RIGHTPADDING", (-1, 0), (-1, -1), 0),
             ]
         )
     )
-    return [
-        Paragraph("Financial summary", styles["section"]),
-        table,
-        Spacer(1, 14),
-    ]
+    return [table, Spacer(1, 12)]
 
 
 def _named_section(title: str, items: list[NamedAmount], currency: str) -> list:
@@ -428,7 +506,7 @@ def _line_section(
     amount_cols: list[int],
 ) -> list:
     styles = _styles()
-    data = [[Paragraph(header, styles["headerCell"]) for header in headers]]
+    data = [[Paragraph(_pdf_text(header), styles["headerCell"]) for header in headers]]
     if not rows:
         data.append(
             [Paragraph("No records found for the selected date range.", styles["cell"])] + [""] * (len(headers) - 1)
@@ -438,11 +516,11 @@ def _line_section(
             styled = []
             for index, value in enumerate(row):
                 style = styles["value"] if index in amount_cols else styles["cell"]
-                styled.append(Paragraph(str(value), style))
+                styled.append(Paragraph(_pdf_text(value), style))
             data.append(styled)
     table = Table(data, colWidths=widths, repeatRows=1)
     commands = [
-        ("BACKGROUND", (0, 0), (-1, 0), PURPLE),
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY_DARK),
         ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -450,6 +528,7 @@ def _line_section(
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("BACKGROUND", (0, 1), (-1, -1), WHITE),
         ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
         ("ALIGN", (0, 1), (-1, -1), "LEFT"),
     ]
@@ -477,7 +556,7 @@ def _chart_section(title: str, items: list[NamedAmount]) -> list:
         ratio = float(item.amount / total) if total else 0
         bar_w = max(8, (width - 170) * min(ratio, 1))
         drawing.add(String(0, y + 3, item.name[:22], fontName="Helvetica", fontSize=8, fillColor=TEXT))
-        drawing.add(Rect(130, y + 2, bar_w, 9, fillColor=PURPLE, strokeColor=None))
+        drawing.add(Rect(130, y + 2, bar_w, 9, fillColor=PRIMARY, strokeColor=None))
     return [Paragraph(title, styles["section"]), drawing, Spacer(1, 10)]
 
 
@@ -497,8 +576,16 @@ def _timeline_section(points, currency: str, *, include_income: bool) -> list:
     return _line_section("Monthly / period spending", ["Period", "Amount"], rows, [280, 192], [1])
 
 
+def _pdf_text(value) -> str:
+    if value is None:
+        return "—"
+    return escape(str(value))
+
+
 def _money(value, currency: str) -> str:
-    return f"{currency} {format_money(value)}"
+    if value is None or value == "":
+        return f"{currency} 0.00"
+    return f"{currency} {format_money(parse_money(value))}"
 
 
 def _generated_label() -> str:
@@ -514,7 +601,7 @@ def _styles():
             parent=base["Heading1"],
             fontName="Helvetica-Bold",
             fontSize=16,
-            textColor=TEXT,
+            textColor=PRIMARY_DARK,
             spaceAfter=2,
             leading=20,
         ),
@@ -523,7 +610,7 @@ def _styles():
             parent=base["Heading3"],
             fontName="Helvetica-Bold",
             fontSize=11,
-            textColor=PURPLE,
+            textColor=PRIMARY_DARK,
             spaceBefore=4,
             spaceAfter=6,
         ),
@@ -532,8 +619,26 @@ def _styles():
             "Cell",
             parent=base["Normal"],
             fontName="Helvetica",
+            fontSize=9,
+            leading=12,
+            textColor=TEXT,
+            alignment=TA_LEFT,
+        ),
+        "kvLabel": ParagraphStyle(
+            "KvLabel",
+            parent=base["Normal"],
+            fontName="Helvetica",
             fontSize=8,
             leading=11,
+            textColor=MUTED,
+            alignment=TA_LEFT,
+        ),
+        "kvValue": ParagraphStyle(
+            "KvValue",
+            parent=base["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
             textColor=TEXT,
             alignment=TA_LEFT,
         ),
@@ -541,8 +646,8 @@ def _styles():
             "Value",
             parent=base["Normal"],
             fontName="Helvetica-Bold",
-            fontSize=8,
-            leading=11,
+            fontSize=9,
+            leading=12,
             textColor=TEXT,
             alignment=TA_RIGHT,
         ),

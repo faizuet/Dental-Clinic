@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+from app.core.constants import SEED_CLINIC_TREATMENTS
 from tests.api.conftest import auth_header, login
 
 
@@ -9,11 +10,12 @@ from tests.api.conftest import auth_header, login
 async def test_seeded_catalogs_and_duplicate_names(client):
     tokens = await login(client)
     headers = auth_header(tokens)
-    treatments = await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})
+    treatments = await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100, "active": True})
     assert treatments.status_code == 200
-    assert treatments.json()["total"] == 26
+    assert treatments.json()["total"] == 15
+    assert [item["name"] for item in treatments.json()["items"]] == SEED_CLINIC_TREATMENTS
     categories = await client.get("/api/v1/treatment-categories", headers=headers, params={"page_size": 50})
-    assert categories.json()["total"] == 11
+    assert categories.json()["total"] == 1
     clinic_cats = await client.get("/api/v1/clinic-expense-categories", headers=headers)
     assert clinic_cats.json()["total"] == 7
     home_cats = await client.get("/api/v1/home-expense-categories", headers=headers)
@@ -21,7 +23,7 @@ async def test_seeded_catalogs_and_duplicate_names(client):
 
     duplicate = await client.post("/api/v1/treatments", headers=headers, json={
         "category_id": treatments.json()["items"][0]["category_id"],
-        "name": "rct",
+        "name": "Scaling",
     })
     assert duplicate.status_code == 409
 
@@ -30,8 +32,8 @@ async def test_seeded_catalogs_and_duplicate_names(client):
 async def test_deactivate_instead_of_deleting_used_treatment(client):
     tokens = await login(client)
     headers = auth_header(tokens)
-    treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
-    treatment = next(item for item in treatments if item["name"] == "RCT")
+    treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100, "active": True})).json()["items"]
+    treatment = next(item for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
     created = await client.post(
         "/api/v1/treatment-transactions",
         headers=headers,

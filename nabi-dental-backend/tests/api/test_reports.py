@@ -8,7 +8,7 @@ async def test_clinic_report_and_exports(client):
     tokens = await login(client)
     headers = auth_header(tokens)
     treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
-    treatment_id = next(item["id"] for item in treatments if item["name"] == "RCT")
+    treatment_id = next(item["id"] for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
     await client.post(
         "/api/v1/treatment-transactions",
         headers=headers,
@@ -22,7 +22,7 @@ async def test_clinic_report_and_exports(client):
     assert report.status_code == 200
     body = report.json()
     assert body["total_income"] == "5000.00"
-    assert body["income_by_treatment"][0]["name"] == "RCT"
+    assert body["income_by_treatment"][0]["name"] == "Root Canal Treatment (RCT)"
     pdf = await client.get(
         "/api/v1/reports/clinic/export",
         headers=headers,
@@ -45,8 +45,8 @@ async def test_clinic_report_includes_all_dates_in_range(client):
     tokens = await login(client)
     headers = auth_header(tokens)
     treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
-    rct_id = next(item["id"] for item in treatments if item["name"] == "RCT")
-    crown_id = next(item["id"] for item in treatments if item["name"] == "Crown")
+    rct_id = next(item["id"] for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
+    crown_id = next(item["id"] for item in treatments if item["name"] == "Zirconia Crown")
     scaling_id = next(item["id"] for item in treatments if item["name"] == "Scaling")
     for date_value, treatment_id, amount in [
         ("2026-09-01", rct_id, "8000.00"),

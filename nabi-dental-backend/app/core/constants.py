@@ -68,18 +68,26 @@ class SyncItemStatus(StrEnum):
     IDEMPOTENT = "applied"
 
 
+SEED_CLINIC_TREATMENTS = [
+    "Check Up / Consultation",
+    "Simple Extraction",
+    "Surgical Extraction",
+    "Root Canal Treatment (RCT)",
+    "Obturation (RCT)",
+    "Temporary Filling",
+    "Permanent Filling",
+    "Composite Filling",
+    "Scaling",
+    "Porcelain Bridge",
+    "Zirconia Crown",
+    "Braces Fresh",
+    "Braces Visits",
+    "Braces Retainer",
+    "Dental Gems",
+]
+
 SEED_TREATMENTS: dict[str, list[str]] = {
-    "Basic": ["Consultation", "Scaling and Polishing", "Dental Filling"],
-    "Extraction": ["Tooth Extraction"],
-    "Endodontics": ["RCT", "Pulpotomy", "Apicoectomy"],
-    "Prosthetics": ["Crown", "Dental Bridge", "Removable Denture", "Full Denture", "Dentures", "Dental Implant"],
-    "Orthodontics": ["Braces", "Clear Aligners"],
-    "Cosmetic": ["Veneers", "Teeth Whitening"],
-    "Restorative": ["Inlay or Onlay"],
-    "Periodontal": ["Scaling", "Gingivectomy", "Frenectomy"],
-    "Protective": ["Night Guard", "Sports Guard"],
-    "Diagnostic": ["X Ray", "Panoramic X Ray"],
-    "Emergency": ["Emergency Treatment"],
+    "Dental Treatments": SEED_CLINIC_TREATMENTS,
 }
 
 SEED_CLINIC_EXPENSE_CATEGORIES = [

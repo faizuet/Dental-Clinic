@@ -21,7 +21,7 @@ ALLOWED_TYPES = {
 }
 ALLOWED_NAMES = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_LABELS = {"before", "working", "after", "other"}
-MAX_ATTACHMENTS = 8
+MAX_ATTACHMENTS = 24
 
 
 class XrayService:
@@ -44,7 +44,7 @@ class XrayService:
         if record.clinic_id != user.clinic_id:
             raise NotFoundError("Treatment record was not found.")
         if await self.attachments.live_count(record.id) >= MAX_ATTACHMENTS:
-            raise ValidationAppError("A treatment can have at most 8 X-ray images.")
+            raise ValidationAppError("A treatment record can have at most 24 X-ray images.")
 
         kind = (label or "other").strip().lower()
         if kind not in ALLOWED_LABELS:

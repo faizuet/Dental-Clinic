@@ -7,19 +7,18 @@ from openpyxl.utils import get_column_letter
 from app.schemas.report import ClinicReport, ConstructionReport, HomeReport
 from app.utils.dates import format_display_date
 from app.utils.money import format_money, format_quantity
-from app.utils.treatment_details import resolved_sub_treatment
 
-HEADER_FILL = PatternFill("solid", fgColor="7C3AED")
-SOFT_FILL = PatternFill("solid", fgColor="F3E8FF")
+HEADER_FILL = PatternFill("solid", fgColor="1B6CDE")
+SOFT_FILL = PatternFill("solid", fgColor="E8F2FF")
 HEADER_FONT = Font(color="FFFFFF", bold=True, name="Calibri")
-TITLE_FONT = Font(bold=True, size=16, color="1F2937", name="Calibri")
-SECTION_FONT = Font(bold=True, size=12, color="7C3AED", name="Calibri")
-LABEL_FONT = Font(bold=True, name="Calibri", color="1F2937")
+TITLE_FONT = Font(bold=True, size=16, color="1B2430", name="Calibri")
+SECTION_FONT = Font(bold=True, size=12, color="1B6CDE", name="Calibri")
+LABEL_FONT = Font(bold=True, name="Calibri", color="1B2430")
 THIN = Border(
-    left=Side(style="thin", color="E5E7EB"),
-    right=Side(style="thin", color="E5E7EB"),
-    top=Side(style="thin", color="E5E7EB"),
-    bottom=Side(style="thin", color="E5E7EB"),
+    left=Side(style="thin", color="E4ECF6"),
+    right=Side(style="thin", color="E4ECF6"),
+    top=Side(style="thin", color="E4ECF6"),
+    bottom=Side(style="thin", color="E4ECF6"),
 )
 
 
@@ -45,21 +44,20 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
     _write_table_sheet(
         workbook,
         "Treatment records",
-        ["Sr.", "Patient", "Date", "Treatment", "Sub-treatment", "Tooth / teeth", "Details", "Fee"],
+        ["Sr.", "Patient", "Date", "Treatment", "Tooth / teeth", "Details", "Fee"],
         [
             [
                 item.serial_no or "",
                 item.patient_name or "Walk-in",
                 format_display_date(item.entry_date),
-                item.name,
-                item.sub_treatment or resolved_sub_treatment(treatment_name=item.name) or "",
+                item.sub_treatment or item.name,
                 item.tooth or "",
                 item.details_text or item.detail or "",
                 item.amount,
             ]
             for item in report.income_lines
         ],
-        money_cols={8},
+        money_cols={7},
     )
     _write_table_sheet(
         workbook,

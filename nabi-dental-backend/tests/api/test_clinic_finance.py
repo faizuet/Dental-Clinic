@@ -8,7 +8,7 @@ from tests.api.conftest import auth_header, login
 
 async def _rct_id(client, headers) -> str:
     treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
-    return next(item["id"] for item in treatments if item["name"] == "RCT")
+    return next(item["id"] for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
 
 
 async def _lab_id(client, headers) -> str:

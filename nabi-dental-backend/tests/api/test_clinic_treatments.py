@@ -38,7 +38,7 @@ def _intraoral_bytes() -> bytes:
 
 
 async def _treatment_id(client, headers, name: str) -> str:
-    treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100})).json()["items"]
+    treatments = (await client.get("/api/v1/treatments", headers=headers, params={"page_size": 100, "active": True})).json()["items"]
     return next(item["id"] for item in treatments if item["name"] == name)
 
 
@@ -46,8 +46,8 @@ async def _treatment_id(client, headers, name: str) -> str:
 async def test_patient_rct_history_and_finance_total(client):
     tokens = await login(client)
     headers = auth_header(tokens)
-    rct_id = await _treatment_id(client, headers, "RCT")
-    crown_id = await _treatment_id(client, headers, "Crown")
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+    crown_id = await _treatment_id(client, headers, "Zirconia Crown")
 
     patient = await client.post(
         "/api/v1/patients",
@@ -72,7 +72,7 @@ async def test_patient_rct_history_and_finance_total(client):
             "patient_id": patient_id,
             "transaction_date": "2026-09-20",
             "amount": "8000.00",
-            "sub_treatment": "RCT",
+            "sub_treatment": "Root Canal Treatment (RCT)",
             "details": {
                 "kind": "rct",
                 "tooth_number": "26",
@@ -89,7 +89,7 @@ async def test_patient_rct_history_and_finance_total(client):
     assert body["patient_name"] == "Ali Khan"
     assert body["patient_phone"] == "03001234567"
     assert body["details"]["tooth_number"] == "26"
-    assert body["sub_treatment"] == "RCT"
+    assert body["sub_treatment"] == "Root Canal Treatment (RCT)"
 
     second = await client.post(
         "/api/v1/treatment-transactions",
@@ -99,7 +99,7 @@ async def test_patient_rct_history_and_finance_total(client):
             "patient_id": patient_id,
             "transaction_date": "2026-09-25",
             "amount": "15000.00",
-            "sub_treatment": "Crown",
+            "sub_treatment": "Zirconia Crown",
             "details": {"kind": "crown", "tooth_number": "26", "material": "Zirconia", "units": 1},
         },
     )
@@ -109,7 +109,10 @@ async def test_patient_rct_history_and_finance_total(client):
     history = await client.get(f"/api/v1/patients/{patient_id}/treatments", headers=headers)
     assert history.status_code == 200
     assert history.json()["total"] == 2
-    assert {item["treatment_name"] for item in history.json()["items"]} == {"RCT", "Crown"}
+    assert {item["treatment_name"] for item in history.json()["items"]} == {
+        "Root Canal Treatment (RCT)",
+        "Zirconia Crown",
+    }
 
     dashboard = await client.get(
         "/api/v1/dashboard/clinic",
@@ -133,7 +136,7 @@ async def test_patient_rct_history_and_finance_total(client):
 async def test_xray_upload_and_treatment_pdf(client):
     tokens = await login(client)
     headers = auth_header(tokens)
-    rct_id = await _treatment_id(client, headers, "RCT")
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
     created = await client.post(
         "/api/v1/treatment-transactions",
         headers=headers,
@@ -194,3 +197,206 @@ async def test_xray_upload_and_treatment_pdf(client):
         data={"label": "after"},
     )
     assert intraoral.status_code == 201, intraoral.text
+
+
+@pytest.mark.asyncio
+async def test_patch_treatment_updates_original_record(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+    patient = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Edit Patient", "phone": "03001112233"},
+    )
+    assert patient.status_code == 201, patient.text
+    patient_id = patient.json()["id"]
+
+    created = await client.post(
+        "/api/v1/treatment-transactions",
+        headers=headers,
+        json={
+            "treatment_id": rct_id,
+            "patient_id": patient_id,
+            "transaction_date": "2026-09-20",
+            "amount": "8000.00",
+            "sub_treatment": "Root Canal Treatment (RCT)",
+            "details": {
+                "kind": "rct",
+                "tooth_number": "26",
+                "tooth_name": "Upper Left First Molar",
+                "canals": 3,
+                "length_mm": "21",
+            },
+            "notes": "Working length confirmed",
+        },
+    )
+    assert created.status_code == 201, created.text
+    tx_id = created.json()["id"]
+    serial = created.json()["serial_no"]
+    version = created.json()["version"]
+
+    updated = await client.patch(
+        f"/api/v1/treatment-transactions/{tx_id}",
+        headers=headers,
+        json={
+            "version": version,
+            "amount": "8500.00",
+            "notes": "Length updated to 22 mm",
+            "sub_treatment": "Root Canal Treatment (RCT)",
+            "details": {
+                "kind": "rct",
+                "tooth_number": "16",
+                "tooth_name": "Upper Right First Molar",
+                "canals": 4,
+                "length_mm": "22",
+            },
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["id"] == tx_id
+    assert body["serial_no"] == serial
+    assert body["amount"] == "8500.00"
+    assert body["notes"] == "Length updated to 22 mm"
+    assert body["details"]["tooth_number"] == "16"
+    assert body["details"]["canals"] == 4
+    assert body["details"]["length_mm"] == "22"
+
+    listed = await client.get(
+        f"/api/v1/patients/{patient_id}/treatments",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    assert listed.json()["items"][0]["id"] == tx_id
+    assert listed.json()["items"][0]["details"]["tooth_number"] == "16"
+
+
+@pytest.mark.asyncio
+async def test_multi_treatment_visit_is_one_record(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+    extraction_id = await _treatment_id(client, headers, "Simple Extraction")
+    filling_id = await _treatment_id(client, headers, "Permanent Filling")
+    patient = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Multi Visit", "phone": "03009998877"},
+    )
+    assert patient.status_code == 201, patient.text
+    patient_id = patient.json()["id"]
+
+    created = await client.post(
+        "/api/v1/treatment-transactions",
+        headers=headers,
+        json={
+            "treatment_id": rct_id,
+            "patient_id": patient_id,
+            "transaction_date": "2026-09-22",
+            "amount": "18000.00",
+            "sub_treatment": "Root Canal Treatment (RCT), Simple Extraction, Permanent Filling",
+            "details": {
+                "kind": "visit",
+                "items": [
+                    {
+                        "id": str(uuid.uuid4()),
+                        "treatment_id": rct_id,
+                        "treatment_name": "Root Canal Treatment (RCT)",
+                        "sub_treatment": "Root Canal Treatment (RCT)",
+                        "kind": "rct",
+                        "tooth_number": "16",
+                        "canals": 3,
+                        "length_mm": "21",
+                        "amount": "8000.00",
+                    },
+                    {
+                        "id": str(uuid.uuid4()),
+                        "treatment_id": extraction_id,
+                        "treatment_name": "Simple Extraction",
+                        "sub_treatment": "Simple Extraction",
+                        "kind": "general",
+                        "tooth_number": "18",
+                        "amount": "5000.00",
+                    },
+                    {
+                        "id": str(uuid.uuid4()),
+                        "treatment_id": filling_id,
+                        "treatment_name": "Permanent Filling",
+                        "sub_treatment": "Permanent Filling",
+                        "kind": "general",
+                        "tooth_number": "24",
+                        "amount": "5000.00",
+                    },
+                ],
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    tx_id = created.json()["id"]
+    serial = created.json()["serial_no"]
+    assert created.json()["amount"] == "18000.00"
+    assert len(created.json()["details"]["items"]) == 3
+    assert created.json()["details"]["items"][0]["tooth_number"] == "16"
+    assert created.json()["details"]["items"][1]["tooth_number"] == "18"
+
+    history = await client.get(f"/api/v1/patients/{patient_id}/treatments", headers=headers)
+    assert history.status_code == 200
+    assert history.json()["total"] == 1
+    assert history.json()["items"][0]["id"] == tx_id
+
+    extra = str(uuid.uuid4())
+    updated = await client.patch(
+        f"/api/v1/treatment-transactions/{tx_id}",
+        headers=headers,
+        json={
+            "version": created.json()["version"],
+            "amount": "20000.00",
+            "sub_treatment": "Root Canal Treatment (RCT), Simple Extraction, Permanent Filling, Zirconia Crown",
+            "details": {
+                "kind": "visit",
+                "items": [
+                    *created.json()["details"]["items"],
+                    {
+                        "id": extra,
+                        "treatment_id": await _treatment_id(client, headers, "Zirconia Crown"),
+                        "treatment_name": "Zirconia Crown",
+                        "sub_treatment": "Zirconia Crown",
+                        "kind": "crown",
+                        "tooth_number": "16",
+                        "amount": "2000.00",
+                    },
+                ],
+            },
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["id"] == tx_id
+    assert updated.json()["serial_no"] == serial
+    assert len(updated.json()["details"]["items"]) == 4
+
+    trimmed = await client.patch(
+        f"/api/v1/treatment-transactions/{tx_id}",
+        headers=headers,
+        json={
+            "version": updated.json()["version"],
+            "amount": "15000.00",
+            "details": {
+                "kind": "visit",
+                "items": [item for item in updated.json()["details"]["items"] if item["id"] != extra],
+            },
+        },
+    )
+    assert trimmed.status_code == 200, trimmed.text
+    assert trimmed.json()["id"] == tx_id
+    assert len(trimmed.json()["details"]["items"]) == 3
+    history_after = await client.get(f"/api/v1/patients/{patient_id}/treatments", headers=headers)
+    assert history_after.json()["total"] == 1
+    assert history_after.json()["items"][0]["id"] == tx_id
+    assert [item["tooth_number"] for item in history_after.json()["items"][0]["details"]["items"]] == ["16", "18", "24"]
+
+    pdf = await client.get(f"/api/v1/treatment-transactions/{tx_id}/export", headers=headers)
+    assert pdf.status_code == 200, pdf.text
+    assert pdf.headers["content-type"].startswith("application/pdf")
+    assert pdf.content[:4] == b"%PDF"
