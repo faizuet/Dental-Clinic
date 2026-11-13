@@ -7,7 +7,6 @@ from app.core.config import settings
 from app.core.constants import (
     SEED_CLINIC_EXPENSE_CATEGORIES,
     SEED_CLINIC_TREATMENTS,
-    SEED_CONSTRUCTION_MATERIALS,
     SEED_HOME_EXPENSE_CATEGORIES,
     SEED_TREATMENTS,
     UserRole,
@@ -19,9 +18,6 @@ from app.models import (
     Clinic,
     ClinicExpense,
     ClinicExpenseCategory,
-    ConstructionMaterial,
-    ConstructionMaterialCategory,
-    ConstructionPurchase,
     HomeExpense,
     HomeExpenseCategory,
     Treatment,
@@ -37,7 +33,6 @@ async def seed_database(session: AsyncSession) -> None:
     await _seed_treatments(session, clinic)
     await _seed_clinic_expense_categories(session, clinic)
     await _seed_home_expense_categories(session, owner)
-    await seed_construction_catalog(session, owner)
     await _dedupe_clinic_catalogs(session, clinic, owner)
     await session.commit()
     logger.info("Seed completed", extra={"clinic_id": str(clinic.id), "user_id": str(owner.id)})
@@ -148,68 +143,49 @@ async def _seed_clinic_expense_categories(session: AsyncSession, clinic: Clinic)
 
 
 async def _seed_home_expense_categories(session: AsyncSession, user: User) -> None:
-    existing = await session.execute(
-        select(HomeExpenseCategory).where(
-            HomeExpenseCategory.user_id == user.id,
-            HomeExpenseCategory.deleted_at.is_(None),
+    existing = (
+        await session.execute(
+            select(HomeExpenseCategory).where(
+                HomeExpenseCategory.user_id == user.id,
+                HomeExpenseCategory.deleted_at.is_(None),
+            )
         )
+    ).scalars().all()
+    by_name = {item.name.strip().lower(): item for item in existing}
+    official = {name.lower() for name in SEED_HOME_EXPENSE_CATEGORIES}
+    used_ids = set(
+        (
+            await session.execute(
+                select(HomeExpense.category_id).where(
+                    HomeExpense.user_id == user.id,
+                    HomeExpense.deleted_at.is_(None),
+                )
+            )
+        ).scalars()
     )
-    present = {item.name.lower() for item in existing.scalars()}
+
     for order, name in enumerate(SEED_HOME_EXPENSE_CATEGORIES):
-        if name.lower() in present:
-            continue
-        session.add(
-            HomeExpenseCategory(
+        record = by_name.get(name.lower())
+        if record is None:
+            record = HomeExpenseCategory(
                 user_id=user.id,
                 name=name,
                 display_order=order,
                 is_active=True,
             )
-        )
+            session.add(record)
+            by_name[name.lower()] = record
+            continue
+        record.display_order = order
+        record.is_active = True
 
-
-async def seed_construction_catalog(session: AsyncSession, user: User) -> None:
-    existing_categories = await session.execute(
-        select(ConstructionMaterialCategory).where(
-            ConstructionMaterialCategory.user_id == user.id,
-            ConstructionMaterialCategory.deleted_at.is_(None),
-        )
-    )
-    categories = {item.name.lower(): item for item in existing_categories.scalars()}
-    existing_materials = await session.execute(
-        select(ConstructionMaterial).where(
-            ConstructionMaterial.user_id == user.id,
-            ConstructionMaterial.deleted_at.is_(None),
-        )
-    )
-    present_materials = {item.name.lower() for item in existing_materials.scalars()}
-
-    for category_order, (category_name, materials) in enumerate(SEED_CONSTRUCTION_MATERIALS.items()):
-        category = categories.get(category_name.lower())
-        if category is None:
-            category = ConstructionMaterialCategory(
-                user_id=user.id,
-                name=category_name,
-                display_order=category_order,
-                is_active=True,
-            )
-            session.add(category)
-            await session.flush()
-            categories[category_name.lower()] = category
-        for material_order, (material_name, unit) in enumerate(materials):
-            if material_name.lower() in present_materials:
-                continue
-            session.add(
-                ConstructionMaterial(
-                    user_id=user.id,
-                    category_id=category.id,
-                    name=material_name,
-                    unit=unit,
-                    display_order=material_order,
-                    is_active=True,
-                )
-            )
-            present_materials.add(material_name.lower())
+    for record in existing:
+        if record.name.strip().lower() in official:
+            continue
+        if record.id in used_ids:
+            record.is_active = False
+            continue
+        record.soft_delete()
 
 
 async def _dedupe_clinic_catalogs(session: AsyncSession, clinic: Clinic, owner: User) -> None:
@@ -240,20 +216,6 @@ async def _dedupe_clinic_catalogs(session: AsyncSession, clinic: Clinic, owner: 
         HomeExpenseCategory.user_id == owner.id,
         child_model=HomeExpense,
         child_fk="category_id",
-    )
-    await _dedupe_by_name(
-        session,
-        ConstructionMaterialCategory,
-        ConstructionMaterialCategory.user_id == owner.id,
-        child_model=ConstructionMaterial,
-        child_fk="category_id",
-    )
-    await _dedupe_by_name(
-        session,
-        ConstructionMaterial,
-        ConstructionMaterial.user_id == owner.id,
-        child_model=ConstructionPurchase,
-        child_fk="material_id",
     )
 
 

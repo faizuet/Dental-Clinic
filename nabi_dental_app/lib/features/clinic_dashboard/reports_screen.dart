@@ -20,15 +20,19 @@ import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
 import '../../core/widgets/summary_card.dart';
 
+enum ReportKind { clinic, home }
+
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({
     super.key,
     this.title = 'Clinic reports',
     this.backTo = '/clinic',
+    this.kind = ReportKind.clinic,
   });
 
   final String title;
   final String backTo;
+  final ReportKind kind;
 
   @override
   ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
@@ -63,7 +67,32 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     _load();
   }
 
+  bool get _isHome => widget.kind == ReportKind.home;
+
   Future<void> _apply(FinanceRepository repo) async {
+    if (_isHome) {
+      final expenses = await repo.homeExpenseHistory(range: _range);
+      final expenseTotal = expenses.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+      final byCategory = await repo.breakdown(expenses);
+      final expenseTimeline = await repo.timeline(expenses);
+      final totals = await repo.homeTotals(
+        _range,
+        defaultBudget: ref.read(sessionProvider).user?.defaultHomeBudget ?? '30000.00',
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _income = totals.budget;
+        _expenses = moneyFromDouble(expenseTotal);
+        _profit = totals.remaining;
+        _incomeBreakdown = const [];
+        _expenseBreakdown = byCategory;
+        _timeline = expenseTimeline;
+        _loading = false;
+      });
+      return;
+    }
     final income = await repo.incomeHistory(range: _range);
     final expenses = await repo.clinicExpenseHistory(range: _range);
     final incomeTotal = income.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
@@ -124,7 +153,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       _exportFormat = format;
     });
     try {
-      final file = await ref.read(financeRepositoryProvider).exportClinic(range: _range, format: format);
+      final repo = ref.read(financeRepositoryProvider);
+      final file = _isHome
+          ? await repo.exportHome(range: _range, format: format)
+          : await repo.exportClinic(range: _range, format: format);
       await saveBytes(bytes: file.bytes, filename: file.filename, mime: file.mime);
       if (mounted) {
         showAppSnack(context, '${format.toUpperCase()} saved to Downloads');
@@ -206,13 +238,27 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ResponsiveGrid(
                   minItemWidth: 240,
                   children: [
-                    SummaryCard(label: 'Income', value: formatMoney(_income, currency: currency), color: AppColors.success, icon: Icons.trending_up_rounded),
-                    SummaryCard(label: 'Expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
-                    SummaryCard(label: 'Profit', value: formatMoney(_profit, currency: currency), icon: Icons.account_balance_wallet_outlined),
+                    if (_isHome) ...[
+                      SummaryCard(label: 'Spending', value: formatMoney(_expenses, currency: currency), color: AppColors.warning, icon: Icons.shopping_bag_outlined),
+                      SummaryCard(label: 'Monthly budget', value: formatMoney(_income, currency: currency), color: AppColors.primary, icon: Icons.savings_outlined),
+                      SummaryCard(
+                        label: moneyToDouble(_profit) < 0 ? 'Over budget' : 'Remaining',
+                        value: formatMoney(_profit, currency: currency),
+                        color: moneyToDouble(_profit) < 0 ? AppColors.danger : AppColors.success,
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
+                    ] else ...[
+                      SummaryCard(label: 'Income', value: formatMoney(_income, currency: currency), color: AppColors.success, icon: Icons.trending_up_rounded),
+                      SummaryCard(label: 'Expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
+                      SummaryCard(label: 'Profit', value: formatMoney(_profit, currency: currency), icon: Icons.account_balance_wallet_outlined),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 8),
-                if (desktop)
+                if (_isHome) ...[
+                  const SectionHeader('Expenses by category'),
+                  _amountCard(_expenseBreakdown, currency, empty: 'No household spending in this range.'),
+                ] else if (desktop)
                   AppSplit(
                     primary: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -326,5 +372,18 @@ class ClinicReportsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const ReportsScreen();
+  }
+}
+
+class HomeReportsScreen extends StatelessWidget {
+  const HomeReportsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const ReportsScreen(
+      title: 'Home reports',
+      backTo: '/home',
+      kind: ReportKind.home,
+    );
   }
 }

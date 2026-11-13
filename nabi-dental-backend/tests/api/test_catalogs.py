@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from app.core.constants import SEED_CLINIC_TREATMENTS
+from app.core.constants import SEED_CLINIC_TREATMENTS, SEED_HOME_EXPENSE_CATEGORIES
 from tests.api.conftest import auth_header, login
 
 
@@ -18,8 +18,13 @@ async def test_seeded_catalogs_and_duplicate_names(client):
     assert categories.json()["total"] == 1
     clinic_cats = await client.get("/api/v1/clinic-expense-categories", headers=headers)
     assert clinic_cats.json()["total"] == 7
-    home_cats = await client.get("/api/v1/home-expense-categories", headers=headers)
-    assert home_cats.json()["total"] == 9
+    home_cats = await client.get(
+        "/api/v1/home-expense-categories",
+        headers=headers,
+        params={"page_size": 100, "active": True, "sort": "display_order"},
+    )
+    assert home_cats.json()["total"] == 34
+    assert [item["name"] for item in home_cats.json()["items"]] == SEED_HOME_EXPENSE_CATEGORIES
 
     duplicate = await client.post("/api/v1/treatments", headers=headers, json={
         "category_id": treatments.json()["items"][0]["category_id"],

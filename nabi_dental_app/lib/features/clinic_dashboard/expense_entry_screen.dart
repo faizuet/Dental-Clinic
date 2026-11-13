@@ -211,6 +211,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                               key: ValueKey('expense-category-$i-${_rows[i].categoryId}'),
                               initialValue: _categoryValue(_rows[i].categoryId),
                               isExpanded: true,
+                              menuMaxHeight: 420,
                               decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
                               items: [
                                 for (final item in _categories)
@@ -250,6 +251,7 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       key: ValueKey('expense-category-$i-${_rows[i].categoryId}'),
                       initialValue: _categoryValue(_rows[i].categoryId),
                       isExpanded: true,
+                      menuMaxHeight: 420,
                       decoration: const InputDecoration(labelText: 'Category', prefixIcon: Icon(Icons.category_outlined)),
                       items: [
                         for (final item in _categories)

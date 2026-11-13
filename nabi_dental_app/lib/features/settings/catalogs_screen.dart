@@ -23,11 +23,12 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
   List<CatalogItem> _categories = [];
   List<CatalogItem> _treatments = [];
   List<CatalogItem> _clinic = [];
+  List<CatalogItem> _home = [];
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _load();
   }
 
@@ -42,22 +43,26 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
     var categories = await repo.treatmentCategories();
     var treatments = await repo.treatments();
     var clinic = await repo.clinicExpenseCategories();
+    var home = await repo.homeExpenseCategories();
     if (mounted) {
       setState(() {
         _categories = categories;
         _treatments = treatments;
         _clinic = clinic;
+        _home = home;
       });
     }
     await repo.refresh(force: true);
     categories = await repo.treatmentCategories();
     treatments = await repo.treatments();
     clinic = await repo.clinicExpenseCategories();
+    home = await repo.homeExpenseCategories();
     if (mounted) {
       setState(() {
         _categories = categories;
         _treatments = treatments;
         _clinic = clinic;
+        _home = home;
       });
     }
   }
@@ -180,6 +185,7 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
             Tab(text: 'Categories'),
             Tab(text: 'Treatments'),
             Tab(text: 'Clinic expenses'),
+            Tab(text: 'Home groceries'),
           ],
         ),
       ),
@@ -213,6 +219,15 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
               collection: 'clinic_expense_categories',
               entityType: 'clinic_expense_category',
               label: 'clinic category',
+            ),
+          ),
+          _list(
+            _home,
+            onAdd: () => _add(
+              path: '/api/v1/home-expense-categories',
+              collection: 'home_expense_categories',
+              entityType: 'home_expense_category',
+              label: 'home grocery category',
             ),
           ),
         ],

@@ -36,7 +36,7 @@ async def reset_data():
         await connection.execute(
             text(
                 "TRUNCATE TABLE "
-                "sync_changes, construction_purchases, construction_materials, construction_material_categories, "
+                "sync_changes, "
                 "home_budgets, home_expenses, home_expense_categories, "
                 "clinic_expenses, clinic_expense_categories, treatment_attachments, treatment_transactions, patients, "
                 "treatments, treatment_categories, refresh_tokens, users, clinics "

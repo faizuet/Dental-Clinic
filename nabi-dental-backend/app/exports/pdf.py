@@ -11,7 +11,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.schemas.report import ClinicReport, ConstructionReport, HomeReport, NamedAmount
+from app.schemas.report import ClinicReport, HomeReport, NamedAmount
 from app.schemas.treatment_transaction import TreatmentTransactionRead
 from app.utils.treatment_details import (
     resolved_sub_treatment,
@@ -19,7 +19,7 @@ from app.utils.treatment_details import (
     visit_items,
 )
 from app.utils.dates import format_display_date, format_display_date_range
-from app.utils.money import format_money, format_quantity, parse_money
+from app.utils.money import format_money, parse_money
 
 PRIMARY = colors.HexColor("#2F80ED")
 PRIMARY_DARK = colors.HexColor("#1B6CDE")
@@ -306,76 +306,6 @@ def render_home_pdf(report: HomeReport, *, clinic_name: str) -> bytes:
         generated=generated,
         period=_period_label(report.period.from_date, report.period.to_date),
         accent=PRIMARY,
-    )
-
-
-def render_construction_pdf(report: ConstructionReport, *, clinic_name: str) -> bytes:
-    generated = _generated_label()
-    title = "Construction Expense Report"
-    material_rows = [
-        [
-            item.name,
-            format_quantity(item.quantity),
-            item.unit,
-            _money(item.amount, report.currency),
-        ]
-        for item in report.spending_by_material
-    ]
-    purchase_rows = [
-        [
-            format_display_date(item.purchase_date),
-            item.material_name,
-            item.category_name,
-            f"{format_quantity(item.quantity)} {item.unit}",
-            _money(item.unit_price, report.currency),
-            _money(item.amount, report.currency),
-            item.supplier or "—",
-        ]
-        for item in report.purchases
-    ]
-    story = [
-        *_metric_cards(
-            [
-                ("Total spend", _money(report.total_expenses, report.currency), TEXT),
-                ("Purchases", str(report.purchase_count), PRIMARY_DARK),
-                ("Highest category", report.top_categories[0].name if report.top_categories else "—", TEXT),
-            ]
-        ),
-        *_kv_section(
-            "Report details",
-            [
-                ("Currency", report.currency),
-                ("Categories used", str(len(report.expenses_by_category))),
-                ("Suppliers", str(len(report.expenses_by_supplier))),
-            ],
-        ),
-        *_named_section("Expenses by material category", report.expenses_by_category, report.currency),
-        *_chart_section("Category mix", report.expenses_by_category),
-        *_named_section("Highest-cost materials", report.top_materials, report.currency),
-        *_named_section("Supplier spending", report.expenses_by_supplier, report.currency),
-        *_line_section(
-            "Material-wise quantity and cost",
-            ["Material", "Quantity", "Unit", "Total"],
-            material_rows,
-            [190, 80, 70, 132],
-            [3],
-        ),
-        *_line_section(
-            "Purchase history",
-            ["Date", "Material", "Category", "Qty", "Unit price", "Total", "Supplier"],
-            purchase_rows,
-            [62, 88, 72, 58, 70, 70, 72],
-            [4, 5],
-        ),
-        *_timeline_section(report.timeline, report.currency, include_income=False),
-    ]
-    return _build(
-        story,
-        clinic_name=clinic_name,
-        title=title,
-        generated=generated,
-        period=_period_label(report.period.from_date, report.period.to_date),
-        accent=PRIMARY_DARK,
     )
 
 

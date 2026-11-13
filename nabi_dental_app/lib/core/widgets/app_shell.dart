@@ -17,6 +17,7 @@ class ClinicDestination {
     required this.selectedIcon,
     required this.path,
     required this.matches,
+    required this.branch,
   });
 
   final String label;
@@ -24,6 +25,7 @@ class ClinicDestination {
   final IconData selectedIcon;
   final String path;
   final bool Function(String location) matches;
+  final int branch;
 }
 
 const clinicDestinations = [
@@ -33,6 +35,7 @@ const clinicDestinations = [
     selectedIcon: Icons.space_dashboard_rounded,
     path: '/clinic',
     matches: _isDashboard,
+    branch: 0,
   ),
   ClinicDestination(
     label: 'Patients',
@@ -40,6 +43,7 @@ const clinicDestinations = [
     selectedIcon: Icons.people_rounded,
     path: '/clinic/patients',
     matches: _isPatients,
+    branch: 1,
   ),
   ClinicDestination(
     label: 'Treatments',
@@ -47,6 +51,7 @@ const clinicDestinations = [
     selectedIcon: Icons.healing_rounded,
     path: '/clinic/income/history',
     matches: _isTreatments,
+    branch: 2,
   ),
   ClinicDestination(
     label: 'Expenses',
@@ -54,6 +59,7 @@ const clinicDestinations = [
     selectedIcon: Icons.receipt_long_rounded,
     path: '/clinic/expenses/history',
     matches: _isExpenses,
+    branch: 3,
   ),
   ClinicDestination(
     label: 'Reports',
@@ -61,6 +67,7 @@ const clinicDestinations = [
     selectedIcon: Icons.picture_as_pdf_rounded,
     path: '/clinic/reports',
     matches: _isReports,
+    branch: 4,
   ),
   ClinicDestination(
     label: 'Settings',
@@ -68,6 +75,42 @@ const clinicDestinations = [
     selectedIcon: Icons.settings_rounded,
     path: '/settings',
     matches: _isSettings,
+    branch: 5,
+  ),
+];
+
+const homeDestinations = [
+  ClinicDestination(
+    label: 'Dashboard',
+    icon: Icons.space_dashboard_outlined,
+    selectedIcon: Icons.space_dashboard_rounded,
+    path: '/home',
+    matches: _isHomeDashboard,
+    branch: 6,
+  ),
+  ClinicDestination(
+    label: 'Expenses',
+    icon: Icons.shopping_bag_outlined,
+    selectedIcon: Icons.shopping_bag_rounded,
+    path: '/home/expenses/history',
+    matches: _isHomeExpenses,
+    branch: 7,
+  ),
+  ClinicDestination(
+    label: 'Reports',
+    icon: Icons.picture_as_pdf_outlined,
+    selectedIcon: Icons.picture_as_pdf_rounded,
+    path: '/home/reports',
+    matches: _isHomeReports,
+    branch: 8,
+  ),
+  ClinicDestination(
+    label: 'Settings',
+    icon: Icons.settings_outlined,
+    selectedIcon: Icons.settings_rounded,
+    path: '/settings',
+    matches: _isSettings,
+    branch: 5,
   ),
 ];
 
@@ -77,6 +120,9 @@ bool _isTreatments(String location) => location.startsWith('/clinic/income');
 bool _isExpenses(String location) => location.startsWith('/clinic/expenses');
 bool _isReports(String location) => location.startsWith('/clinic/reports');
 bool _isSettings(String location) => location.startsWith('/settings');
+bool _isHomeDashboard(String location) => location == '/home' || location == '/home/budget';
+bool _isHomeExpenses(String location) => location.startsWith('/home/expenses');
+bool _isHomeReports(String location) => location.startsWith('/home/reports');
 
 class ClinicAppShell extends ConsumerStatefulWidget {
   const ClinicAppShell({super.key, required this.child, this.navigationShell});
@@ -91,6 +137,7 @@ class ClinicAppShell extends ConsumerStatefulWidget {
 class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   var _forcingPassword = false;
+  var _homeModule = false;
 
   @override
   void initState() {
@@ -104,17 +151,40 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
 
   String get _location => GoRouterState.of(context).uri.path;
 
+  bool get _homeActive => _location.startsWith('/home') || (_homeModule && _location.startsWith('/settings'));
+
+  List<ClinicDestination> get _destinations => _homeActive ? homeDestinations : clinicDestinations;
+
   void _open(String path) {
+    if (path.startsWith('/home')) {
+      _homeModule = true;
+    } else if (!path.startsWith('/settings')) {
+      _homeModule = false;
+    }
     final shell = widget.navigationShell;
-    final index = clinicDestinations.indexWhere((item) => item.path == path);
-    if (shell != null && index >= 0) {
-      shell.goBranch(index, initialLocation: index == shell.currentIndex);
+    final branch = _branchFor(path);
+    if (shell != null && branch != null) {
+      shell.goBranch(branch, initialLocation: branch == shell.currentIndex);
       return;
     }
     if (_location == path) {
       return;
     }
     context.go(path);
+  }
+
+  int? _branchFor(String path) {
+    for (final item in _destinations) {
+      if (item.path == path) {
+        return item.branch;
+      }
+    }
+    for (final item in [...clinicDestinations, ...homeDestinations]) {
+      if (item.path == path) {
+        return item.branch;
+      }
+    }
+    return null;
   }
 
   Future<void> _forcePasswordChange() async {
@@ -173,6 +243,8 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
                       clinic: clinic,
                       userName: name,
                       location: _location,
+                      homeActive: _homeActive,
+                      destinations: _destinations,
                       onSelect: (path) {
                         Navigator.of(context).pop();
                         _open(path);
@@ -192,6 +264,8 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
                   clinic: clinic,
                   userName: name,
                   location: _location,
+                  homeActive: _homeActive,
+                  destinations: _destinations,
                   onSelect: _open,
                   onProfile: () => context.go('/settings/profile'),
                 ),
@@ -212,6 +286,8 @@ class _Sidebar extends StatelessWidget {
     required this.clinic,
     required this.userName,
     required this.location,
+    required this.homeActive,
+    required this.destinations,
     required this.onSelect,
     required this.onProfile,
   });
@@ -220,6 +296,8 @@ class _Sidebar extends StatelessWidget {
   final String clinic;
   final String userName;
   final String location;
+  final bool homeActive;
+  final List<ClinicDestination> destinations;
   final ValueChanged<String> onSelect;
   final VoidCallback onProfile;
 
@@ -251,7 +329,7 @@ class _Sidebar extends StatelessWidget {
                               style: theme.textTheme.titleSmall,
                             ),
                             Text(
-                              clinic,
+                              homeActive ? 'Home grocery' : clinic,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted),
@@ -264,11 +342,20 @@ class _Sidebar extends StatelessWidget {
                 : const Center(child: ClinicMark(size: 40)),
           ),
           const SizedBox(height: 8),
+          Padding(
+            padding: EdgeInsets.fromLTRB(extended ? 12 : 10, 0, extended ? 12 : 10, 10),
+            child: _DomainSwitcher(
+              extended: extended,
+              homeActive: homeActive,
+              onClinic: () => onSelect('/clinic'),
+              onHome: () => onSelect('/home'),
+            ),
+          ),
           Expanded(
             child: ListView(
               padding: EdgeInsets.symmetric(horizontal: extended ? 12 : 10),
               children: [
-                for (final item in clinicDestinations)
+                for (final item in destinations)
                   _NavTile(
                     item: item,
                     extended: extended,
@@ -373,6 +460,101 @@ class _NavTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Tooltip(message: item.label, child: tile),
+    );
+  }
+}
+
+class _DomainSwitcher extends StatelessWidget {
+  const _DomainSwitcher({
+    required this.extended,
+    required this.homeActive,
+    required this.onClinic,
+    required this.onHome,
+  });
+
+  final bool extended;
+  final bool homeActive;
+  final VoidCallback onClinic;
+  final VoidCallback onHome;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!extended) {
+      return Column(
+        children: [
+          _iconButton(
+            tooltip: 'Clinic',
+            icon: Icons.local_hospital_outlined,
+            selected: !homeActive,
+            onTap: onClinic,
+          ),
+          const SizedBox(height: 6),
+          _iconButton(
+            tooltip: 'Home',
+            icon: Icons.home_outlined,
+            selected: homeActive,
+            onTap: onHome,
+          ),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        Expanded(child: _chip(label: 'Clinic', selected: !homeActive, onTap: onClinic)),
+        const SizedBox(width: 8),
+        Expanded(child: _chip(label: 'Home', selected: homeActive, onTap: onHome)),
+      ],
+    );
+  }
+
+  Widget _chip({required String label, required bool selected, required VoidCallback onTap}) {
+    return Material(
+      color: selected ? AppColors.card : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        side: BorderSide(color: selected ? AppColors.primary : AppColors.border),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: selected ? AppColors.primary : AppColors.muted,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _iconButton({
+    required String tooltip,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: selected ? AppColors.card : Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          side: selected ? const BorderSide(color: AppColors.border) : BorderSide.none,
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Icon(icon, color: selected ? AppColors.primary : AppColors.muted, size: 22),
+          ),
+        ),
+      ),
     );
   }
 }

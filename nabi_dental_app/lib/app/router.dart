@@ -13,6 +13,8 @@ import '../features/clinic_dashboard/patients_screen.dart';
 import '../features/clinic_dashboard/reports_screen.dart';
 import '../features/clinic_dashboard/treatment_detail_screen.dart';
 import '../features/clinic_dashboard/treatment_entry_screen.dart';
+import '../features/home_dashboard/home_budget_screen.dart';
+import '../features/home_dashboard/home_dashboard_screen.dart';
 import '../features/settings/catalogs_screen.dart';
 import '../features/settings/conflict_review_screen.dart';
 import '../features/settings/profile_screen.dart';
@@ -40,7 +42,6 @@ final routerProvider = Provider<GoRouter>((ref) {
               location == '/modules' ||
               location == '/pin-setup' ||
               location == '/unlock' ||
-              location.startsWith('/home') ||
               location.startsWith('/construction')) {
             return '/clinic';
           }
@@ -128,6 +129,28 @@ final routerProvider = Provider<GoRouter>((ref) {
                   appRoute('conflicts', () => const ConflictReviewScreen()),
                 ],
               ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/home',
+                pageBuilder: (context, state) => buildAppPage(state, const HomeDashboardScreen()),
+                routes: [
+                  appRoute('budget', () => const HomeBudgetScreen()),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              appRoute('/home/expenses/history', () => const HomeExpenseHistoryScreen()),
+              appRoute('/home/expenses', () => const HomeExpenseEntryScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              appRoute('/home/reports', () => const HomeReportsScreen()),
             ],
           ),
         ],

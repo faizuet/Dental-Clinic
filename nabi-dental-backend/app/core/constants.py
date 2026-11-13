@@ -50,9 +50,6 @@ class SyncEntity(StrEnum):
     HOME_EXPENSE_CATEGORY = "home_expense_category"
     HOME_EXPENSE = "home_expense"
     HOME_BUDGET = "home_budget"
-    CONSTRUCTION_MATERIAL_CATEGORY = "construction_material_category"
-    CONSTRUCTION_MATERIAL = "construction_material"
-    CONSTRUCTION_PURCHASE = "construction_purchase"
 
 
 class SyncOperation(StrEnum):
@@ -100,60 +97,39 @@ SEED_CLINIC_EXPENSE_CATEGORIES = [
     "Other",
 ]
 
-SEED_CONSTRUCTION_MATERIALS: dict[str, list[tuple[str, str]]] = {
-    "Structure": [
-        ("Cement", "bag"),
-        ("Bricks / Blocks", "piece"),
-        ("Sand", "cft"),
-        ("Crush / Aggregate", "cft"),
-        ("Steel / Rebar", "kg"),
-        ("Concrete", "cft"),
-        ("Stone", "cft"),
-        ("Roofing materials", "sqft"),
-        ("Waterproofing materials", "kg"),
-    ],
-    "Woodwork": [
-        ("Wood / Timber", "cft"),
-        ("Doors", "piece"),
-        ("Windows", "piece"),
-        ("Cabinets", "piece"),
-        ("Frames", "piece"),
-    ],
-    "Electrical": [
-        ("Electrical wires and cables", "meter"),
-        ("Switches and sockets", "piece"),
-        ("Lights and fixtures", "piece"),
-    ],
-    "Plumbing": [
-        ("Pipes", "meter"),
-        ("Plumbing fittings", "piece"),
-        ("Water tanks", "piece"),
-    ],
-    "Finishing": [
-        ("Tiles", "sqft"),
-        ("Marble / Granite", "sqft"),
-        ("Paint", "liter"),
-        ("Putty / Plaster materials", "kg"),
-        ("Glass", "sqft"),
-    ],
-    "Sanitary": [
-        ("Sanitary items", "piece"),
-    ],
-    "Other": [
-        ("Hardware items", "piece"),
-        ("Nails, screws, and fasteners", "kg"),
-        ("Other construction materials", "piece"),
-    ],
-}
-
 SEED_HOME_EXPENSE_CATEGORIES = [
-    "Groceries",
-    "Utilities",
-    "Rent",
-    "Transport",
-    "Education",
-    "Medical",
-    "Entertainment",
-    "Shopping",
-    "Other",
+    "Fresh Vegetables",
+    "Fruits",
+    "Beef / Mutton",
+    "Chicken",
+    "Eggs",
+    "Daalain",
+    "Milk / Yogurt",
+    "Butter Cheese",
+    "Bread Rusk",
+    "Honey / Jam",
+    "Frozen Items",
+    "Atta White",
+    "Chawal",
+    "Sugar",
+    "Cooking Oil",
+    "Tea",
+    "Masaly cooking",
+    "Ketchup, Mayo, Sauces",
+    "Dry Fruits",
+    "Cold drinks",
+    "Shampoo, Conditioners",
+    "Soap Body wash",
+    "Face wash",
+    "Toothpaste toothbrush",
+    "Hair Oil",
+    "Bathroom Accessories",
+    "Air freshener",
+    "Tissue",
+    "Washing Surf",
+    "Harpic",
+    "Pheyl",
+    "Mortien",
+    "Mosquito spray",
+    "Hygiene Items",
 ]

@@ -51,28 +51,15 @@ void main() {
     expect(entry.version, 1);
   });
 
-  test('construction purchase parses quantity and money strings', () {
-    final purchase = ConstructionPurchase.fromJson({
-      'id': 21,
-      'material_id': 8,
-      'purchase_date': '2026-09-24',
-      'quantity': 10,
-      'unit': 'bag',
-      'unit_price': 1450,
-      'amount': 14500,
-      'material_name': 'Cement',
-      'category_name': 'Structure',
-      'supplier': 'Local kiln',
-      'notes': 0,
-      'version': '2',
+  test('home grocery catalog keeps display order', () {
+    final item = CatalogItem.fromJson({
+      'id': 'g1',
+      'name': 'Fresh Vegetables',
+      'display_order': '3',
+      'is_active': true,
     });
-    expect(purchase.materialId, '8');
-    expect(purchase.quantity, '10');
-    expect(purchase.unitPrice, '1450');
-    expect(purchase.amount, '14500');
-    expect(purchase.supplier, 'Local kiln');
-    expect(purchase.notes, '0');
-    expect(purchase.version, 2);
+    expect(item.displayOrder, 3);
+    expect(item.isActive, isTrue);
   });
 
   test('custom range includes both ends', () {

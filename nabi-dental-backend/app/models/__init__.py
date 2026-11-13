@@ -1,7 +1,6 @@
 from app.models.clinic import Clinic
 from app.models.clinic_expense import ClinicExpense
 from app.models.clinic_expense_category import ClinicExpenseCategory
-from app.models.construction import ConstructionMaterial, ConstructionMaterialCategory, ConstructionPurchase
 from app.models.home_budget import HomeBudget
 from app.models.home_expense import HomeExpense
 from app.models.home_expense_category import HomeExpenseCategory
@@ -28,8 +27,5 @@ __all__ = [
     "HomeExpenseCategory",
     "HomeExpense",
     "HomeBudget",
-    "ConstructionMaterialCategory",
-    "ConstructionMaterial",
-    "ConstructionPurchase",
     "SyncChange",
 ]

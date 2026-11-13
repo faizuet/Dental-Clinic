@@ -723,6 +723,8 @@ class HomeExpenseHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/home-expenses/$id',
       updatePath: (id) => '/api/v1/home-expenses/$id',
       loader: (repo, {range, search}) => repo.homeExpenseHistory(range: range, search: search),
+      addLabel: 'Add expense',
+      onAdd: () => context.push('/home/expenses'),
     );
   }
 }

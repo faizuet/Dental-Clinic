@@ -1,8 +1,10 @@
 # Nabi Dental Clinic (Flutter)
 
-Desktop Flutter client for the local Nabi Dental Clinic API.
+Windows desktop client for the local Nabi Dental Clinic API.
 
-Full project documentation is in the [repository README](../README.md).
+The app has two independent domains, **Clinic** and **Home**, with a shared design and offline cache.
+
+Full product documentation is in the [repository README](../README.md).
 
 ## Quick start
 

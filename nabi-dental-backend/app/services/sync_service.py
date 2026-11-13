@@ -12,9 +12,6 @@ from app.core.exceptions import AppError, ConflictError, VersionConflictError
 from app.models import (
     ClinicExpense,
     ClinicExpenseCategory,
-    ConstructionMaterial,
-    ConstructionMaterialCategory,
-    ConstructionPurchase,
     HomeBudget,
     HomeExpense,
     HomeExpenseCategory,
@@ -40,17 +37,6 @@ from app.schemas.home_expense_category import (
     HomeExpenseCategoryRead,
     HomeExpenseCategoryUpdate,
 )
-from app.schemas.construction import (
-    ConstructionMaterialCategoryCreate,
-    ConstructionMaterialCategoryRead,
-    ConstructionMaterialCategoryUpdate,
-    ConstructionMaterialCreate,
-    ConstructionMaterialRead,
-    ConstructionMaterialUpdate,
-    ConstructionPurchaseCreate,
-    ConstructionPurchaseRead,
-    ConstructionPurchaseUpdate,
-)
 from app.schemas.sync import SyncChangeIn, SyncPushRequest, SyncPushResponse, SyncPushResult
 from app.schemas.treatment import TreatmentCreate, TreatmentRead, TreatmentUpdate
 from app.schemas.treatment_category import TreatmentCategoryCreate, TreatmentCategoryRead, TreatmentCategoryUpdate
@@ -62,7 +48,6 @@ from app.schemas.treatment_transaction import (
 )
 from app.services.treatment_service import serialize_transaction
 from app.services.clinic_expense_service import ClinicExpenseService
-from app.services.construction_service import ConstructionService
 from app.services.home_expense_service import HomeExpenseService
 from app.services.treatment_service import TreatmentService
 from app.utils.dates import serialize_datetime
@@ -77,9 +62,6 @@ ENTITY_KEYS = {
     SyncEntity.HOME_EXPENSE_CATEGORY: "home_expense_categories",
     SyncEntity.HOME_EXPENSE: "home_expenses",
     SyncEntity.HOME_BUDGET: "home_budgets",
-    SyncEntity.CONSTRUCTION_MATERIAL_CATEGORY: "construction_material_categories",
-    SyncEntity.CONSTRUCTION_MATERIAL: "construction_materials",
-    SyncEntity.CONSTRUCTION_PURCHASE: "construction_purchases",
 }
 
 READERS = {
@@ -92,9 +74,6 @@ READERS = {
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategoryRead,
     SyncEntity.HOME_EXPENSE: HomeExpenseRead,
     SyncEntity.HOME_BUDGET: HomeBudgetRead,
-    SyncEntity.CONSTRUCTION_MATERIAL_CATEGORY: ConstructionMaterialCategoryRead,
-    SyncEntity.CONSTRUCTION_MATERIAL: ConstructionMaterialRead,
-    SyncEntity.CONSTRUCTION_PURCHASE: ConstructionPurchaseRead,
 }
 
 MODELS = {
@@ -107,9 +86,6 @@ MODELS = {
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategory,
     SyncEntity.HOME_EXPENSE: HomeExpense,
     SyncEntity.HOME_BUDGET: HomeBudget,
-    SyncEntity.CONSTRUCTION_MATERIAL_CATEGORY: ConstructionMaterialCategory,
-    SyncEntity.CONSTRUCTION_MATERIAL: ConstructionMaterial,
-    SyncEntity.CONSTRUCTION_PURCHASE: ConstructionPurchase,
 }
 
 
@@ -120,7 +96,6 @@ class SyncService:
         self.treatments = TreatmentService(session)
         self.clinic_expenses = ClinicExpenseService(session)
         self.home = HomeExpenseService(session)
-        self.construction = ConstructionService(session)
 
     async def push(self, user: User, payload: SyncPushRequest) -> SyncPushResponse:
         results: list[SyncPushResult] = []
@@ -255,12 +230,6 @@ class SyncService:
             return await self._mut_home_expense(user, change, data)
         if entity == SyncEntity.HOME_BUDGET:
             return await self._mut_home_budget(user, change, data)
-        if entity == SyncEntity.CONSTRUCTION_MATERIAL_CATEGORY:
-            return await self._mut_construction_category(user, change, data)
-        if entity == SyncEntity.CONSTRUCTION_MATERIAL:
-            return await self._mut_construction_material(user, change, data)
-        if entity == SyncEntity.CONSTRUCTION_PURCHASE:
-            return await self._mut_construction_purchase(user, change, data)
         raise ConflictError("Unsupported sync entity.")
 
     async def _mut_category(self, user, change, data):
@@ -354,39 +323,6 @@ class SyncService:
             return await self.home.update_budget(user, change.entity_id, HomeBudgetUpdate.model_validate(data))
         return await self.home.delete_budget(user, change.entity_id, change.base_version or 1)
 
-    async def _mut_construction_category(self, user, change, data):
-        if change.operation == SyncOperation.CREATE:
-            payload = ConstructionMaterialCategoryCreate.model_validate(data)
-            payload.id = change.entity_id
-            return await self.construction.create_category(user, payload)
-        if change.operation == SyncOperation.UPDATE:
-            return await self.construction.update_category(
-                user, change.entity_id, ConstructionMaterialCategoryUpdate.model_validate(data)
-            )
-        return await self.construction.delete_category(user, change.entity_id, change.base_version or 1)
-
-    async def _mut_construction_material(self, user, change, data):
-        if change.operation == SyncOperation.CREATE:
-            payload = ConstructionMaterialCreate.model_validate(data)
-            payload.id = change.entity_id
-            return await self.construction.create_material(user, payload)
-        if change.operation == SyncOperation.UPDATE:
-            return await self.construction.update_material(
-                user, change.entity_id, ConstructionMaterialUpdate.model_validate(data)
-            )
-        return await self.construction.delete_material(user, change.entity_id, change.base_version or 1)
-
-    async def _mut_construction_purchase(self, user, change, data):
-        if change.operation == SyncOperation.CREATE:
-            payload = ConstructionPurchaseCreate.model_validate(data)
-            payload.id = change.entity_id
-            return await self.construction.create_purchase(user, payload)
-        if change.operation == SyncOperation.UPDATE:
-            return await self.construction.update_purchase(
-                user, change.entity_id, ConstructionPurchaseUpdate.model_validate(data)
-            )
-        return await self.construction.delete_purchase(user, change.entity_id, change.base_version or 1)
-
     async def _pull_entity(
         self,
         user: User,
@@ -397,7 +333,7 @@ class SyncService:
     ):
         model = MODELS[entity]
         stmt = select(model)
-        if entity.value.startswith("home_") or entity.value.startswith("construction_"):
+        if entity.value.startswith("home_"):
             stmt = stmt.where(model.user_id == user.id)
         else:
             stmt = stmt.where(model.clinic_id == user.clinic_id)
@@ -412,7 +348,7 @@ class SyncService:
     async def _latest(self, user: User, entity: SyncEntity):
         model = MODELS[entity]
         stmt = select(model)
-        if entity.value.startswith("home_") or entity.value.startswith("construction_"):
+        if entity.value.startswith("home_"):
             stmt = stmt.where(model.user_id == user.id)
         else:
             stmt = stmt.where(model.clinic_id == user.clinic_id)
