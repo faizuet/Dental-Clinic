@@ -33,6 +33,8 @@ class HistoryScreen extends ConsumerStatefulWidget {
     required this.loader,
     this.onOpen,
     this.onEdit,
+    this.onAdd,
+    this.addLabel,
     this.showPatient = false,
   });
 
@@ -45,6 +47,8 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final Future<List<MoneyEntry>> Function(FinanceRepository repo, {DateRange? range, String? search}) loader;
   final Future<void> Function(BuildContext context, MoneyEntry entry)? onOpen;
   final Future<void> Function(BuildContext context, MoneyEntry entry)? onEdit;
+  final Future<void> Function()? onAdd;
+  final String? addLabel;
   final bool showPatient;
 
   @override
@@ -114,6 +118,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           _syncing = false;
         });
       }
+    }
+  }
+
+  Future<void> _addRecord() async {
+    if (widget.onAdd == null) {
+      return;
+    }
+    await widget.onAdd!();
+    if (mounted) {
+      await _load(silent: true);
     }
   }
 
@@ -530,6 +544,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         title: widget.title,
         fallback: widget.backTo,
         actions: [
+          if (widget.onAdd != null)
+            IconButton(
+              tooltip: widget.addLabel ?? 'Add',
+              onPressed: _addRecord,
+              icon: const Icon(Icons.add_rounded),
+            ),
           IconButton(tooltip: 'Filter dates', onPressed: _pickRange, icon: const Icon(Icons.filter_alt_outlined)),
         ],
       ),
@@ -603,12 +623,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                           )
                     : _items.isEmpty
-                        ? const Center(
-                            key: ValueKey('history-empty'),
+                        ? Center(
+                            key: const ValueKey('history-empty'),
                             child: EmptyState(
                               message: 'No records for this filter yet.',
                               title: 'Nothing here',
                               icon: Icons.receipt_long_outlined,
+                              actionLabel: widget.addLabel,
+                              onAction: widget.onAdd == null ? null : _addRecord,
                             ),
                           )
                         : RefreshIndicator(
@@ -657,6 +679,8 @@ class TreatmentHistoryScreen extends StatelessWidget {
       updatePath: (id) => '/api/v1/treatment-transactions/$id',
       loader: (repo, {range, search}) => repo.incomeHistory(range: range, search: search),
       showPatient: true,
+      addLabel: 'Add treatment',
+      onAdd: () => context.push('/clinic/income'),
       onOpen: (context, entry) async {
         await context.push('/clinic/income/${entry.id}');
       },
@@ -680,6 +704,8 @@ class ClinicExpenseHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/clinic-expenses/$id',
       updatePath: (id) => '/api/v1/clinic-expenses/$id',
       loader: (repo, {range, search}) => repo.clinicExpenseHistory(range: range, search: search),
+      addLabel: 'Add expense',
+      onAdd: () => context.push('/clinic/expenses'),
     );
   }
 }

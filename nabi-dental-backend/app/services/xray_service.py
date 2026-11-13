@@ -29,9 +29,11 @@ class XrayService:
         self.session = session
         self.attachments = TreatmentAttachmentRepository(session)
 
+    def _visit_dir(self, clinic_id: uuid.UUID, transaction_id: uuid.UUID) -> Path:
+        return Path(settings.UPLOAD_DIR) / "xrays" / str(clinic_id) / str(transaction_id)
+
     def _dir(self, clinic_id: uuid.UUID, transaction_id: uuid.UUID) -> Path:
-        path = Path(settings.UPLOAD_DIR) / "xrays" / str(clinic_id) / str(transaction_id)
-        return ensure_upload_dir(path)
+        return ensure_upload_dir(self._visit_dir(clinic_id, transaction_id))
 
     async def save(
         self,
@@ -120,3 +122,19 @@ class XrayService:
             path.unlink()
         attachment.soft_delete()
         await self.session.flush()
+
+    async def delete_for_transaction(self, user: User, record: TreatmentTransaction) -> None:
+        if record.clinic_id != user.clinic_id:
+            raise NotFoundError("Treatment record was not found.")
+        for attachment in await self.attachments.list_live(user.clinic_id, record.id):
+            await self.delete(user, attachment)
+        folder = self._visit_dir(record.clinic_id, record.id)
+        if not folder.is_dir():
+            return
+        for leftover in folder.iterdir():
+            if leftover.is_file():
+                leftover.unlink()
+        try:
+            folder.rmdir()
+        except OSError:
+            pass

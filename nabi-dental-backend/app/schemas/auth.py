@@ -47,6 +47,7 @@ class UserPublic(APIModel):
     role: str
     default_home_budget: Decimal
     has_avatar: bool = False
+    must_change_password: bool = False
 
     @field_serializer("default_home_budget")
     def serialize_budget(self, value: Decimal) -> str:

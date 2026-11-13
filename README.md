@@ -16,6 +16,7 @@ The project is a monorepo: a FastAPI + PostgreSQL API and a Flutter desktop clie
 - [Setup](#setup)
 - [Environment variables](#environment-variables)
 - [Running the apps](#running-the-apps)
+- [Backup and restore](#backup-and-restore)
 - [Reports and files](#reports-and-files)
 - [Screenshots](#screenshots)
 - [Tests](#tests)
@@ -62,13 +63,14 @@ It is a single-clinic, owner-operated tool. It does not manage staff rosters, ap
 - Date-range reports (daily, monthly, yearly, or a custom inclusive start/end)
 - PDF and Excel export; PDFs save to Downloads on Android
 - Individual treatment PDF from a visit record
+- Local backup and restore of the database plus X-rays (zip on this laptop or a USB drive)
 
 ## How the app works
 
 1. Start Docker Compose, then open the Flutter desktop app.
 2. Sign in with the clinic owner email and password.
 3. Use the clinic dashboard to add treatments, expenses, history, and reports.
-4. Settings covers profile, catalogs, password change, sync conflicts, and sign-out.
+4. Settings covers profile, catalogs, backup and restore, password change, sync conflicts, and sign-out.
 
 ### Dental treatment flow
 
@@ -123,6 +125,7 @@ nabi-dental-backend/          API
   app/repositories/           Queries
   app/exports/                PDF and Excel
   alembic/versions/           Migrations
+  scripts/                    Local backup and restore PowerShell helpers
   tests/                      Pytest
 
 nabi_dental_app/              Flutter client
@@ -165,7 +168,7 @@ Base path: `/api/v1`. Interactive docs: `/docs`. Health: `GET /health`. Database
 | `/construction-material-categories`, `/construction-materials`, `/construction-purchases` | Construction catalog and purchases |
 | `/dashboard` | Clinic and home period totals |
 | `/reports` | JSON reports plus `/export?format=pdf\|xlsx` for clinic, home, and construction |
-| `/settings` | Clinic/profile settings and avatar |
+| `/settings` | Clinic/profile settings, avatar, backup export/restore |
 | `/sync` | Bootstrap, push, and pull for the Flutter cache |
 
 ## Setup
@@ -213,10 +216,12 @@ flutter pub get
 flutter run -d windows
 ```
 
-Development seed login:
+Development seed login (change this on first sign-in; the app will require it):
 
 - Email: `owner@example.com`
 - Password: `ChangeMeNow!1`
+
+The API replaces an example `JWT_SECRET_KEY` with a unique value in `.env` on first start. Existing sessions then need a fresh sign-in.
 
 Do not commit `.env`. Copy `.env.example` instead.
 
@@ -260,6 +265,38 @@ flutter run -d windows
 ```
 
 The API listens on `http://127.0.0.1:8001`. The desktop app uses that address by default. After the Docker images are on the laptop, clinic work does not need the public internet.
+
+Rebuild the API image once so it includes PostgreSQL client tools (`pg_dump` / `pg_restore`):
+
+```powershell
+cd nabi-dental-backend
+docker compose up --build
+```
+
+## Backup and restore
+
+Clinic records live in the Docker Postgres volume. X-rays and the profile photo live in the uploads volume. Neither is copied anywhere else unless you save a backup.
+
+**From the desktop app (preferred)**
+
+1. Open **Settings → Save clinic backup**.
+2. Choose a folder, preferably a USB drive.
+3. Keep that zip off the clinic laptop.
+
+Restore is **Settings → Restore from backup**. It replaces all patients, treatments, fees, expenses, and X-rays on this computer. Sync any waiting changes first. After restore, the app reloads from the restored database.
+
+The dashboard reminds you if no backup has been saved on this computer, or if the last save is more than seven days old.
+
+**From PowerShell if the app cannot export**
+
+```powershell
+cd nabi-dental-backend
+.\scripts\backup.ps1
+.\scripts\backup.ps1 -OutputDir E:\ClinicBackups
+.\scripts\restore.ps1 -ZipPath E:\ClinicBackups\nabi-dental-backup-2026-11-13-0900.zip
+```
+
+The restore script asks you to type `RESTORE`. The zip contains `manifest.json`, a Postgres custom dump, and the `uploads` folder. It does not include `.env` or passwords in plain text. Sign in after moving the backup to another laptop.
 
 ## Reports and files
 
@@ -308,4 +345,3 @@ flutter test
 ## Later work
 
 - Windows release signing for a clinic installer
-- Stronger local secrets (`JWT_SECRET_KEY`, owner password) on shared clinic laptops

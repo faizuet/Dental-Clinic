@@ -21,6 +21,7 @@ async def test_login_success(client):
     assert body["user"]["email"] == settings.OWNER_EMAIL.lower()
     assert body["clinic"]["name"] == settings.DEFAULT_CLINIC_NAME
     assert body["user"]["default_home_budget"] == "30000.00"
+    assert body["user"]["must_change_password"] is True
 
 
 @pytest.mark.asyncio
@@ -114,6 +115,29 @@ async def test_change_password_revokes_sessions(client):
         },
     )
     assert new_login.status_code == 200
+    assert new_login.json()["user"]["must_change_password"] is False
+
+
+@pytest.mark.asyncio
+async def test_change_password_rejects_example_password(client):
+    login = (
+        await client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": settings.OWNER_EMAIL,
+                "password": settings.OWNER_PASSWORD,
+                "device_id": "device-1",
+            },
+        )
+    ).json()
+    headers = {"Authorization": f"Bearer {login['access_token']}"}
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        headers=headers,
+        json={"current_password": settings.OWNER_PASSWORD, "new_password": "ChangeMeNow!1"},
+    )
+    assert changed.status_code == 400
+    assert "example" in changed.json()["error"]["message"].lower()
 
 
 @pytest.mark.asyncio

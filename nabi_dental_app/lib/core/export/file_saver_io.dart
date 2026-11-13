@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -28,4 +29,24 @@ Future<String?> saveBytes({
   await file.writeAsBytes(bytes, flush: true);
   await OpenFilex.open(file.path, type: mime);
   return file.path;
+}
+
+Future<String?> saveBytesWithPicker({
+  required List<int> bytes,
+  required String filename,
+  required String mime,
+  String label = 'File',
+  List<String> extensions = const [],
+}) async {
+  final location = await getSaveLocation(
+    suggestedName: filename,
+    acceptedTypeGroups: [
+      XTypeGroup(label: label, extensions: extensions),
+    ],
+  );
+  if (location == null) {
+    return null;
+  }
+  await File(location.path).writeAsBytes(bytes, flush: true);
+  return location.path;
 }

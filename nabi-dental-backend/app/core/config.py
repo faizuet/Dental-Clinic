@@ -94,6 +94,7 @@ class Settings(BaseSettings):
     XRAY_MAX_BYTES: int = 5_000_000
     XRAY_MIN_PX: int = 64
     XRAY_MAX_PX: int = 8192
+    BACKUP_REMINDER_DAYS: int = 7
 
     @field_validator("DEFAULT_CURRENCY")
     @classmethod

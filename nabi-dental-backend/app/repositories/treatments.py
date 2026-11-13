@@ -147,6 +147,18 @@ class PatientRepository(BaseRepository):
     async def get(self, clinic_id: UUID, patient_id: UUID) -> Patient | None:
         return await self.session.scalar(self._base(clinic_id, include_deleted=True).where(Patient.id == patient_id))
 
+    async def live_by_phone(
+        self,
+        clinic_id: UUID,
+        phone: str,
+        *,
+        exclude_id: UUID | None = None,
+    ) -> Patient | None:
+        stmt = self._base(clinic_id).where(Patient.phone == phone)
+        if exclude_id:
+            stmt = stmt.where(Patient.id != exclude_id)
+        return await self.session.scalar(stmt)
+
     async def list_filtered(
         self,
         clinic_id: UUID,
@@ -173,6 +185,16 @@ class TreatmentAttachmentRepository(BaseRepository):
                 TreatmentAttachment.id == attachment_id,
             )
         )
+
+    async def list_live(self, clinic_id: UUID, transaction_id: UUID) -> list[TreatmentAttachment]:
+        result = await self.session.scalars(
+            select(TreatmentAttachment).where(
+                TreatmentAttachment.clinic_id == clinic_id,
+                TreatmentAttachment.transaction_id == transaction_id,
+                TreatmentAttachment.deleted_at.is_(None),
+            )
+        )
+        return list(result.all())
 
     async def live_count(self, transaction_id: UUID) -> int:
         return int(

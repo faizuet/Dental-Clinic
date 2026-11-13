@@ -153,6 +153,38 @@ class PatientRecord {
       };
 }
 
+String? duplicatePatientPhoneWarning({
+  required List<PatientRecord> patients,
+  required String? phone,
+  String? excludeId,
+}) {
+  final trimmed = phone?.trim() ?? '';
+  if (trimmed.length != 11) {
+    return null;
+  }
+  for (final item in patients) {
+    if (excludeId != null && item.id == excludeId) {
+      continue;
+    }
+    if ((item.phone ?? '') == trimmed) {
+      return 'This mobile number is already used by ${item.name}. Open that patient instead of adding another.';
+    }
+  }
+  return null;
+}
+
+class RecentClinicPatient {
+  const RecentClinicPatient({
+    required this.patient,
+    this.lastVisitDate,
+    this.lastTreatment,
+  });
+
+  final PatientRecord patient;
+  final String? lastVisitDate;
+  final String? lastTreatment;
+}
+
 class TreatmentAttachment {
   const TreatmentAttachment({
     required this.id,

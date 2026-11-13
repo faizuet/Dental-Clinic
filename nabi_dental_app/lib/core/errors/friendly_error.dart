@@ -15,6 +15,9 @@ String friendlyError(Object error, {String? feature}) {
     return error.message;
   }
   if (error is AppException) {
+    if (error.code == 'XRAY_OFFLINE' || error.code == 'IMAGE_UPLOAD_PARTIAL') {
+      return error.message;
+    }
     final mapped = _featureMessage(feature, error);
     if (mapped != null) {
       return mapped;

@@ -83,7 +83,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               appRoute('/clinic/income/history', () => const TreatmentHistoryScreen()),
               GoRoute(
                 path: '/clinic/income',
-                pageBuilder: (context, state) => buildAppPage(state, const TreatmentEntryScreen()),
+                pageBuilder: (context, state) => buildAppPage(
+                  state,
+                  TreatmentEntryScreen(patientId: state.uri.queryParameters['patientId']),
+                ),
                 routes: [
                   GoRoute(
                     path: ':id/edit',

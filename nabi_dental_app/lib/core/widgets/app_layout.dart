@@ -228,9 +228,11 @@ Future<T?> showAppDialog<T>({
   required List<Widget> Function(BuildContext dialogContext) actions,
   IconData? icon,
   AppDialogTone tone = AppDialogTone.neutral,
+  bool barrierDismissible = true,
 }) {
   return showDialog<T>(
     context: context,
+    barrierDismissible: barrierDismissible,
     useRootNavigator: true,
     builder: (dialogContext) {
       final size = MediaQuery.sizeOf(dialogContext);

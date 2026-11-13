@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -155,7 +154,7 @@ void main() {
     expect(find.text('Patient'), findsWidgets);
   });
 
-  testWidgets('double-clicking a patient name opens that patient record', (tester) async {
+  testWidgets('clicking a patient name opens that patient record', (tester) async {
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -216,8 +215,73 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('faiz khan'));
-    await tester.pump(kDoubleTapMinTime);
-    await tester.tap(find.text('faiz khan'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('record-patient-a'), findsOneWidget);
+    expect(find.text('record-patient-b'), findsNothing);
+  });
+
+  testWidgets('Open button opens that patient record', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final finance = _Finance();
+    when(() => finance.patients()).thenAnswer(
+      (_) async => const [
+        PatientRecord(id: 'patient-a', name: 'faiz khan', phone: '03189253385'),
+        PatientRecord(id: 'patient-b', name: 'Sara Ahmed', phone: '03001234567'),
+      ],
+    );
+
+    final controller = SessionController(
+      auth: _Auth(),
+      tokens: _Tokens(),
+      database: _Db(),
+    )..state = const SessionState(
+        initialized: true,
+        hasTokens: true,
+        user: UserProfile(
+          id: '1',
+          fullName: 'Dr Owner',
+          email: 'owner@example.com',
+          role: 'owner',
+          defaultHomeBudget: '50000.00',
+        ),
+        clinic: ClinicProfile(
+          id: '1',
+          name: 'Nabi Dental',
+          currency: 'PKR',
+          timezone: 'Asia/Karachi',
+        ),
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((ref) => controller),
+          financeRepositoryProvider.overrideWithValue(finance),
+        ],
+        child: MaterialApp.router(
+          theme: buildAppTheme(),
+          routerConfig: GoRouter(
+            initialLocation: '/clinic/patients',
+            routes: [
+              GoRoute(path: '/clinic', builder: (_, __) => const SizedBox()),
+              GoRoute(path: '/clinic/patients', builder: (_, __) => const PatientsScreen()),
+              GoRoute(
+                path: '/clinic/patients/:id',
+                builder: (_, state) => Text('record-${state.pathParameters['id']}'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Open').first);
     await tester.pumpAndSettle();
 
     expect(find.text('record-patient-a'), findsOneWidget);
@@ -239,6 +303,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(pakistaniMobileMessage), findsOneWidget);
+    verifyNever(() => finance.savePatient(name: any(named: 'name'), phone: any(named: 'phone')));
+  });
+
+  testWidgets('warns when a new patient reuses a live mobile number', (tester) async {
+    final finance = _Finance();
+    when(() => finance.patients()).thenAnswer(
+      (_) async => const [
+        PatientRecord(id: '1', name: 'Sara Ahmed', phone: '03001234567'),
+      ],
+    );
+    when(() => finance.refresh(force: any(named: 'force'))).thenAnswer((_) async => true);
+
+    await _pumpPatients(tester, finance);
+    await tester.tap(find.byTooltip('Add patient'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextFormField, 'Patient name'), 'Ali Khan');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Phone number'), '03001234567');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('already used by Sara Ahmed'), findsOneWidget);
     verifyNever(() => finance.savePatient(name: any(named: 'name'), phone: any(named: 'phone')));
   });
 

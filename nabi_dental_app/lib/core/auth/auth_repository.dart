@@ -109,7 +109,7 @@ class AuthRepository {
 
   Future<Uint8List?> downloadAvatar() async {
     try {
-      final response = await _api.getBytes('/api/v1/settings/avatar');
+      final response = await _api.getBytes('/api/v1/settings/avatar', skipSessionInvalid: true);
       final data = response.data;
       if (data == null || data.isEmpty) {
         return null;
@@ -129,6 +129,7 @@ class AuthRepository {
       role: snapshot?.$1.role ?? 'owner',
       defaultHomeBudget: data['default_home_budget'].toString(),
       hasAvatar: data['has_avatar'] == true,
+      mustChangePassword: snapshot?.$1.mustChangePassword ?? false,
     );
     final clinic = ClinicProfile(
       id: data['clinic_id'].toString(),

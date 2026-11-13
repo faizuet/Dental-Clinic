@@ -324,4 +324,22 @@ class AppDatabase {
   Future<void> setMeta(String key, String value) {
     return upsert('_meta', {'id': key, 'value': value});
   }
+
+  Future<void> clearCollection(String collection) async {
+    if (kIsWeb) {
+      _memory.remove(collection);
+      return;
+    }
+    final db = await instance;
+    await db.delete('kv', where: 'collection = ?', whereArgs: [collection]);
+  }
+
+  Future<void> clearPending() async {
+    if (kIsWeb) {
+      _pending.clear();
+      return;
+    }
+    final db = await instance;
+    await db.delete('pending_changes');
+  }
 }

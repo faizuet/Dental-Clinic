@@ -20,6 +20,7 @@ void main() {
     expect(user.fullName, 'Clinic Owner');
     expect(user.defaultHomeBudget, '75000.00');
     expect(user.hasAvatar, isFalse);
+    expect(user.mustChangePassword, isFalse);
     expect(clinic.currency, 'PKR');
     expect(clinic.toJson()['timezone'], 'Asia/Karachi');
   });
@@ -35,5 +36,18 @@ void main() {
     });
     expect(user.hasAvatar, isTrue);
     expect(user.copyWith(hasAvatar: false).hasAvatar, isFalse);
+  });
+
+  test('reads must_change_password from login payloads', () {
+    final user = UserProfile.fromJson({
+      'id': '8c2f0d7a-1b2c-4d5e-8f90-1234567890ab',
+      'full_name': 'Clinic Owner',
+      'email': 'owner@example.com',
+      'role': 'owner',
+      'default_home_budget': '75000.00',
+      'must_change_password': true,
+    });
+    expect(user.mustChangePassword, isTrue);
+    expect(user.copyWith(mustChangePassword: false).mustChangePassword, isFalse);
   });
 }

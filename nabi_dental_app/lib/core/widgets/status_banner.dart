@@ -11,24 +11,29 @@ class StatusBanner extends StatelessWidget {
     this.tone = StatusTone.error,
     this.icon,
     this.onRetry,
+    this.actionLabel = 'Retry',
   });
 
   const StatusBanner.error(this.message, {super.key, this.onRetry})
       : tone = StatusTone.error,
-        icon = Icons.error_outline_rounded;
+        icon = Icons.error_outline_rounded,
+        actionLabel = 'Retry';
 
   const StatusBanner.offline(this.message, {super.key, this.onRetry})
       : tone = StatusTone.offline,
-        icon = Icons.cloud_off_outlined;
+        icon = Icons.cloud_off_outlined,
+        actionLabel = 'Retry';
 
   const StatusBanner.success(this.message, {super.key, this.onRetry})
       : tone = StatusTone.success,
-        icon = Icons.check_circle_outline_rounded;
+        icon = Icons.check_circle_outline_rounded,
+        actionLabel = 'Retry';
 
   final String message;
   final StatusTone tone;
   final IconData? icon;
   final VoidCallback? onRetry;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +65,7 @@ class StatusBanner extends StatelessWidget {
             const SizedBox(width: 8),
             TextButton(
               onPressed: onRetry,
-              child: Text('Retry', style: TextStyle(color: colors.$2, fontWeight: FontWeight.w700)),
+              child: Text(actionLabel, style: TextStyle(color: colors.$2, fontWeight: FontWeight.w700)),
             ),
           ],
         ],

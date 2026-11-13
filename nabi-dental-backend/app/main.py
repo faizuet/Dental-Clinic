@@ -13,11 +13,14 @@ from app.api.v1.router import v1_routers
 from app.core.config import settings
 from app.core.constants import ErrorCode
 from app.core.exceptions import AppError
+from app.core.local_secrets import ensure_jwt_secret
 from app.core.logging import configure_logging, logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import engine
 
 configure_logging()
+if settings.APP_ENV != "test":
+    ensure_jwt_secret()
 
 app = FastAPI(
     title=settings.APP_NAME,

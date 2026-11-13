@@ -97,26 +97,12 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                 value: _period,
                 onChanged: (value) async {
                   if (value == FinancePeriod.custom) {
-                    final from = await showDatePicker(
-                      context: context,
-                      initialDate: _customFrom ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (from == null || !context.mounted) {
+                    final picked = await pickInclusiveDateRange(context, from: _customFrom, to: _customTo);
+                    if (picked == null) {
                       return;
                     }
-                    final to = await showDatePicker(
-                      context: context,
-                      initialDate: _customTo ?? DateTime.now(),
-                      firstDate: from,
-                      lastDate: DateTime.now(),
-                    );
-                    if (to == null) {
-                      return;
-                    }
-                    _customFrom = from;
-                    _customTo = to;
+                    _customFrom = DateTime(picked.start.year, picked.start.month, picked.start.day);
+                    _customTo = DateTime(picked.end.year, picked.end.month, picked.end.day);
                   }
                   setState(() => _period = value);
                   await _load();

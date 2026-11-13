@@ -1,8 +1,11 @@
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/backup/backup_status.dart';
+import '../../core/export/file_saver.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
@@ -11,6 +14,7 @@ import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
+import 'change_password_dialog.dart';
 import 'profile_avatar.dart';
 
 final pendingCountProvider = FutureProvider<int>((ref) {
@@ -28,6 +32,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String? _message;
   bool _busy = false;
   SyncStatus? _sync;
+  BackupStatus _backup = const BackupStatus();
 
   @override
   void initState() {
@@ -36,9 +41,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadExtras() async {
-    final sync = await ref.read(financeRepositoryProvider).syncStatus();
+    final repo = ref.read(financeRepositoryProvider);
+    final sync = await repo.syncStatus();
+    final backup = await repo.backupStatus();
     if (mounted) {
-      setState(() => _sync = sync);
+      setState(() {
+        _sync = sync;
+        _backup = backup;
+      });
     }
   }
 
@@ -59,120 +69,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _changePassword() async {
-    final current = TextEditingController();
-    final next = TextEditingController();
-    final confirm = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    var obscure = true;
-    final confirmed = await showAppDialog<bool>(
-      context: context,
-      title: 'Change password',
-      content: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: current,
-                  obscureText: obscure,
-                  decoration: const InputDecoration(labelText: 'Current password'),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Enter your current password.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: next,
-                  obscureText: obscure,
-                  decoration: const InputDecoration(
-                    labelText: 'New password',
-                    helperText: 'At least 10 characters',
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Enter a new password.';
-                    }
-                    if (value.length < 10) {
-                      return 'Use at least 10 characters.';
-                    }
-                    if (value == current.text) {
-                      return 'Choose a different password.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: confirm,
-                  obscureText: obscure,
-                  decoration: InputDecoration(
-                    labelText: 'Confirm new password',
-                    suffixIcon: IconButton(
-                      tooltip: obscure ? 'Show password' : 'Hide password',
-                      onPressed: () => setDialogState(() => obscure = !obscure),
-                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value != next.text) {
-                      return 'The new passwords do not match.';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      actions: (dialogContext) => [
-        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () {
-            if (formKey.currentState?.validate() != true) {
-              return;
-            }
-            Navigator.pop(dialogContext, true);
-          },
-          child: const Text('Update'),
-        ),
-      ],
-    );
-    if (confirmed != true) {
-      current.dispose();
-      next.dispose();
-      confirm.dispose();
-      return;
-    }
+    await promptChangePassword(context, ref);
+  }
+
+  Future<void> _exportBackup() async {
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
-      await ref.read(authRepositoryProvider).changePassword(
-            currentPassword: current.text,
-            newPassword: next.text,
-          );
-      await ref.read(sessionProvider.notifier).logout();
+      final file = await ref.read(financeRepositoryProvider).exportBackup();
+      if (file.bytes.isEmpty) {
+        throw Exception('The backup file was empty. Try again.');
+      }
+      final saved = await saveBytesWithPicker(
+        bytes: file.bytes,
+        filename: file.filename,
+        mime: file.mime,
+        label: 'Clinic backup',
+        extensions: const ['zip'],
+      );
+      if (saved == null) {
+        return;
+      }
+      await ref.read(financeRepositoryProvider).markBackupSaved();
+      await _loadExtras();
       if (mounted) {
-        showAppSnack(context, 'Password updated. Sign in with the new password.');
+        showAppSnack(context, 'Backup saved. Keep a copy on a USB drive.');
       }
     } catch (error) {
       if (mounted) {
         setState(() => _message = friendlyError(error));
       }
     } finally {
-      current.dispose();
-      next.dispose();
-      confirm.dispose();
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    final pending = await ref.read(financeRepositoryProvider).syncStatus();
+    if (pending.pending > 0) {
+      if (!mounted) {
+        return;
+      }
+      await showAppConfirmDialog(
+        context: context,
+        title: 'Sync waiting changes first',
+        message: pending.pending == 1
+            ? '1 change is waiting to sync. Retry sync before replacing clinic data, or those records will be lost.'
+            : '${pending.pending} changes are waiting to sync. Retry sync before replacing clinic data, or those records will be lost.',
+        confirmLabel: 'OK',
+        icon: Icons.sync_problem_rounded,
+      );
+      return;
+    }
+    const group = XTypeGroup(label: 'Clinic backup', extensions: ['zip']);
+    final picked = await openFile(acceptedTypeGroups: const [group]);
+    if (picked == null) {
+      return;
+    }
+    final path = picked.path;
+    if (path.isEmpty) {
+      if (mounted) {
+        setState(() => _message = 'Choose a backup zip from this computer.');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final replaced = await showAppDeleteDialog(
+      context: context,
+      title: 'Replace clinic data?',
+      message:
+          'This replaces all patients, treatment records, expenses, and X-rays on this computer with the backup. Current records are not kept unless you already saved a newer backup.',
+      confirmLabel: 'Replace data',
+      onConfirm: () => ref.read(financeRepositoryProvider).restoreBackup(
+            path: path,
+            filename: picked.name.isNotEmpty ? picked.name : 'clinic-backup.zip',
+          ),
+    );
+    if (replaced != true) {
+      return;
+    }
+    await ref.read(financeRepositoryProvider).markBackupSaved();
+    ref.read(financeEpochProvider.notifier).state++;
+    await _loadExtras();
+    if (mounted) {
+      showAppSnack(context, 'Clinic data restored from backup.');
     }
   }
 
@@ -215,6 +201,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         child: ListView(
           padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
           children: [
+            if (_busy) const LinearProgressIndicator(minHeight: 2),
             if (_message != null) ...[
               ErrorBanner(message: _message!),
               const SizedBox(height: 16),
@@ -261,6 +248,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
             ),
+            ),
+            const SectionHeader('Backup'),
+            Card(
+              child: Column(
+                children: [
+                  _SettingsTile(
+                    icon: Icons.save_alt_rounded,
+                    title: 'Save clinic backup',
+                    subtitle: _backup.subtitle,
+                    onTap: _busy ? null : _exportBackup,
+                  ),
+                  const Divider(indent: 68),
+                  _SettingsTile(
+                    icon: Icons.settings_backup_restore_rounded,
+                    title: 'Restore from backup',
+                    subtitle: 'Replace this computer with a saved zip',
+                    onTap: _busy ? null : _restoreBackup,
+                  ),
+                ],
+              ),
             ),
             const SectionHeader('Clinic'),
             Card(

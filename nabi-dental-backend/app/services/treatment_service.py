@@ -25,6 +25,7 @@ from app.schemas.treatment_transaction import (
     TreatmentTransactionRead,
     TreatmentTransactionUpdate,
 )
+from app.services.xray_service import XrayService
 from app.utils.dates import validate_business_date
 from app.utils.treatment_details import clinical_summary
 
@@ -142,6 +143,7 @@ class TreatmentService:
         )
 
     async def create_patient(self, user: User, payload: PatientCreate) -> Patient:
+        await self._ensure_unique_phone(user, payload.phone)
         record = Patient(
             id=payload.id or uuid.uuid4(),
             clinic_id=user.clinic_id,
@@ -154,10 +156,23 @@ class TreatmentService:
     async def update_patient(self, user: User, patient_id: uuid.UUID, payload: PatientUpdate) -> Patient:
         record = await self.get_patient(user, patient_id)
         ensure_version(record, payload.version)
+        if "phone" in payload.model_dump(exclude_unset=True):
+            await self._ensure_unique_phone(user, payload.phone, exclude_id=record.id)
         _apply_updates(record, payload, {"version"})
         record.bump()
         await self.session.flush()
         return record
+
+    async def _ensure_unique_phone(
+        self, user: User, phone: str | None, *, exclude_id: uuid.UUID | None = None
+    ) -> None:
+        if not phone:
+            return
+        other = await self.patients.live_by_phone(user.clinic_id, phone, exclude_id=exclude_id)
+        if other is not None:
+            raise ConflictError(
+                f"This mobile number is already used by {other.name}. Open that patient instead of adding another."
+            )
 
     async def delete_patient(self, user: User, patient_id: uuid.UUID, version: int) -> None:
         record = await self.get_patient(user, patient_id)
@@ -202,6 +217,7 @@ class TreatmentService:
     async def delete_transaction(self, user: User, transaction_id: uuid.UUID, version: int) -> None:
         record = await self.get_transaction(user, transaction_id)
         ensure_version(record, version)
+        await XrayService(self.session).delete_for_transaction(user, record)
         record.soft_delete()
         await self.session.flush()
         return record

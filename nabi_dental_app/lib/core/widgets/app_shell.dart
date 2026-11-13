@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../auth/session_controller.dart';
+import '../../features/settings/change_password_dialog.dart';
 import '../../features/settings/profile_avatar.dart';
 import 'app_layout.dart';
 import 'app_navigation.dart';
@@ -89,6 +90,17 @@ class ClinicAppShell extends ConsumerStatefulWidget {
 
 class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
+  var _forcingPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _forcePasswordChange();
+      }
+    });
+  }
 
   String get _location => GoRouterState.of(context).uri.path;
 
@@ -105,9 +117,40 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
     context.go(path);
   }
 
+  Future<void> _forcePasswordChange() async {
+    if (_forcingPassword || !mounted) {
+      return;
+    }
+    final session = ref.read(sessionProvider);
+    if (!session.hasTokens || session.user?.mustChangePassword != true) {
+      return;
+    }
+    _forcingPassword = true;
+    try {
+      await promptChangePassword(context, ref, requiredChange: true);
+    } catch (_) {
+      // Keep the clinic usable; the dialog already shows a friendly error.
+    } finally {
+      if (mounted) {
+        _forcingPassword = false;
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
+    ref.listen<SessionState>(sessionProvider, (previous, next) {
+      final needed = next.hasTokens && next.user?.mustChangePassword == true;
+      final wasNeeded = previous?.hasTokens == true && previous?.user?.mustChangePassword == true;
+      if (needed && !wasNeeded) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _forcePasswordChange();
+          }
+        });
+      }
+    });
     final clinic = session.clinic?.name ?? 'Nabi Dental Clinic';
     final name = session.user?.fullName ?? 'Owner';
     final showSidebar = AppLayout.showSidebar(context);

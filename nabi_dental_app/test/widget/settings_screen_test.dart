@@ -8,6 +8,7 @@ import 'package:nabi_dental_app/core/auth/auth_repository.dart';
 import 'package:nabi_dental_app/core/auth/session_controller.dart';
 import 'package:nabi_dental_app/core/auth/token_storage.dart';
 import 'package:nabi_dental_app/core/database/app_database.dart';
+import 'package:nabi_dental_app/core/backup/backup_status.dart';
 import 'package:nabi_dental_app/core/finance/finance_repository.dart';
 import 'package:nabi_dental_app/core/models/session_models.dart';
 import 'package:nabi_dental_app/features/settings/settings_screen.dart';
@@ -31,6 +32,7 @@ void main() {
     when(() => finance.syncStatus()).thenAnswer(
       (_) async => const SyncStatus(pending: 2, conflicts: 0, state: 'idle'),
     );
+    when(() => finance.backupStatus()).thenAnswer((_) async => const BackupStatus());
 
     final controller = SessionController(
       auth: _Auth(),
@@ -80,6 +82,8 @@ void main() {
     expect(find.text('owner@example.com'), findsOneWidget);
     expect(find.text('View profile and photo'), findsOneWidget);
     expect(find.text('Catalogs'), findsOneWidget);
+    expect(find.text('Save clinic backup'), findsOneWidget);
+    expect(find.text('Restore from backup'), findsOneWidget);
     expect(find.text('Retry sync'), findsOneWidget);
     expect(find.text('2 changes waiting to sync'), findsOneWidget);
     expect(find.text('Change PIN'), findsNothing);

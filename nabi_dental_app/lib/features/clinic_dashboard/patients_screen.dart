@@ -120,12 +120,12 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
 
   Widget _patientName(PatientRecord patient, {int? maxLines}) {
     return Tooltip(
-      message: 'Double-click to open this patient record',
+      message: 'Open patient record',
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onDoubleTap: () => _openRecord(patient),
+          onTap: () => _openRecord(patient),
           child: Text(
             patient.name,
             maxLines: maxLines ?? 2,
@@ -141,7 +141,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     final result = await showDialog<({String name, String phone})>(
       context: context,
       useRootNavigator: true,
-      builder: (dialogContext) => _PatientFormDialog(existing: existing),
+      builder: (dialogContext) => _PatientFormDialog(existing: existing, patients: _patients),
     );
     await _afterDialog();
     if (!mounted || result == null) {
@@ -189,7 +189,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         context: context,
         title: 'Delete Patient?',
         message:
-            'Are you sure you want to delete ${patient.name}? This action will remove the patient from the active patient list. Associated payment history will be preserved.',
+            'Are you sure you want to delete ${patient.name}? This action will remove the patient from the active patient list. Associated treatment records will be kept.',
         confirmLabel: 'Delete Patient',
         onConfirm: () => ref.read(financeRepositoryProvider).deletePatient(patient),
       );
@@ -242,12 +242,18 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                               width: 240,
                               child: _patientName(items[index]),
                             ),
+                            onTap: _busy ? null : () => _openRecord(items[index]),
                           ),
                           DataCell(Text(items[index].phone ?? '—')),
                           DataCell(Text(items[index].createdAt == null ? '—' : formatDisplayDate(items[index].createdAt))),
                           DataCell(
                             Row(
                               children: [
+                                IconButton(
+                                  tooltip: 'Open',
+                                  onPressed: _busy ? null : () => _openRecord(items[index]),
+                                  icon: const Icon(Icons.folder_open_outlined),
+                                ),
                                 IconButton(
                                   tooltip: 'Edit',
                                   onPressed: _busy ? null : () => _savePatient(existing: items[index]),
@@ -289,6 +295,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
           index: index,
           child: Card(
             child: ListTile(
+              onTap: _busy ? null : () => _openRecord(item),
               leading: CircleAvatar(
                 backgroundColor: AppColors.primarySoft,
                 foregroundColor: AppColors.primary,
@@ -304,6 +311,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    tooltip: 'Open',
+                    onPressed: _busy ? null : () => _openRecord(item),
+                    icon: const Icon(Icons.folder_open_outlined),
+                  ),
                   IconButton(
                     tooltip: 'Edit',
                     onPressed: _busy ? null : () => _savePatient(existing: item),
@@ -419,9 +431,10 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
 }
 
 class _PatientFormDialog extends StatefulWidget {
-  const _PatientFormDialog({this.existing});
+  const _PatientFormDialog({this.existing, this.patients = const []});
 
   final PatientRecord? existing;
+  final List<PatientRecord> patients;
 
   @override
   State<_PatientFormDialog> createState() => _PatientFormDialogState();
@@ -511,7 +524,14 @@ class _PatientFormDialogState extends State<_PatientFormDialog> {
                   hintText: '03XXXXXXXXX',
                   counterText: '',
                 ),
-                validator: validateOptionalPakistaniMobile,
+                validator: (value) {
+                  return validateOptionalPakistaniMobile(value) ??
+                      duplicatePatientPhoneWarning(
+                        patients: widget.patients,
+                        phone: value,
+                        excludeId: widget.existing?.id,
+                      );
+                },
                 onFieldSubmitted: (_) => _submit(),
               ),
             ],

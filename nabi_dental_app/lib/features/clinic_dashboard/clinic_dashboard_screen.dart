@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
+import '../../core/backup/backup_status.dart';
 import '../../core/finance/finance_repository.dart';
+import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
@@ -32,10 +35,12 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   DateTime? _customTo;
   ClinicTotals? _totals;
   int _patientCount = 0;
+  List<RecentClinicPatient> _recent = const [];
   bool _loading = true;
   bool _syncing = false;
   bool _online = true;
   String? _loadError;
+  BackupStatus _backup = const BackupStatus();
 
   @override
   void initState() {
@@ -60,10 +65,14 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
     try {
       final local = await repo.clinicTotals(range);
       final localCounts = await _counts(repo);
+      final localRecent = await repo.recentClinicPatients();
+      final backup = await repo.backupStatus();
       if (mounted) {
         setState(() {
           _totals = local;
           _patientCount = localCounts;
+          _recent = localRecent;
+          _backup = backup;
           _loading = false;
           _syncing = true;
           _loadError = null;
@@ -72,11 +81,13 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       final online = await repo.refresh(force: force);
       final totals = await repo.clinicTotals(range);
       final counts = await _counts(repo);
+      final recent = await repo.recentClinicPatients();
       if (mounted) {
         setState(() {
           _online = online;
           _totals = totals;
           _patientCount = counts;
+          _recent = recent;
           _loading = false;
           _syncing = false;
         });
@@ -129,26 +140,12 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                 value: _period,
                 onChanged: (value) async {
                   if (value == FinancePeriod.custom) {
-                    final from = await showDatePicker(
-                      context: context,
-                      initialDate: _customFrom ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                    );
-                    if (from == null || !context.mounted) {
+                    final picked = await pickInclusiveDateRange(context, from: _customFrom, to: _customTo);
+                    if (picked == null) {
                       return;
                     }
-                    final to = await showDatePicker(
-                      context: context,
-                      initialDate: _customTo ?? DateTime.now(),
-                      firstDate: from,
-                      lastDate: DateTime.now(),
-                    );
-                    if (to == null) {
-                      return;
-                    }
-                    _customFrom = from;
-                    _customTo = to;
+                    _customFrom = DateTime(picked.start.year, picked.start.month, picked.start.day);
+                    _customTo = DateTime(picked.end.year, picked.end.month, picked.end.day);
                   }
                   setState(() => _period = value);
                   await _load();
@@ -164,6 +161,18 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               ] else if (!_online) ...[
                 const SizedBox(height: 12),
                 StatusBanner.offline('Showing local records. Sync when you are back online.', onRetry: () => _load(force: true)),
+              ],
+              if (!_loading && _backup.isOverdue) ...[
+                const SizedBox(height: 12),
+                StatusBanner(
+                  message: _backup.lastBackupAt == null
+                      ? 'Save a clinic backup and keep a copy on a USB drive.'
+                      : 'Clinic backup is more than a week old. Save a new copy.',
+                  tone: StatusTone.warning,
+                  icon: Icons.backup_outlined,
+                  actionLabel: 'Backup',
+                  onRetry: () => context.go('/settings'),
+                ),
               ],
               const SizedBox(height: 16),
               AppStateSwitch(
@@ -194,7 +203,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                                     icon: Icons.people_outline_rounded,
                                   ),
                                   SummaryCard(
-                                    label: 'Total payments',
+                                    label: 'Treatment fees',
                                     value: formatMoney(totals.income, currency: currency),
                                     color: AppColors.success,
                                     background: AppColors.mintSoft,
@@ -262,48 +271,79 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
-              ResponsiveGrid(
-                minItemWidth: 280,
-                runSpacing: 0,
-                children: [
-                  ActionCard(
-                    title: 'Patients',
-                    subtitle: 'Registered names, phone numbers, and records',
-                    icon: Icons.people_outline_rounded,
-                    color: AppColors.primary,
-                    background: AppColors.lavenderSoft,
-                    onTap: () => appPushAndRefresh(context, '/clinic/patients', () => _load(silent: true)),
-                  ),
-                  ActionCard(
-                    title: 'Treatment history',
-                    subtitle: 'Patient visits, X-rays, and treatment fees',
-                    icon: Icons.history_rounded,
-                    color: AppColors.primaryDark,
-                    background: AppColors.primarySoft,
-                    onTap: () => appPushAndRefresh(context, '/clinic/income/history', () => _load(silent: true)),
-                  ),
-                  ActionCard(
-                    title: 'Expense history',
-                    subtitle: 'Review clinic spending by category',
-                    icon: Icons.list_alt_rounded,
-                    color: AppColors.warning,
-                    background: AppColors.warningSoft,
-                    onTap: () => appPushAndRefresh(context, '/clinic/expenses/history', () => _load(silent: true)),
-                  ),
-                  ActionCard(
-                    title: 'Reports and exports',
-                    subtitle: 'Breakdowns, timeline, PDF and Excel',
-                    icon: Icons.picture_as_pdf_outlined,
-                    color: AppColors.success,
-                    background: AppColors.mintSoft,
-                    onTap: () => appPushAndRefresh(context, '/clinic/reports', () => _load(silent: true)),
-                  ),
-                ],
-              ),
+              const SizedBox(height: 8),
+              _recentPatients(),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _recentPatients() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('Recent patients', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            TextButton(
+              onPressed: () => appPushAndRefresh(context, '/clinic/patients', () => _load(silent: true)),
+              child: const Text('All patients'),
+            ),
+          ],
+        ),
+        if (_recent.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Patients you treat will show up here.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+            ),
+          )
+        else
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var index = 0; index < _recent.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  _recentTile(_recent[index], index),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _recentTile(RecentClinicPatient item, int index) {
+    final patient = item.patient;
+    final details = [
+      if (patient.phone != null && patient.phone!.isNotEmpty) patient.phone,
+      if (item.lastVisitDate != null) 'Last visit ${formatDisplayDate(item.lastVisitDate)}',
+      if (item.lastTreatment != null && item.lastTreatment!.isNotEmpty) item.lastTreatment,
+      if (item.lastVisitDate == null) 'No treatments yet',
+    ].join(' · ');
+    return ListTile(
+      onTap: () => appPushAndRefresh(context, '/clinic/patients/${patient.id}', () => _load(silent: true)),
+      leading: CircleAvatar(
+        backgroundColor: AppColors.primarySoft,
+        foregroundColor: AppColors.primary,
+        child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
+      ),
+      title: Text(patient.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing: IconButton(
+        tooltip: 'Add treatment',
+        onPressed: () => appPushAndRefresh(
+          context,
+          '/clinic/income?patientId=${Uri.encodeQueryComponent(patient.id)}',
+          () => _load(silent: true),
+        ),
+        icon: const Icon(Icons.add_rounded),
       ),
     );
   }

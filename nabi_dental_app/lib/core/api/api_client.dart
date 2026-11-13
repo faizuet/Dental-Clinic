@@ -60,8 +60,12 @@ class ApiClient {
               handler.resolve(response);
               return;
             } catch (_) {
-              await _tokenStorage.clear();
-              onSessionInvalid?.call();
+              final skipInvalidation = request.extra['skipSessionInvalid'] == true ||
+                  path.contains('/settings/avatar');
+              if (!skipInvalidation) {
+                await _tokenStorage.clear();
+                onSessionInvalid?.call();
+              }
             }
           }
           handler.next(error);
@@ -94,14 +98,21 @@ class ApiClient {
     );
   }
 
-  Future<Response<T>> postMultipart<T>(String path, {required FormData data}) {
+  Future<Response<T>> postMultipart<T>(
+    String path, {
+    required FormData data,
+    Map<String, dynamic>? query,
+    Duration? timeout,
+  }) {
+    final wait = timeout ?? const Duration(seconds: 60);
     return _wrap(
       () => _dio.post<T>(
         path,
         data: data,
+        queryParameters: _query(query),
         options: Options(
-          sendTimeout: const Duration(seconds: 60),
-          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: wait,
+          receiveTimeout: wait,
         ),
       ),
     );
@@ -123,12 +134,22 @@ class ApiClient {
     return _wrap(() => _dio.delete<T>(path, queryParameters: _query(query)));
   }
 
-  Future<Response<List<int>>> getBytes(String path, {Map<String, dynamic>? query}) {
+  Future<Response<List<int>>> getBytes(
+    String path, {
+    Map<String, dynamic>? query,
+    Duration? timeout,
+    bool skipSessionInvalid = false,
+  }) {
     return _wrap(
       () => _dio.get<List<int>>(
         path,
         queryParameters: _query(query),
-        options: Options(responseType: ResponseType.bytes),
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: timeout,
+          sendTimeout: timeout,
+          extra: {if (skipSessionInvalid) 'skipSessionInvalid': true},
+        ),
       ),
     );
   }

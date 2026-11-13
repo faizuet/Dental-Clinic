@@ -13,6 +13,19 @@ void main() {
     );
   });
 
+  test('keeps the X-ray offline rule even when the caller asked for upload copy', () {
+    expect(
+      friendlyError(
+        const AppException(
+          'X-ray images can only be saved while the clinic is online. Remove the images, or start Docker and save again.',
+          code: 'XRAY_OFFLINE',
+        ),
+        feature: 'upload',
+      ),
+      contains('online'),
+    );
+  });
+
   test('maps generic not-found budget failures to a budget message', () {
     expect(
       friendlyError(const AppException('The requested resource was not found.', code: 'NOT_FOUND', statusCode: 404), feature: 'budget'),

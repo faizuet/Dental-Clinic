@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.constants import ErrorCode
 from app.core.exceptions import AppError, UnauthorizedError, ValidationAppError
+from app.core.local_secrets import is_example_owner_password, uses_example_owner_password
 from app.core.rate_limit import rate_limiter
 from app.core.security import (
     create_access_token,
@@ -58,7 +59,7 @@ class AuthService:
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.ACCESS_TOKEN_MINUTES * 60,
-            user=UserPublic.model_validate(user),
+            user=_public_user(user),
             clinic=ClinicPublic.model_validate(user.clinic),
         )
 
@@ -108,6 +109,11 @@ class AuthService:
             raise UnauthorizedError("The access token is invalid or expired.")
         if not verify_password(payload.current_password, db_user.password_hash):
             raise ValidationAppError("The current password is incorrect.")
+        if is_example_owner_password(payload.new_password):
+            raise ValidationAppError(
+                "Choose a password that is not the example clinic password.",
+                details=[{"field": "new_password", "message": "Choose a different password."}],
+            )
         if payload.new_password == payload.current_password:
             raise ValidationAppError(
                 "The new password must be different from the current password.",
@@ -121,7 +127,7 @@ class AuthService:
     async def me(self, user: User) -> MeResponse:
         if user.clinic is None:
             user = await self.users.get_by_id(user.id)  # type: ignore[assignment]
-        return MeResponse(user=UserPublic.model_validate(user), clinic=ClinicPublic.model_validate(user.clinic))
+        return MeResponse(user=_public_user(user), clinic=ClinicPublic.model_validate(user.clinic))
 
     async def _issue_tokens(
         self,
@@ -154,3 +160,9 @@ class AuthService:
         for token in tokens:
             token.revoked_at = now
         await self.session.flush()
+
+
+def _public_user(user: User) -> UserPublic:
+    return UserPublic.model_validate(user).model_copy(
+        update={"must_change_password": uses_example_owner_password(user.password_hash)}
+    )

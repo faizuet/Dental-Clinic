@@ -24,9 +24,10 @@ import '../../core/widgets/summary_card.dart';
 import 'treatment_line_card.dart';
 
 class TreatmentEntryScreen extends ConsumerStatefulWidget {
-  const TreatmentEntryScreen({super.key, this.visitId});
+  const TreatmentEntryScreen({super.key, this.visitId, this.patientId});
 
   final String? visitId;
+  final String? patientId;
 
   @override
   ConsumerState<TreatmentEntryScreen> createState() => _TreatmentEntryScreenState();
@@ -107,6 +108,14 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
           }
         } else if (_editing) {
           _error = 'This treatment record is not available.';
+        } else {
+          final preset = widget.patientId?.trim();
+          if (preset != null && preset.isNotEmpty) {
+            final matches = patients.where((item) => item.id == preset);
+            if (matches.isNotEmpty) {
+              _patient = matches.first;
+            }
+          }
         }
         _ready = true;
       });
@@ -290,7 +299,7 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
   Future<void> _addPatient({String? presetName}) async {
     final result = await showDialog<({String name, String phone})>(
       context: context,
-      builder: (context) => _AddPatientDialog(initialName: presetName),
+      builder: (context) => _AddPatientDialog(initialName: presetName, patients: _patients),
     );
     final trimmed = result?.name ?? '';
     final phoneValue = result?.phone ?? '';
@@ -654,9 +663,10 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
 }
 
 class _AddPatientDialog extends StatefulWidget {
-  const _AddPatientDialog({this.initialName});
+  const _AddPatientDialog({this.initialName, this.patients = const []});
 
   final String? initialName;
+  final List<PatientRecord> patients;
 
   @override
   State<_AddPatientDialog> createState() => _AddPatientDialogState();
@@ -746,7 +756,13 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
                     prefixIcon: Icon(Icons.phone_outlined),
                     counterText: '',
                   ),
-                  validator: validateOptionalPakistaniMobile,
+                  validator: (value) {
+                    return validateOptionalPakistaniMobile(value) ??
+                        duplicatePatientPhoneWarning(
+                          patients: widget.patients,
+                          phone: value,
+                        );
+                  },
                   onFieldSubmitted: (_) => _submit(),
                 ),
               ],

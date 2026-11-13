@@ -33,5 +33,27 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_detached(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+) -> User:
+    """Authenticate without holding a database session (used by restore)."""
+    from app.db.session import SessionLocal
+
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise UnauthorizedError("Authentication is required.")
+    payload = decode_access_token(credentials.credentials)
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (KeyError, ValueError) as exc:
+        raise UnauthorizedError("The access token is invalid or expired.") from exc
+    async with SessionLocal() as session:
+        user = await UserRepository(session).get_by_id(user_id)
+        if user is None or not user.is_active:
+            raise UnauthorizedError("The access token is invalid or expired.")
+        session.expunge(user)
+        return user
+
+
 DBSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+DetachedUser = Annotated[User, Depends(get_current_user_detached)]

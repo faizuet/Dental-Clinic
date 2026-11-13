@@ -1,9 +1,11 @@
 import io
 import uuid
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
+from app.core.config import settings
 from tests.api.conftest import auth_header, login
 
 
@@ -197,6 +199,49 @@ async def test_xray_upload_and_treatment_pdf(client):
         data={"label": "after"},
     )
     assert intraoral.status_code == 201, intraoral.text
+
+
+@pytest.mark.asyncio
+async def test_deleting_treatment_removes_xray_files(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+    created = await client.post(
+        "/api/v1/treatment-transactions",
+        headers=headers,
+        json={"treatment_id": rct_id, "transaction_date": "2026-09-21", "amount": "8000.00"},
+    )
+    assert created.status_code == 201, created.text
+    tx_id = created.json()["id"]
+
+    uploaded = await client.post(
+        f"/api/v1/treatment-transactions/{tx_id}/attachments",
+        headers=headers,
+        files={"file": ("xray.png", _png_bytes(), "image/png")},
+        data={"label": "before"},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    attachment_id = uploaded.json()["id"]
+    current = await client.get(f"/api/v1/treatment-transactions/{tx_id}", headers=headers)
+    assert current.status_code == 200, current.text
+    visit_dirs = list(Path(settings.UPLOAD_DIR).glob(f"xrays/*/{tx_id}"))
+    assert visit_dirs
+    assert any(path.is_file() for path in visit_dirs[0].iterdir())
+
+    deleted = await client.delete(
+        f"/api/v1/treatment-transactions/{tx_id}",
+        headers=headers,
+        params={"version": current.json()["version"]},
+    )
+    assert deleted.status_code == 204, deleted.text
+    missing = await client.get(f"/api/v1/treatment-transactions/{tx_id}", headers=headers)
+    assert missing.status_code == 404
+    image = await client.get(
+        f"/api/v1/treatment-transactions/{tx_id}/attachments/{attachment_id}/file",
+        headers=headers,
+    )
+    assert image.status_code == 404
+    assert not visit_dirs[0].exists()
 
 
 @pytest.mark.asyncio
@@ -421,6 +466,51 @@ async def test_patient_phone_must_be_pakistani_mobile(client):
         json={"version": created.json()["version"], "phone": "0300123456"},
     )
     assert patched.status_code == 422, patched.text
+
+
+@pytest.mark.asyncio
+async def test_live_patient_phone_must_be_unique(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    first = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Sara Ahmed", "phone": "03001234567"},
+    )
+    assert first.status_code == 201, first.text
+    duplicate = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Ali Khan", "phone": "03001234567"},
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert "Sara Ahmed" in duplicate.json()["error"]["message"]
+
+    other = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Ali Khan", "phone": "03123456789"},
+    )
+    assert other.status_code == 201, other.text
+    taken = await client.patch(
+        f"/api/v1/patients/{other.json()['id']}",
+        headers=headers,
+        json={"version": other.json()["version"], "phone": "03001234567"},
+    )
+    assert taken.status_code == 409, taken.text
+
+    deleted = await client.delete(
+        f"/api/v1/patients/{first.json()['id']}",
+        headers=headers,
+        params={"version": first.json()["version"]},
+    )
+    assert deleted.status_code == 204, deleted.text
+    reused = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "New Sara", "phone": "03001234567"},
+    )
+    assert reused.status_code == 201, reused.text
 
 
 @pytest.mark.asyncio

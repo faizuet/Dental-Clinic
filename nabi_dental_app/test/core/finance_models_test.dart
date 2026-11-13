@@ -85,4 +85,25 @@ void main() {
     expect(range.containsIso('2026-09-19'), isTrue);
     expect(range.containsIso('2026-09-20'), isFalse);
   });
+
+  test('warns when another live patient already has the same mobile', () {
+    const patients = [
+      PatientRecord(id: 'p1', name: 'Sara Ahmed', phone: '03001234567'),
+      PatientRecord(id: 'p2', name: 'Ali Khan', phone: '03123456789'),
+    ];
+    expect(
+      duplicatePatientPhoneWarning(patients: patients, phone: '03001234567'),
+      contains('Sara Ahmed'),
+    );
+    expect(
+      duplicatePatientPhoneWarning(patients: patients, phone: '03001234567', excludeId: 'p1'),
+      isNull,
+    );
+    expect(
+      duplicatePatientPhoneWarning(patients: patients, phone: '03009876543'),
+      isNull,
+    );
+    expect(duplicatePatientPhoneWarning(patients: patients, phone: '03'), isNull);
+    expect(duplicatePatientPhoneWarning(patients: patients, phone: ''), isNull);
+  });
 }

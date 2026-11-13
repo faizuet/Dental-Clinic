@@ -6,6 +6,7 @@ class UserProfile {
     required this.role,
     required this.defaultHomeBudget,
     this.hasAvatar = false,
+    this.mustChangePassword = false,
   });
 
   final String id;
@@ -14,6 +15,7 @@ class UserProfile {
   final String role;
   final String defaultHomeBudget;
   final bool hasAvatar;
+  final bool mustChangePassword;
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
     return UserProfile(
@@ -23,6 +25,7 @@ class UserProfile {
       role: json['role'] as String,
       defaultHomeBudget: json['default_home_budget'].toString(),
       hasAvatar: json['has_avatar'] == true,
+      mustChangePassword: json['must_change_password'] == true,
     );
   }
 
@@ -31,6 +34,7 @@ class UserProfile {
     String? email,
     String? defaultHomeBudget,
     bool? hasAvatar,
+    bool? mustChangePassword,
   }) {
     return UserProfile(
       id: id,
@@ -39,6 +43,7 @@ class UserProfile {
       role: role,
       defaultHomeBudget: defaultHomeBudget ?? this.defaultHomeBudget,
       hasAvatar: hasAvatar ?? this.hasAvatar,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
     );
   }
 
@@ -49,6 +54,7 @@ class UserProfile {
         'role': role,
         'default_home_budget': defaultHomeBudget,
         'has_avatar': hasAvatar,
+        'must_change_password': mustChangePassword,
       };
 }
 

@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../api/api_client.dart';
 import '../auth/session_controller.dart';
+import '../backup/backup_status.dart';
 import '../database/app_database.dart';
 import '../errors/app_exception.dart';
 import '../errors/friendly_error.dart';
@@ -391,6 +392,51 @@ class FinanceRepository {
     );
   }
 
+  Future<BackupStatus> backupStatus() async {
+    final raw = await _db.meta('last_backup_at');
+    return BackupStatus(lastBackupAt: DateTime.tryParse(raw ?? ''));
+  }
+
+  Future<void> markBackupSaved() {
+    return _db.setMeta('last_backup_at', DateTime.now().toUtc().toIso8601String());
+  }
+
+  Future<ResponseBytes> exportBackup() async {
+    final response = await _api.getBytes(
+      '/api/v1/settings/backup/export',
+      timeout: const Duration(minutes: 5),
+    );
+    final stamp = DateTime.now();
+    final name =
+        'nabi-dental-backup-${stamp.year}-${stamp.month.toString().padLeft(2, '0')}-${stamp.day.toString().padLeft(2, '0')}-'
+        '${stamp.hour.toString().padLeft(2, '0')}${stamp.minute.toString().padLeft(2, '0')}.zip';
+    return ResponseBytes(
+      bytes: response.data ?? <int>[],
+      filename: name,
+      mime: 'application/zip',
+    );
+  }
+
+  Future<void> restoreBackup({required String path, required String filename}) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(path, filename: filename),
+    });
+    await _api.postMultipart(
+      '/api/v1/settings/backup/restore',
+      data: form,
+      query: {'confirm': true},
+      timeout: const Duration(minutes: 5),
+    );
+    for (final collection in _collections.values) {
+      await _db.clearCollection(collection);
+    }
+    await _db.clearCollection('conflicts');
+    await _db.clearPending();
+    await _db.setMeta('sync_cursor', '');
+    await _db.setMeta('last_sync', '');
+    await refresh(force: true);
+  }
+
   Future<List<SyncConflict>> conflicts() async {
     final rows = await _db.list('conflicts');
     return rows.map(SyncConflict.fromJson).toList();
@@ -615,6 +661,47 @@ class FinanceRepository {
     );
   }
 
+  Future<List<RecentClinicPatient>> recentClinicPatients({int limit = 6}) async {
+    final registered = await _localPatients();
+    final byId = {for (final item in registered) item.id: item};
+    final visits = await incomeHistory();
+    final seen = <String>{};
+    final recent = <RecentClinicPatient>[];
+    for (final visit in visits) {
+      final id = visit.patientId;
+      if (id == null || id.isEmpty || !seen.add(id)) {
+        continue;
+      }
+      final patient = byId[id] ??
+          PatientRecord(
+            id: id,
+            name: visit.displayPatientName,
+            phone: visit.patientPhone,
+          );
+      final treatment = visit.subTreatment?.trim();
+      recent.add(
+        RecentClinicPatient(
+          patient: patient,
+          lastVisitDate: visit.date,
+          lastTreatment: treatment != null && treatment.isNotEmpty ? treatment : visit.catalogName,
+        ),
+      );
+      if (recent.length >= limit) {
+        return recent;
+      }
+    }
+    for (final patient in registered) {
+      if (!seen.add(patient.id)) {
+        continue;
+      }
+      recent.add(RecentClinicPatient(patient: patient));
+      if (recent.length >= limit) {
+        break;
+      }
+    }
+    return recent;
+  }
+
   Future<List<PatientRecord>> patients({String? search, bool remote = false}) async {
     final needle = search?.trim();
     if (!remote) {
@@ -656,19 +743,40 @@ class FinanceRepository {
         return item;
       }
     }
+    final duplicate = duplicatePatientPhoneWarning(patients: existing, phone: phoneValue);
+    if (duplicate != null) {
+      throw AppException(duplicate, code: 'CONFLICT', statusCode: 409);
+    }
     final payload = {
       'id': _uuid.v4(),
       'name': trimmed,
       if (phoneValue != null && phoneValue.isNotEmpty) 'phone': phoneValue,
     };
-    final response = await _api.post('/api/v1/patients', data: payload);
-    final saved = _asMap(response.data);
-    if (saved == null || (saved['name']?.toString().trim().isEmpty ?? true)) {
-      throw const AppException('The patient could not be saved. Please try again.', code: 'SERVER', statusCode: 500);
+    try {
+      final response = await _api.post('/api/v1/patients', data: payload);
+      final saved = _asMap(response.data);
+      if (saved == null || (saved['name']?.toString().trim().isEmpty ?? true)) {
+        throw const AppException('The patient could not be saved. Please try again.', code: 'SERVER', statusCode: 500);
+      }
+      await _db.upsert('patients', saved);
+      _serverCatalogIds.add(saved['id'].toString());
+      return PatientRecord.fromJson(saved);
+    } on OfflineException {
+      final local = {
+        ...payload,
+        'version': 1,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      await _db.upsert('patients', local);
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'patient',
+        entityId: payload['id'].toString(),
+        operation: 'create',
+        payload: payload,
+      );
+      return PatientRecord.fromJson(local);
     }
-    await _db.upsert('patients', saved);
-    _serverCatalogIds.add(saved['id'].toString());
-    return PatientRecord.fromJson(saved);
   }
 
   Future<PatientRecord> updatePatient(PatientRecord patient, {String? name, String? phone}) async {
@@ -681,16 +789,41 @@ class FinanceRepository {
       if (name != null) 'name': name.trim(),
       'phone': phoneValue == null || phoneValue.isEmpty ? null : phoneValue,
     };
-    final response = await _api.patch(
-      '/api/v1/patients/${patient.id}',
-      data: {'version': patient.version, ...patch},
+    final duplicate = duplicatePatientPhoneWarning(
+      patients: await patients(),
+      phone: phoneValue,
+      excludeId: patient.id,
     );
-    final saved = _asMap(response.data) ?? {...patient.toJson(), ...patch, 'version': patient.version + 1};
-    if ((saved['name']?.toString().trim().isEmpty ?? true)) {
-      throw const AppException('The patient could not be updated. Please try again.', code: 'SERVER', statusCode: 500);
+    if (duplicate != null) {
+      throw AppException(duplicate, code: 'CONFLICT', statusCode: 409);
     }
-    await _db.upsert('patients', saved);
-    return PatientRecord.fromJson(saved);
+    try {
+      final response = await _api.patch(
+        '/api/v1/patients/${patient.id}',
+        data: {'version': patient.version, ...patch},
+      );
+      final saved = _asMap(response.data) ?? {...patient.toJson(), ...patch, 'version': patient.version + 1};
+      if ((saved['name']?.toString().trim().isEmpty ?? true)) {
+        throw const AppException('The patient could not be updated. Please try again.', code: 'SERVER', statusCode: 500);
+      }
+      await _db.upsert('patients', saved);
+      return PatientRecord.fromJson(saved);
+    } on OfflineException {
+      final local = {...patient.toJson(), ...patch, 'version': patient.version + 1};
+      if ((local['name']?.toString().trim().isEmpty ?? true)) {
+        throw const AppException('The patient could not be updated. Please try again.', code: 'SERVER', statusCode: 500);
+      }
+      await _db.upsert('patients', local);
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'patient',
+        entityId: patient.id,
+        operation: 'update',
+        payload: patch,
+        baseVersion: patient.version,
+      );
+      return PatientRecord.fromJson(local);
+    }
   }
 
   Future<void> deletePatient(PatientRecord patient) async {
@@ -936,6 +1069,9 @@ class FinanceRepository {
       }
       return 'Treatment saved.';
     } on OfflineException {
+      if (xrays.isNotEmpty) {
+        _throwXrayOffline();
+      }
       payload['catalog_name'] = names[resolvedTreatmentId] ?? names[treatmentId] ?? 'Treatment';
       payload['sub_treatment'] = subTreatment;
       payload['patient_name'] = patientName;
@@ -949,9 +1085,7 @@ class FinanceRepository {
         operation: 'create',
         payload: payload,
       );
-      return xrays.isEmpty
-          ? 'Saved on this device and waiting to sync.'
-          : 'Treatment saved on this device. Add X-rays again when you are online.';
+      return 'Saved on this device and waiting to sync.';
     }
   }
 
@@ -1060,6 +1194,9 @@ class FinanceRepository {
       }
       return 'Treatment updated.';
     } on OfflineException {
+      if (xrays.isNotEmpty || removeAttachmentIds.isNotEmpty) {
+        _throwXrayOffline();
+      }
       final local = {
         ...entry.toJson(),
         ...payload,
@@ -1079,9 +1216,7 @@ class FinanceRepository {
         payload: payload,
         baseVersion: entry.version,
       );
-      return xrays.isEmpty && removeAttachmentIds.isEmpty
-          ? 'Saved on this device and waiting to sync.'
-          : 'Treatment updated on this device. Add or remove X-rays again when you are online.';
+      return 'Saved on this device and waiting to sync.';
     }
   }
 
@@ -1950,15 +2085,31 @@ class FinanceRepository {
     ];
   }
 
+  Future<Set<String>> _pendingEntityIds(String entityType) async {
+    final pending = await _db.pendingChanges();
+    return {
+      for (final row in pending)
+        if (row['entity_type']?.toString() == entityType) row['entity_id'].toString(),
+    };
+  }
+
   Future<void> _replacePatients(List<Map<String, dynamic>> remote) async {
     final remoteIds = {for (final row in remote) row['id'].toString()};
+    final pendingIds = await _pendingEntityIds('patient');
     for (final row in await _db.list('patients')) {
       final id = row['id'].toString();
-      if (!remoteIds.contains(id)) {
+      if (!remoteIds.contains(id) && !pendingIds.contains(id)) {
         await _db.markDeleted('patients', id);
       }
     }
     await _db.upsertAll('patients', remote);
+  }
+
+  Never _throwXrayOffline() {
+    throw const AppException(
+      'X-ray images can only be saved while the clinic is online. Remove the images, or start Docker and save again.',
+      code: 'XRAY_OFFLINE',
+    );
   }
 
   Future<List<PatientRecord>> _localPatients({String? search}) async {

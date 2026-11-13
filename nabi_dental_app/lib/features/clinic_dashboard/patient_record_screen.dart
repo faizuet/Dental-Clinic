@@ -101,6 +101,9 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
     }
   }
 
+  String get _addTreatmentLocation =>
+      '/clinic/income?patientId=${Uri.encodeQueryComponent(widget.patientId)}';
+
   Future<void> _openOnce(String location) async {
     if (_opening) {
       return;
@@ -125,6 +128,14 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
         context: context,
         title: patient?.name ?? 'Patient record',
         fallback: '/clinic/patients',
+        actions: [
+          if (patient != null)
+            IconButton(
+              tooltip: 'Add treatment',
+              onPressed: _opening ? null : () => _openOnce(_addTreatmentLocation),
+              icon: const Icon(Icons.add_rounded),
+            ),
+        ],
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context),
@@ -186,7 +197,18 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Treatment history', style: Theme.of(context).textTheme.titleMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Treatment history', style: Theme.of(context).textTheme.titleMedium),
+                ),
+                TextButton.icon(
+                  onPressed: _opening ? null : () => _openOnce(_addTreatmentLocation),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('Add treatment'),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             if (_treatments.isEmpty)
               Text(
