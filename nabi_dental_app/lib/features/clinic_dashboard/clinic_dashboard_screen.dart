@@ -134,6 +134,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
               WelcomeHeader(
                 title: 'Hello, ${session.user?.fullName ?? 'there'}',
                 subtitle: '${session.clinic?.name ?? 'Nabi Dental Clinic'}  ·  Clinic overview',
+                icon: Icons.local_hospital_rounded,
               ),
               const SizedBox(height: 20),
               PeriodSelector(

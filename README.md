@@ -1,347 +1,256 @@
 # Nabi Dental Clinic
 
-Private finance and treatment records app for a single dental clinic owner. It tracks clinic income and expenses, and it keeps patient treatment history with optional X-rays.
+Owner-operated desktop app for **Nabi Dental Clinic**. It keeps clinic treatments, fees, and expenses on the clinic laptop, and a separate **Home** module for household grocery spending.
 
-The project is a monorepo: a FastAPI + PostgreSQL API and a Flutter desktop client. Both run on the clinic laptop with Docker. There is no cloud host.
+The project is a local monorepo: a FastAPI + PostgreSQL API and a Flutter Windows client. Both run with Docker on this computer. There is no cloud host, no staff logins, and no public patient portal.
 
-## Contents
+---
 
-- [What it does](#what-it-does)
-- [Key features](#key-features)
-- [How the app works](#how-the-app-works)
-- [Technology](#technology)
-- [Project layout](#project-layout)
-- [Data model](#data-model)
-- [API groups](#api-groups)
-- [Setup](#setup)
-- [Environment variables](#environment-variables)
-- [Running the apps](#running-the-apps)
-- [Backup and restore](#backup-and-restore)
-- [Reports and files](#reports-and-files)
-- [Screenshots](#screenshots)
-- [Tests](#tests)
-- [Later work](#later-work)
+## Product
 
-## What it does
+The clinic owner signs in once, then switches between **Clinic** and **Home** in the sidebar. The two domains share the same design and offline cache. Their records, totals, and reports stay independent.
 
-Clinic owners usually keep treatment fees and clinic bills in notebooks or spreadsheets. This app keeps those records on the clinic laptop, with email/password sign-in and a dated treatment history per patient.
+| Domain | What it manages |
+| ------ | --------------- |
+| **Clinic** | Patients, treatments, visit history, X-rays, clinic expenses, income / profit reports |
+| **Home** | Grocery expenses, monthly budget, remaining amount, household reports |
 
-It is a single-clinic, owner-operated tool. It does not manage staff rosters, appointments, multiple clinics, or public patient portals. It does not deploy to Railway or any other cloud host.
+It does **not** include appointments, staff rosters, multiple clinics, Construction, or cloud deployment.
 
-## Key features
+---
 
-**Clinic**
+## Clinic
 
-- Treatment income with patient name, phone, automatic serial number, date, fee, and notes
-- Dynamic visit form: main treatment, then sub-treatment when needed (for example Prosthetic → Crown / Bridge / denture, Periodontal → Scaling)
-- Clinical details that match the selected treatment (tooth, canals, material, arch, and similar fields)
-- Up to eight X-ray images per visit (gallery or camera), stored as files and linked to that visit
-- Clinic expense entry by category
-- Treatment history that does not overwrite earlier visits
-- Clinic dashboard totals: income, expenses, profit
+- Patient records with Pakistani mobile numbers (`03xxxxxxxxx`)
+- Official treatment catalog (15 treatments), with extra clinical fields only when that treatment needs them
+- Visit history that never overwrites an earlier visit
+- Treatment fee, notes, serial number, and up to eight X-ray images per visit
+- Clinic expenses by category (Lab Charges, Materials, Equipment, Salaries, Rent, Utilities, Other)
+- Dashboard totals for income, expenses, and profit
+- Inclusive date-range reports with PDF and Excel export
+- Individual visit PDF, including X-rays when files are present
 
-**Home**
-
-- Home expense entry by category
-- Monthly budget and remaining amount
-- Home dashboard and reports
-
-**Construction**
-
-- Material catalog (category, unit)
-- Purchase entry: quantity and unit price; the server computes `amount = quantity × unit price`
-- Optional supplier and notes
-- Construction dashboard and reports
-
-**Shared**
-
-- Email/password login, JWT access token (20 minutes) and refresh token (30 days)
-- Offline-first Flutter cache (SQLite) with sync when the API is reachable
-- Conflict review under Settings when a queued change cannot apply
-- Profile photo and password change
-- Catalog maintenance for treatments and expense categories
-- Date-range reports (daily, monthly, yearly, or a custom inclusive start/end)
-- PDF and Excel export; PDFs save to Downloads on Android
-- Individual treatment PDF from a visit record
-- Local backup and restore of the database plus X-rays (zip on this laptop or a USB drive)
-
-## How the app works
-
-1. Start Docker Compose, then open the Flutter desktop app.
-2. Sign in with the clinic owner email and password.
-3. Use the clinic dashboard to add treatments, expenses, history, and reports.
-4. Settings covers profile, catalogs, backup and restore, password change, sync conflicts, and sign-out.
-
-### Dental treatment flow
+**Treatment flow**
 
 ```
 Patient (name + phone)
   → Main treatment
   → Sub-treatment when required
   → Clinical details for that treatment only
-  → Optional X-ray images
+  → Optional X-rays
   → Fee and notes
-  → Save (new historical visit)
-  → History / visit detail / treatment PDF
+  → Save as a new historical visit
 ```
 
-Examples: RCT asks for tooth, canals, and length. Crown asks for tooth and material. Bridge allows several teeth. Scaling stays short (area + fee).
+Income totals use the stored fee. Quantity is not multiplied into clinic income.
 
-Clinic income totals use the stored fee (`SUM(amount)`). Quantity is not multiplied into income.
+**Official treatments:** Check Up / Consultation, Simple Extraction, Surgical Extraction, Root Canal Treatment (RCT), Obturation (RCT), Temporary Filling, Permanent Filling, Composite Filling, Scaling, Porcelain Bridge, Zirconia Crown, Braces Fresh, Braces Visits, Braces Retainer, Dental Gems.
 
-### Finance and reporting
+---
 
-| Module        | What is tracked                         | Report export                         |
-| ------------- | --------------------------------------- | ------------------------------------- |
-| Clinic        | Treatment fees and clinic expenses      | PDF / Excel, inclusive date range     |
-| Home          | Expenses vs monthly budget              | PDF / Excel, inclusive date range     |
-| Construction  | Material purchases and supplier spend   | PDF / Excel, inclusive date range     |
+## Home
 
-Custom range uses a start-and-end calendar. Both dates are included. A period with no rows shows that clearly in the PDF instead of a fake total.
+- Same dashboard, cards, colors, and navigation style as Clinic
+- Grocery expense form with a fixed 34-category list
+- Monthly budget, remaining amount, and over-budget state
+- History and reports by category, independent of clinic finance
 
-## Technology
+**Grocery categories**
 
-| Layer    | Stack |
-| -------- | ----- |
-| API      | Python 3.12, FastAPI, Pydantic v2, Uvicorn |
-| Data     | PostgreSQL 16, SQLAlchemy 2 (async + asyncpg), Alembic |
-| Auth     | JWT (HS256), Argon2 password hashes |
-| Exports  | ReportLab (PDF), openpyxl (Excel) |
-| Images   | Pillow; files on local disk under `UPLOAD_DIR` |
-| App      | Flutter 3 (Dart SDK `>=3.5.0 <4.0.0`) |
-| App libs | Riverpod, go_router, Dio, sqflite, flutter_secure_storage, image_picker |
-| Local API| Docker Compose (API on host port 8001, Postgres on 5433) |
+1. Fresh Vegetables
+2. Fruits
+3. Beef / Mutton
+4. Chicken
+5. Eggs
+6. Daalain
+7. Milk / Yogurt
+8. Butter Cheese
+9. Bread Rusk
+10. Honey / Jam
+11. Frozen Items
+12. Atta White
+13. Chawal
+14. Sugar
+15. Cooking Oil
+16. Tea
+17. Masaly cooking
+18. Ketchup, Mayo, Sauces
+19. Dry Fruits
+20. Cold drinks
+21. Shampoo, Conditioners
+22. Soap Body wash
+23. Face wash
+24. Toothpaste toothbrush
+25. Hair Oil
+26. Bathroom Accessories
+27. Air freshener
+28. Tissue
+29. Washing Surf
+30. Harpic
+31. Pheyl
+32. Mortien
+33. Mosquito spray
+34. Hygiene Items
 
-Currency defaults to PKR. Dates use the clinic timezone (`Asia/Karachi` by default).
+---
 
-## Project layout
+## Shared
+
+- Email / password sign-in (JWT access token 20 minutes, refresh token 30 days)
+- First sign-in requires a password change
+- Offline SQLite cache with sync when the local API is reachable
+- Conflict review in Settings if a queued change cannot apply
+- Profile photo and password change
+- Catalog maintenance for treatments, clinic expenses, and home groceries
+- Local backup and restore of the database plus X-rays (zip on this laptop or a USB drive)
+
+---
+
+## Stack
+
+| Layer | Stack |
+| ----- | ----- |
+| API | Python 3.12, FastAPI, Pydantic v2, Uvicorn |
+| Data | PostgreSQL 16, SQLAlchemy 2 (async + asyncpg), Alembic |
+| Auth | JWT (HS256), Argon2 password hashes |
+| Files | Pillow; avatars and X-rays on local disk |
+| Exports | ReportLab (PDF), openpyxl (Excel) |
+| App | Flutter 3, Riverpod, go_router, Dio, sqflite |
+| Runtime | Docker Compose (API `8001`, Postgres `5433`) |
+
+Currency defaults to **PKR**. Dates use the clinic timezone (`Asia/Karachi`).
+
+---
+
+## Layout
 
 ```
-nabi-dental-backend/          API
-  app/api/v1/endpoints/       HTTP routes
-  app/models/                 SQLAlchemy tables
-  app/schemas/                Request/response models
-  app/services/               Business rules
-  app/repositories/           Queries
-  app/exports/                PDF and Excel
-  alembic/versions/           Migrations
-  scripts/                    Local backup and restore PowerShell helpers
-  tests/                      Pytest
-
-nabi_dental_app/              Flutter client
-  lib/app/                    Theme, router
-  lib/core/                   API, auth, SQLite, export, dental helpers
-  lib/features/               Screens by module
+nabi-dental-backend/     FastAPI service, migrations, backup scripts, pytest
+nabi_dental_app/         Flutter desktop client
 ```
-
-## Data model
 
 ```
 Clinic
   ├── Users
   ├── Patients
-  ├── Treatment categories → Treatments → Treatment transactions → X-ray attachments
+  ├── Treatment categories → Treatments → Visits → X-ray files
   └── Clinic expense categories → Clinic expenses
 
 User
-  ├── Home expense categories → Home expenses
-  ├── Home budgets (year + month)
-  └── Construction categories → Materials → Purchases
+  ├── Home grocery categories → Home expenses
+  └── Home budgets (year + month)
 ```
 
-Treatment-specific clinical fields live in JSON on the treatment transaction (`details`), not as a wide set of nullable columns. X-rays are file paths on disk, not image blobs in the transaction row.
+Clinical details are stored as JSON on the visit (`details`). X-rays are files on disk, not image blobs in the database.
 
-Existing treatment rows keep their fee so finance totals stay valid after the treatment redesign.
-
-## API groups
-
-Base path: `/api/v1`. Interactive docs: `/docs`. Health: `GET /health`. Database readiness: `GET /ready`.
-
-| Group | Role |
-| ----- | ---- |
-| `/auth` | Login, refresh, logout, logout-all, current user, password change |
-| `/patients` | Patient list, create, update, delete, visits for one patient |
-| `/treatment-categories`, `/treatments` | Clinic treatment catalog |
-| `/treatment-transactions` | Visits, batch create, X-ray upload, visit PDF |
-| `/clinic-expense-categories`, `/clinic-expenses` | Clinic spending |
-| `/home-expense-categories`, `/home-expenses`, `/home-budgets` | Home spending and budget |
-| `/construction-material-categories`, `/construction-materials`, `/construction-purchases` | Construction catalog and purchases |
-| `/dashboard` | Clinic and home period totals |
-| `/reports` | JSON reports plus `/export?format=pdf\|xlsx` for clinic, home, and construction |
-| `/settings` | Clinic/profile settings, avatar, backup export/restore |
-| `/sync` | Bootstrap, push, and pull for the Flutter cache |
+---
 
 ## Setup
 
-### Backend (Docker, recommended)
-
-Requires Docker Desktop.
+Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) and the [Flutter SDK](https://docs.flutter.dev/get-started/install).
 
 ```powershell
+# API + database
 cd nabi-dental-backend
 copy .env.example .env
 docker compose up --build
-```
 
-On first start the container runs `alembic upgrade head` and seeds the owner account.
-
-- API: `http://127.0.0.1:8001`
-- Docs: `http://127.0.0.1:8001/docs`
-- Postgres on the host: port `5433` (the app container talks to `db:5432`)
-
-### Backend (local Python)
-
-PostgreSQL 16 must be running. Point `DATABASE_URL` at it (the example uses `localhost:5433`).
-
-```powershell
-cd nabi-dental-backend
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-copy .env.example .env
-alembic upgrade head
-python -m app.db.seed
-uvicorn app.main:app --reload --port 8000
-```
-
-If you run Uvicorn on 8000, point Flutter at that port instead of 8001.
-
-### Flutter
-
-Requires the [Flutter SDK](https://docs.flutter.dev/get-started/install).
-
-```powershell
+# Desktop app (second terminal)
 cd nabi_dental_app
 flutter pub get
 flutter run -d windows
 ```
 
-Development seed login (change this on first sign-in; the app will require it):
+On first start the API container runs migrations, seeds the owner account, and writes a unique `JWT_SECRET_KEY` into `.env`. Do not commit `.env`.
 
-- Email: `owner@example.com`
-- Password: `ChangeMeNow!1`
+| | |
+| --- | --- |
+| API | http://127.0.0.1:8001 |
+| Docs | http://127.0.0.1:8001/docs |
+| Postgres (host) | port `5433` |
+| Seed email | `owner@example.com` |
+| Seed password | `ChangeMeNow!1` (must be changed on first sign-in) |
 
-The API replaces an example `JWT_SECRET_KEY` with a unique value in `.env` on first start. Existing sessions then need a fresh sign-in.
+The desktop app uses `http://127.0.0.1:8001` unless you pass `--dart-define=API_BASE_URL=...`. After the images are on the laptop, clinic work does not need the public internet.
 
-Do not commit `.env`. Copy `.env.example` instead.
+---
 
-## Environment variables
+## Backup
 
-Set these in `nabi-dental-backend/.env`. Values below are local laptop examples.
+Clinic records live in the Docker Postgres volume. X-rays and the profile photo live in the uploads volume. Nothing is copied off this computer unless you save a backup.
 
-| Name | Purpose | Example |
-| ---- | ------- | ------- |
-| `APP_NAME` | API title | `Nabi Dental Clinic API` |
-| `APP_ENV` | Runtime mode | `development` |
-| `DEBUG` | Verbose errors | `true` |
-| `DATABASE_URL` | Postgres URL (`postgres://` is accepted and normalized) | `postgresql+asyncpg://postgres:postgres@localhost:5433/nabi_dental` |
-| `PORT` | Listen port inside the container | `8000` |
-| `JWT_SECRET_KEY` | Token signing key | a long random string |
-| `ACCESS_TOKEN_MINUTES` | Access token lifetime | `20` |
-| `REFRESH_TOKEN_DAYS` | Refresh token lifetime | `30` |
-| `CORS_ORIGINS` | Extra allowed origins (comma-separated) | empty on a laptop |
-| `DEFAULT_CLINIC_NAME` | Seed clinic name | `Nabi Dental Clinic` |
-| `DEFAULT_CURRENCY` | Money code | `PKR` |
-| `DEFAULT_TIMEZONE` | IANA timezone | `Asia/Karachi` |
-| `DEFAULT_HOME_BUDGET` | Default monthly home budget | `30000.00` |
-| `OWNER_EMAIL` / `OWNER_PASSWORD` / `OWNER_FULL_NAME` | Seed owner | see `.env.example` |
-| `UPLOAD_DIR` | Avatar and X-ray files | `uploads` |
-| `AVATAR_MAX_BYTES` | Profile photo size cap | `2000000` |
-| `XRAY_MAX_BYTES` | X-ray size cap | `5000000` |
+1. **Settings → Save clinic backup**
+2. Choose a folder, preferably a USB drive
+3. Keep that zip off the clinic laptop
 
-The Flutter desktop app uses `http://127.0.0.1:8001` unless you pass `--dart-define=API_BASE_URL=...`.
+**Settings → Restore from backup** replaces patients, treatments, fees, expenses, and X-rays on this computer. Sync waiting changes first. Sign in again after restore.
 
-## Running the apps
-
-```powershell
-# API + database (local Docker)
-cd nabi-dental-backend
-copy .env.example .env
-docker compose up --build
-
-# Flutter desktop on this laptop
-cd nabi_dental_app
-flutter run -d windows
-```
-
-The API listens on `http://127.0.0.1:8001`. The desktop app uses that address by default. After the Docker images are on the laptop, clinic work does not need the public internet.
-
-Rebuild the API image once so it includes PostgreSQL client tools (`pg_dump` / `pg_restore`):
+PowerShell fallback:
 
 ```powershell
 cd nabi-dental-backend
-docker compose up --build
-```
-
-## Backup and restore
-
-Clinic records live in the Docker Postgres volume. X-rays and the profile photo live in the uploads volume. Neither is copied anywhere else unless you save a backup.
-
-**From the desktop app (preferred)**
-
-1. Open **Settings → Save clinic backup**.
-2. Choose a folder, preferably a USB drive.
-3. Keep that zip off the clinic laptop.
-
-Restore is **Settings → Restore from backup**. It replaces all patients, treatments, fees, expenses, and X-rays on this computer. Sync any waiting changes first. After restore, the app reloads from the restored database.
-
-The dashboard reminds you if no backup has been saved on this computer, or if the last save is more than seven days old.
-
-**From PowerShell if the app cannot export**
-
-```powershell
-cd nabi-dental-backend
-.\scripts\backup.ps1
 .\scripts\backup.ps1 -OutputDir E:\ClinicBackups
 .\scripts\restore.ps1 -ZipPath E:\ClinicBackups\nabi-dental-backup-2026-11-13-0900.zip
 ```
 
-The restore script asks you to type `RESTORE`. The zip contains `manifest.json`, a Postgres custom dump, and the `uploads` folder. It does not include `.env` or passwords in plain text. Sign in after moving the backup to another laptop.
+The restore script asks you to type `RESTORE`. The zip contains `manifest.json`, a Postgres dump, and the `uploads` folder. It does not include `.env` or passwords in plain text.
 
-## Reports and files
+---
 
-Reports accept `from_date` and `to_date` (inclusive calendar dates). The Flutter report screen sends the selected period: today, current month, current year, or a custom range.
+## Reports
 
-- Clinic PDF/Excel: treatment rows (serial, patient, dates, treatment, details, fee), expense rows, and totals
-- Home PDF/Excel: expenses, budget, remaining
-- Construction PDF/Excel: materials, quantities, suppliers, purchase history
-- Visit PDF: one treatment, including X-rays when files are present
+Reports use inclusive `from_date` / `to_date`. The app sends today, the current month, the current year, or a custom range.
 
-Profile photos: JPG, PNG, or WebP, at most 2 MB, stored under `uploads/avatars/`.  
-Treatment X-rays: same formats, at most 5 MB, 64–8192 px, stored under `uploads/xrays/{clinic}/{visit}/`. Empty or invalid files are rejected with a short message.
+| Report | Contents |
+| ------ | -------- |
+| Clinic PDF / Excel | Treatment rows, clinic expenses, income / expense / profit totals |
+| Home PDF / Excel | Grocery spend by category, budget, remaining |
+| Visit PDF | One treatment, with X-rays when files are present |
 
-PDF and Excel exports need the local API running. If the API is down, the desktop app keeps queued creates and edits in SQLite until Docker is started again.
+A range with no rows shows an empty report, not a fake total. Exports need the local API. If Docker is down, creates and edits stay in SQLite until the API is back.
 
-### Mobile UX that is implemented
+Profile photos: JPG, PNG, or WebP, at most 2 MB.  
+X-rays: same formats, at most 5 MB, 64–8192 px.
 
-- Compact layout and a max content width on larger screens
-- Hardware/system back: exit confirmation on the module home, discard confirmation on dirty forms
-- Shared confirmation dialogs for delete, sign-out, and similar actions
-- Downloads + open for PDF/Excel on Android
+---
 
-## Screenshots
+## API
 
-Add images under `docs/screenshots/` and link them here.
+Base path `/api/v1`. Health: `GET /health`. Database: `GET /ready`.
 
-| Screen | File |
-| ------ | ---- |
-| Module selection | `docs/screenshots/modules.png` |
-| Clinic dashboard | `docs/screenshots/clinic.png` |
-| New treatment | `docs/screenshots/treatment.png` |
-| Reports | `docs/screenshots/reports.png` |
+| Group | Role |
+| ----- | ---- |
+| `/auth` | Login, refresh, logout, current user, password change |
+| `/patients` | Patients and their visits |
+| `/treatment-categories`, `/treatments` | Clinic treatment catalog |
+| `/treatment-transactions` | Visits, X-ray upload, visit PDF |
+| `/clinic-expense-categories`, `/clinic-expenses` | Clinic spending |
+| `/home-expense-categories`, `/home-expenses`, `/home-budgets` | Home grocery spending |
+| `/dashboard` | Clinic and home period totals |
+| `/reports` | JSON plus `/export?format=pdf\|xlsx` for clinic and home |
+| `/settings` | Profile, avatar, backup export / restore |
+| `/sync` | Bootstrap, push, and pull for the Flutter cache |
+
+Important `.env` values (see `.env.example`):
+
+| Name | Purpose |
+| ---- | ------- |
+| `DATABASE_URL` | Postgres connection |
+| `JWT_SECRET_KEY` | Token signing key (generated on first start) |
+| `DEFAULT_CURRENCY` / `DEFAULT_TIMEZONE` | PKR / `Asia/Karachi` |
+| `DEFAULT_HOME_BUDGET` | Monthly home budget if no override is set |
+| `OWNER_EMAIL` / `OWNER_PASSWORD` | Seed owner |
+
+---
 
 ## Tests
 
+API tests use database `nabi_dental_test` on port `5433`, never the live clinic database.
+
 ```powershell
-# API (Postgres on localhost:5433, or TEST_DATABASE_URL)
 cd nabi-dental-backend
 pytest
 
-# Flutter unit tests
 cd nabi_dental_app
 flutter test
 ```
-
-## Later work
-
-- Windows release signing for a clinic installer

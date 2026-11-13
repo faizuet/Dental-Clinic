@@ -16,6 +16,55 @@ class _Tokens extends Mock implements TokenStorage {}
 
 class _Db extends Mock implements AppDatabase {}
 
+SessionController _session() {
+  return SessionController(
+    auth: _Auth(),
+    tokens: _Tokens(),
+    database: _Db(),
+  )..state = const SessionState(
+      initialized: true,
+      hasTokens: true,
+      user: UserProfile(
+        id: '1',
+        fullName: 'Dr Owner',
+        email: 'owner@example.com',
+        role: 'owner',
+        defaultHomeBudget: '50000.00',
+      ),
+      clinic: ClinicProfile(
+        id: '1',
+        name: 'Nabi Dental',
+        currency: 'PKR',
+        timezone: 'Asia/Karachi',
+      ),
+    );
+}
+
+GoRouter _router({required String initialLocation}) {
+  return GoRouter(
+    initialLocation: initialLocation,
+    routes: [
+      ShellRoute(
+        builder: (context, state, child) => ClinicAppShell(child: child),
+        routes: [
+          GoRoute(
+            path: '/clinic',
+            builder: (_, __) => const Scaffold(body: Text('Clinic dashboard')),
+          ),
+          GoRoute(
+            path: '/home',
+            builder: (_, __) => const Scaffold(body: Text('Home dashboard')),
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (_, __) => const Scaffold(body: Text('Settings')),
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 void main() {
   testWidgets('desktop shell shows clinic navigation without construction', (tester) async {
     tester.view.physicalSize = const Size(1400, 900);
@@ -23,53 +72,19 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final controller = SessionController(
-      auth: _Auth(),
-      tokens: _Tokens(),
-      database: _Db(),
-    )..state = const SessionState(
-        initialized: true,
-        hasTokens: true,
-        user: UserProfile(
-          id: '1',
-          fullName: 'Dr Owner',
-          email: 'owner@example.com',
-          role: 'owner',
-          defaultHomeBudget: '50000.00',
-        ),
-        clinic: ClinicProfile(
-          id: '1',
-          name: 'Nabi Dental',
-          currency: 'PKR',
-          timezone: 'Asia/Karachi',
-        ),
-      );
-
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          sessionProvider.overrideWith((ref) => controller),
+          sessionProvider.overrideWith((ref) => _session()),
         ],
-        child: MaterialApp.router(
-          routerConfig: GoRouter(
-            initialLocation: '/clinic',
-            routes: [
-              ShellRoute(
-                builder: (context, state, child) => ClinicAppShell(child: child),
-                routes: [
-                  GoRoute(
-                    path: '/clinic',
-                    builder: (_, __) => const Scaffold(body: Text('Clinic dashboard')),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+        child: MaterialApp.router(routerConfig: _router(initialLocation: '/clinic')),
       ),
     );
 
+    expect(find.text('Clinic'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Dashboard'), findsWidgets);
+    expect(find.text('Patients'), findsOneWidget);
     expect(find.text('Treatments'), findsOneWidget);
     expect(find.text('Expenses'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
@@ -78,5 +93,31 @@ void main() {
     expect(find.text('Construction Finance'), findsNothing);
     expect(find.text('Home Finance'), findsNothing);
     expect(find.text('Clinic dashboard'), findsOneWidget);
+  });
+
+  testWidgets('desktop shell shows independent home navigation', (tester) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((ref) => _session()),
+        ],
+        child: MaterialApp.router(routerConfig: _router(initialLocation: '/home')),
+      ),
+    );
+
+    expect(find.text('Home grocery'), findsOneWidget);
+    expect(find.text('Dashboard'), findsWidgets);
+    expect(find.text('Expenses'), findsOneWidget);
+    expect(find.text('Reports'), findsOneWidget);
+    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Patients'), findsNothing);
+    expect(find.text('Treatments'), findsNothing);
+    expect(find.text('Construction Finance'), findsNothing);
+    expect(find.text('Home dashboard'), findsOneWidget);
   });
 }

@@ -15,7 +15,6 @@ import '../security/device_id.dart';
 import '../utils/money.dart';
 import '../utils/period.dart';
 import '../utils/phone.dart';
-import 'construction_defaults.dart';
 
 const _collections = {
   'treatment_category': 'treatment_categories',
@@ -27,9 +26,12 @@ const _collections = {
   'home_expense_category': 'home_expense_categories',
   'home_expense': 'home_expenses',
   'home_budget': 'home_budgets',
-  'construction_material_category': 'construction_material_categories',
-  'construction_material': 'construction_materials',
-  'construction_purchase': 'construction_purchases',
+};
+
+const _retiredSyncEntities = {
+  'construction_material_category',
+  'construction_material',
+  'construction_purchase',
 };
 
 class ClinicTotals {
@@ -66,30 +68,6 @@ class HomeTotals {
   final String budgetSource;
   final DateRange range;
   final bool online;
-}
-
-class ConstructionTotals {
-  const ConstructionTotals({
-    required this.spent,
-    required this.purchaseCount,
-    required this.byCategory,
-    required this.byMaterial,
-    required this.bySupplier,
-    required this.recent,
-    required this.monthly,
-    required this.topMaterials,
-    required this.range,
-  });
-
-  final String spent;
-  final int purchaseCount;
-  final List<NamedAmount> byCategory;
-  final List<NamedAmount> byMaterial;
-  final List<NamedAmount> bySupplier;
-  final List<ConstructionPurchase> recent;
-  final List<NamedAmount> monthly;
-  final List<NamedAmount> topMaterials;
-  final DateRange range;
 }
 
 class SyncStatus {
@@ -182,6 +160,7 @@ class FinanceRepository {
       if (needsHydrate) {
         await _hydrateRest();
       }
+      await _hydrateHome();
       await _pruneDuplicateFinanceCatalogs();
       await _pruneDuplicateMonthBudgets();
       await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
@@ -196,6 +175,7 @@ class FinanceRepository {
         if (force || await _clinicCacheEmpty()) {
           await _hydrateRest();
         }
+        await _hydrateHome();
         await _pruneDuplicateFinanceCatalogs();
         await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
         return true;
@@ -227,160 +207,6 @@ class FinanceRepository {
     final treatments = await _db.list('treatments');
     final patients = await _db.list('patients');
     return treatments.isEmpty || patients.isEmpty;
-  }
-
-  Future<void> ensureConstructionCatalog() async {
-    try {
-      await _hydrateConstruction();
-      await _decorateConstructionLocal();
-      await _pruneLocalConstructionSeed();
-    } catch (_) {}
-    if ((await constructionMaterials()).isNotEmpty) {
-      return;
-    }
-    try {
-      await _bootstrap();
-      await _hydrateConstruction();
-      await _decorateConstructionLocal();
-      await _pruneLocalConstructionSeed();
-    } catch (_) {}
-    if ((await constructionMaterials()).isEmpty) {
-      await _installLocalConstructionSeed();
-    }
-  }
-
-  Future<String> _resolveConstructionMaterialId(String materialId) async {
-    final materials = await constructionMaterials();
-    ConstructionMaterial? material;
-    for (final item in materials) {
-      if (item.id == materialId) {
-        material = item;
-        break;
-      }
-    }
-    if (material == null || !material.localSeed) {
-      return materialId;
-    }
-    try {
-      await _hydrateConstruction();
-      await _decorateConstructionLocal();
-      final server = await constructionMaterials();
-      for (final item in server) {
-        if (!item.localSeed && item.name == material.name) {
-          return item.id;
-        }
-      }
-    } catch (_) {}
-    final categories = await constructionMaterialCategories();
-    CatalogItem? category;
-    for (final item in categories) {
-      if (item.id == material.categoryId) {
-        category = item;
-        break;
-      }
-    }
-    try {
-      if (category != null) {
-        await createCatalog(
-          path: '/api/v1/construction-material-categories',
-          collection: 'construction_material_categories',
-          entityType: 'construction_material_category',
-          body: {'id': category.id, 'name': category.name},
-        );
-      }
-      await createCatalog(
-        path: '/api/v1/construction-materials',
-        collection: 'construction_materials',
-        entityType: 'construction_material',
-        body: {
-          'id': material.id,
-          'category_id': material.categoryId,
-          'name': material.name,
-          'unit': material.unit,
-        },
-      );
-      return material.id;
-    } catch (_) {
-      return material.id;
-    }
-  }
-
-  Future<void> _pruneLocalConstructionSeed() async {
-    final categories = await _db.list('construction_material_categories');
-    final materials = await _db.list('construction_materials');
-    String key(Object? value) => (value?.toString() ?? '').trim().toLowerCase();
-
-    final serverCategoryIds = {
-      for (final row in categories)
-        if (row['local_seed'] != true) key(row['name']): row['id'].toString(),
-    };
-    final serverMaterialIds = <String, String>{};
-    for (final row in materials) {
-      if (row['local_seed'] == true) {
-        continue;
-      }
-      serverMaterialIds['${key(row['name'])}|${key(row['category_name'])}'] = row['id'].toString();
-      serverMaterialIds[key(row['name'])] = row['id'].toString();
-    }
-
-    final materialIdMap = <String, String>{};
-    for (final row in materials) {
-      if (row['local_seed'] != true) {
-        continue;
-      }
-      final serverId = serverMaterialIds['${key(row['name'])}|${key(row['category_name'])}'] ?? serverMaterialIds[key(row['name'])];
-      if (serverId == null) {
-        continue;
-      }
-      materialIdMap[row['id'].toString()] = serverId;
-      await _db.markDeleted('construction_materials', row['id'].toString());
-    }
-    for (final row in categories) {
-      if (row['local_seed'] == true && serverCategoryIds.containsKey(key(row['name']))) {
-        await _db.markDeleted('construction_material_categories', row['id'].toString());
-      }
-    }
-    if (materialIdMap.isEmpty) {
-      return;
-    }
-    for (final row in await _db.list('construction_purchases')) {
-      final mapped = materialIdMap[row['material_id']?.toString()];
-      if (mapped != null) {
-        row['material_id'] = mapped;
-        await _db.upsert('construction_purchases', row);
-      }
-    }
-  }
-
-  Future<void> _installLocalConstructionSeed() async {
-    var categoryOrder = 0;
-    for (final entry in defaultConstructionCatalog.entries) {
-      final categoryId = _uuid.v4();
-      await _db.upsert('construction_material_categories', {
-        'id': categoryId,
-        'name': entry.key,
-        'display_order': categoryOrder,
-        'is_active': true,
-        'version': 1,
-        'local_seed': true,
-      });
-      var materialOrder = 0;
-      for (final material in entry.value) {
-        await _db.upsert('construction_materials', {
-          'id': _uuid.v4(),
-          'category_id': categoryId,
-          'name': material.$1,
-          'unit': material.$2,
-          'category_name': entry.key,
-          'display_order': materialOrder,
-          'is_active': true,
-          'version': 1,
-          'local_seed': true,
-        });
-        materialOrder += 1;
-      }
-      categoryOrder += 1;
-    }
   }
 
   Future<SyncStatus> syncStatus() async {
@@ -471,65 +297,16 @@ class FinanceRepository {
 
   Future<List<CatalogItem>> clinicExpenseCategories() => _categories('clinic_expense_categories');
 
-  Future<List<CatalogItem>> homeExpenseCategories() => _categories('home_expense_categories');
-
-  Future<List<CatalogItem>> treatmentCategories() => _categories('treatment_categories');
-
-  Future<List<CatalogItem>> constructionMaterialCategories() => _categories('construction_material_categories');
-
-  Future<List<ConstructionMaterial>> constructionMaterials() async {
-    final items = (await _db.list('construction_materials')).map(ConstructionMaterial.fromJson).where((item) => item.isActive);
-    final unique = <String, ConstructionMaterial>{};
-    for (final item in items) {
-      final key = '${item.name.trim().toLowerCase()}|${(item.categoryName ?? '').trim().toLowerCase()}';
-      final existing = unique[key];
-      if (existing == null || (existing.localSeed && !item.localSeed)) {
-        unique[key] = item;
-      }
-    }
-    return unique.values.toList()
-      ..sort((a, b) {
-        final category = (a.categoryName ?? '').compareTo(b.categoryName ?? '');
-        return category != 0 ? category : a.name.compareTo(b.name);
-      });
-  }
-
-  Future<List<ConstructionPurchase>> constructionPurchases({DateRange? range, String? search}) async {
-    var items = (await _db.list('construction_purchases')).map(ConstructionPurchase.fromJson).toList();
-    if (range != null) {
-      items = items.where((item) => range.containsIso(item.date)).toList();
-    }
-    final needle = search?.trim().toLowerCase();
-    if (needle != null && needle.isNotEmpty) {
-      items = items.where((item) {
-        return (item.materialName ?? '').toLowerCase().contains(needle) ||
-            (item.categoryName ?? '').toLowerCase().contains(needle) ||
-            (item.supplier ?? '').toLowerCase().contains(needle) ||
-            (item.notes ?? '').toLowerCase().contains(needle);
-      }).toList();
-    }
-    items.sort((a, b) => b.date.compareTo(a.date));
+  Future<List<CatalogItem>> homeExpenseCategories() async {
+    final items = await _categories('home_expense_categories');
+    items.sort((a, b) {
+      final byOrder = a.displayOrder.compareTo(b.displayOrder);
+      return byOrder != 0 ? byOrder : a.name.compareTo(b.name);
+    });
     return items;
   }
 
-  Future<ConstructionTotals> constructionTotals(DateRange range) async {
-    final inRange = await constructionPurchases(range: range);
-    final all = await constructionPurchases();
-    return ConstructionTotals(
-      spent: moneyFromDouble(inRange.fold(0, (sum, item) => sum + moneyToDouble(item.amount))),
-      purchaseCount: inRange.length,
-      byCategory: _namedTotals(inRange, (item) => item.categoryName ?? 'Other'),
-      byMaterial: _materialSpend(inRange),
-      bySupplier: _namedTotals(inRange, (item) {
-        final supplier = item.supplier?.trim() ?? '';
-        return supplier.isEmpty ? 'Unspecified' : supplier;
-      }),
-      recent: inRange.take(8).toList(),
-      monthly: _monthlyTotals(inRange.isEmpty ? all : inRange),
-      topMaterials: _namedTotals(inRange, (item) => item.materialName ?? 'Material').take(5).toList(),
-      range: range,
-    );
-  }
+  Future<List<CatalogItem>> treatmentCategories() => _categories('treatment_categories');
 
   Future<List<CatalogItem>> _categories(String collection) async {
     final rows = await _db.list(collection);
@@ -659,6 +436,11 @@ class FinanceRepository {
       budgetSource: override.isEmpty ? 'default' : 'override',
       range: range,
     );
+  }
+
+  Future<List<MoneyEntry>> recentHomeExpenses({int limit = 6}) async {
+    final items = await homeExpenseHistory();
+    return items.take(limit).toList();
   }
 
   Future<List<RecentClinicPatient>> recentClinicPatients({int limit = 6}) async {
@@ -1350,136 +1132,6 @@ class FinanceRepository {
     return null;
   }
 
-  Future<String> saveConstructionPurchases({
-    required String date,
-    required List<
-        ({
-          String materialId,
-          String quantity,
-          String unit,
-          String unitPrice,
-          String? supplier,
-          String? notes,
-        })> rows,
-  }) async {
-    final resolved = <String, String>{};
-    for (final row in rows) {
-      resolved[row.materialId] = await _resolveConstructionMaterialId(row.materialId);
-    }
-    final materials = {for (final item in await constructionMaterials()) item.id: item};
-    final items = [
-      for (final row in rows)
-        {
-          'id': _uuid.v4(),
-          'material_id': resolved[row.materialId] ?? row.materialId,
-          'purchase_date': date,
-          'quantity': row.quantity,
-          'unit': row.unit,
-          'unit_price': row.unitPrice,
-          'supplier': row.supplier,
-          'notes': row.notes,
-          'amount': moneyFromDouble(moneyToDouble(row.quantity) * moneyToDouble(row.unitPrice)),
-          'material_name': materials[resolved[row.materialId] ?? row.materialId]?.name ?? materials[row.materialId]?.name ?? 'Material',
-          'category_name':
-              materials[resolved[row.materialId] ?? row.materialId]?.categoryName ?? materials[row.materialId]?.categoryName,
-        },
-    ];
-    try {
-      final response = await _api.post(
-        '/api/v1/construction-purchases/batch',
-        data: {
-          'items': [
-            for (final row in items)
-              {
-                'id': row['id'],
-                'material_id': row['material_id'],
-                'purchase_date': row['purchase_date'],
-                'quantity': row['quantity'],
-                'unit': row['unit'],
-                'unit_price': row['unit_price'],
-                'supplier': row['supplier'],
-                'notes': row['notes'],
-              },
-          ],
-        },
-      );
-      final saved = await _decorateConstructionPurchases(_asMaps(response.data, items));
-      for (final row in saved) {
-        await _db.upsert('construction_purchases', row);
-      }
-      return 'Saved and synced.';
-    } on OfflineException {
-      for (final row in items) {
-        await _db.upsert('construction_purchases', {...row, 'version': 1});
-        await _db.enqueueChange(
-          clientChangeId: _uuid.v4(),
-          entityType: 'construction_purchase',
-          entityId: row['id'].toString(),
-          operation: 'create',
-          payload: {
-            'id': row['id'],
-            'material_id': row['material_id'],
-            'purchase_date': row['purchase_date'],
-            'quantity': row['quantity'],
-            'unit': row['unit'],
-            'unit_price': row['unit_price'],
-            'supplier': row['supplier'],
-            'notes': row['notes'],
-          },
-        );
-      }
-      return 'Saved on this device and waiting to sync.';
-    }
-  }
-
-  Future<String> updateConstructionPurchase({
-    required ConstructionPurchase entry,
-    required Map<String, dynamic> patch,
-  }) async {
-    final body = {'version': entry.version, ...patch};
-    try {
-      final response = await _api.patch('/api/v1/construction-purchases/${entry.id}', data: body);
-      final saved = (await _decorateConstructionPurchases([_asMap(response.data) ?? {...entry.toJson(), ...patch}])).first;
-      await _db.upsert('construction_purchases', saved);
-      return 'Updated.';
-    } on OfflineException {
-      final quantity = moneyToDouble((patch['quantity'] ?? entry.quantity).toString());
-      final unitPrice = moneyToDouble((patch['unit_price'] ?? entry.unitPrice).toString());
-      final local = {
-        ...entry.toJson(),
-        ...patch,
-        'amount': moneyFromDouble(quantity * unitPrice),
-        'version': entry.version + 1,
-      };
-      await _db.upsert('construction_purchases', (await _decorateConstructionPurchases([local])).first);
-      await _db.enqueueChange(
-        clientChangeId: _uuid.v4(),
-        entityType: 'construction_purchase',
-        entityId: entry.id,
-        operation: 'update',
-        payload: patch,
-        baseVersion: entry.version,
-      );
-      return 'Saved on this device and waiting to sync.';
-    }
-  }
-
-  Future<void> deleteConstructionPurchase(ConstructionPurchase entry) async {
-    await _db.markDeleted('construction_purchases', entry.id);
-    try {
-      await _api.delete('/api/v1/construction-purchases/${entry.id}', query: {'version': entry.version});
-    } on OfflineException {
-      await _db.enqueueChange(
-        clientChangeId: _uuid.v4(),
-        entityType: 'construction_purchase',
-        entityId: entry.id,
-        operation: 'delete',
-        payload: {'version': entry.version},
-        baseVersion: entry.version,
-      );
-    }
-  }
-
   Future<void> saveBudget({required int year, required int month, required String amount}) async {
     final existing = await budgetFor(year, month);
     try {
@@ -1700,12 +1352,16 @@ class FinanceRepository {
     return _export('/api/v1/reports/home/export', range, format);
   }
 
-  Future<ResponseBytes> exportConstruction({required DateRange range, required String format}) {
-    return _export('/api/v1/reports/construction/export', range, format);
-  }
-
   Future<void> pushPending() async {
-    final pending = await _db.pendingChanges();
+    final pending = <Map<String, dynamic>>[];
+    for (final row in await _db.pendingChanges()) {
+      final entity = row['entity_type']?.toString() ?? '';
+      if (_retiredSyncEntities.contains(entity)) {
+        await _db.removePending(row['client_change_id'].toString());
+        continue;
+      }
+      pending.add(row);
+    }
     if (pending.isEmpty) {
       return;
     }
@@ -1967,20 +1623,24 @@ class FinanceRepository {
       ..addAll(patients.map((item) => item['id'].toString()));
   }
 
-  Future<void> _hydrateConstruction() async {
-    final categories = await _allPages('/api/v1/construction-material-categories', extra: {'page_size': 100});
-    final materials = await _allPages('/api/v1/construction-materials', extra: {'page_size': 100});
-    await _db.upsertAll('construction_material_categories', categories);
-    await _db.upsertAll('construction_materials', materials);
-    _serverCatalogIds
-      ..addAll(categories.map((item) => item['id'].toString()))
-      ..addAll(materials.map((item) => item['id'].toString()));
-    await _db.upsertAll(
-      'construction_purchases',
-      await _decorateConstructionPurchases(
-        await _allPages('/api/v1/construction-purchases', extra: {'page_size': 100}),
-      ),
-    );
+  Future<void> _hydrateHome() async {
+    try {
+      final pages = await Future.wait([
+        _allPages('/api/v1/home-expense-categories', extra: {'page_size': 100, 'sort': 'display_order'}),
+        _allPages('/api/v1/home-expenses', extra: {'page_size': 100, 'sort': '-expense_date'}),
+        _allPages('/api/v1/home-budgets', extra: {'page_size': 100}),
+      ]);
+      final categories = pages[0];
+      final expenses = pages[1];
+      final budgets = pages[2];
+      await _db.upsertAll('home_expense_categories', categories);
+      await _db.upsertAll(
+        'home_expenses',
+        await _namedExpenses(expenses, 'home_expense_categories'),
+      );
+      await _db.upsertAll('home_budgets', budgets);
+      _serverCatalogIds.addAll(categories.map((item) => item['id'].toString()));
+    } catch (_) {}
   }
 
   // Kept for one-off repairs if local catalog names are missing after a partial sync.
@@ -2006,7 +1666,6 @@ class FinanceRepository {
       row['catalog_name'] = homeNames[row['category_id']?.toString()] ?? row['catalog_name'] ?? 'Category';
       await _db.upsert('home_expenses', row);
     }
-    await _decorateConstructionLocal();
   }
 
   Future<List<Map<String, dynamic>>> _allPages(String path, {Map<String, dynamic>? extra}) async {
@@ -2025,34 +1684,6 @@ class FinanceRepository {
       page += 1;
     }
     return items;
-  }
-
-  Future<void> _decorateConstructionLocal() async {
-    final decorated = await _decorateConstructionPurchases(await _db.list('construction_purchases'));
-    for (final row in decorated) {
-      await _db.upsert('construction_purchases', row);
-    }
-    final categoryNames = {for (final item in await constructionMaterialCategories()) item.id: item.name};
-    for (final row in await _db.list('construction_materials')) {
-      row['category_name'] = categoryNames[row['category_id']?.toString()] ?? row['category_name'];
-      await _db.upsert('construction_materials', row);
-    }
-  }
-
-  Future<List<Map<String, dynamic>>> _decorateConstructionPurchases(List<Map<String, dynamic>> rows) async {
-    final materials = {for (final item in await constructionMaterials()) item.id: item};
-    final categories = {for (final item in await constructionMaterialCategories()) item.id: item.name};
-    return [
-      for (final row in rows)
-        {
-          ...row,
-          'material_name': materials[row['material_id']?.toString()]?.name ?? row['material_name'] ?? 'Material',
-          'category_name':
-              materials[row['material_id']?.toString()]?.categoryName ??
-              categories[materials[row['material_id']?.toString()]?.categoryId] ??
-              row['category_name'],
-        },
-    ];
   }
 
   Future<List<Map<String, dynamic>>> _namedTransactions(List<Map<String, dynamic>> rows) async {
@@ -2142,9 +1773,12 @@ class FinanceRepository {
   }
 
   Future<List<Map<String, dynamic>>> _namedExpenses(List<Map<String, dynamic>> rows, String collection) async {
-    final names = {for (final item in await _categories(collection)) item.id: item.name};
+    final names = {
+      for (final row in await _db.list(collection)) row['id'].toString(): row['name']?.toString() ?? 'Category',
+    };
     return [
-      for (final row in rows) {...row, 'catalog_name': names[row['category_id'].toString()] ?? 'Category'},
+      for (final row in rows)
+        {...row, 'catalog_name': names[row['category_id'].toString()] ?? row['catalog_name'] ?? 'Category'},
     ];
   }
 
@@ -2181,49 +1815,6 @@ class FinanceRepository {
       total += moneyToDouble(row['amount']?.toString() ?? '0');
     }
     return total;
-  }
-
-  List<NamedAmount> _materialSpend(List<ConstructionPurchase> items) {
-    final quantities = <String, double>{};
-    final amounts = <String, double>{};
-    final units = <String, String>{};
-    for (final item in items) {
-      final name = item.materialName ?? 'Material';
-      quantities[name] = (quantities[name] ?? 0) + moneyToDouble(item.quantity);
-      amounts[name] = (amounts[name] ?? 0) + moneyToDouble(item.amount);
-      units[name] = item.unit;
-    }
-    final ranked = amounts.entries.map((entry) {
-      final qty = formatQuantity(moneyFromDouble(quantities[entry.key] ?? 0));
-      return NamedAmount(
-        name: '$qty ${units[entry.key]} · ${entry.key}',
-        amount: moneyFromDouble(entry.value),
-      );
-    }).toList()
-      ..sort((a, b) => moneyToDouble(b.amount).compareTo(moneyToDouble(a.amount)));
-    return ranked;
-  }
-
-  List<NamedAmount> _namedTotals(List<ConstructionPurchase> items, String Function(ConstructionPurchase item) nameOf) {
-    final totals = <String, double>{};
-    for (final item in items) {
-      final name = nameOf(item);
-      totals[name] = (totals[name] ?? 0) + moneyToDouble(item.amount);
-    }
-    final ranked = totals.entries.map((entry) => NamedAmount(name: entry.key, amount: moneyFromDouble(entry.value))).toList()
-      ..sort((a, b) => moneyToDouble(b.amount).compareTo(moneyToDouble(a.amount)));
-    return ranked;
-  }
-
-  List<NamedAmount> _monthlyTotals(List<ConstructionPurchase> items) {
-    final totals = <String, double>{};
-    for (final item in items) {
-      final month = item.date.length >= 7 ? item.date.substring(0, 7) : item.date;
-      totals[month] = (totals[month] ?? 0) + moneyToDouble(item.amount);
-    }
-    final ranked = totals.entries.map((entry) => NamedAmount(name: entry.key, amount: moneyFromDouble(entry.value))).toList()
-      ..sort((a, b) => b.name.compareTo(a.name));
-    return ranked.take(6).toList();
   }
 
   Future<String> _saveExpenseBatch({

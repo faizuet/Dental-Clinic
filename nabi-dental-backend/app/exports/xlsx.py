@@ -4,9 +4,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.schemas.report import ClinicReport, ConstructionReport, HomeReport
+from app.schemas.report import ClinicReport, HomeReport
 from app.utils.dates import format_display_date
-from app.utils.money import format_money, format_quantity
+from app.utils.money import format_money
 
 HEADER_FILL = PatternFill("solid", fgColor="1B6CDE")
 SOFT_FILL = PatternFill("solid", fgColor="E8F2FF")
@@ -94,72 +94,6 @@ def render_home_xlsx(report: HomeReport, *, clinic_name: str) -> bytes:
         ["Date", "Category", "Notes", "Amount"],
         [[format_display_date(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
         money_cols={4},
-    )
-    _write_timeline_sheet(workbook, report.timeline, include_income=False)
-    return _save(workbook)
-
-
-def render_construction_xlsx(report: ConstructionReport, *, clinic_name: str) -> bytes:
-    workbook = Workbook()
-    summary = workbook.active
-    summary.title = "Summary"
-    _write_header(
-        summary,
-        clinic_name,
-        "Construction Expense Report",
-        report.period.from_date,
-        report.period.to_date,
-        report.currency,
-    )
-    _write_kv(
-        summary,
-        7,
-        [
-            ("Total construction spend", format_money(report.total_expenses)),
-            ("Purchases", report.purchase_count),
-            ("Categories", len(report.expenses_by_category)),
-            ("Suppliers", len(report.expenses_by_supplier)),
-        ],
-    )
-    _write_named_sheet(
-        workbook,
-        "By category",
-        ["Category", "Amount"],
-        [(item.name, item.amount) for item in report.expenses_by_category],
-    )
-    _write_table_sheet(
-        workbook,
-        "By material",
-        ["Material", "Quantity", "Unit", "Total"],
-        [[item.name, format_quantity(item.quantity), item.unit, item.amount] for item in report.spending_by_material],
-        money_cols={4},
-        number_cols={2},
-    )
-    _write_named_sheet(
-        workbook,
-        "By supplier",
-        ["Supplier", "Amount"],
-        [(item.name, item.amount) for item in report.expenses_by_supplier],
-    )
-    _write_table_sheet(
-        workbook,
-        "Purchases",
-        ["Date", "Material", "Category", "Quantity", "Unit", "Unit price", "Total", "Supplier"],
-        [
-            [
-                format_display_date(item.purchase_date),
-                item.material_name,
-                item.category_name,
-                format_quantity(item.quantity),
-                item.unit,
-                item.unit_price,
-                item.amount,
-                item.supplier or "",
-            ]
-            for item in report.purchases
-        ],
-        money_cols={6, 7},
-        number_cols={4},
     )
     _write_timeline_sheet(workbook, report.timeline, include_income=False)
     return _save(workbook)

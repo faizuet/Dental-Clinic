@@ -111,9 +111,10 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        leading: const AppBackButton(fallback: '/home'),
-        title: const AppBarTitle('Monthly budget'),
+      appBar: buildAppBar(
+        context: context,
+        title: 'Monthly budget',
+        fallback: '/home',
       ),
       body: AppPageBody(
         padding: AppLayout.pagePadding(context, top: 12, bottom: 8),
