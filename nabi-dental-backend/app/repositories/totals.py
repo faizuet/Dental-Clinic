@@ -12,6 +12,7 @@ from app.models import (
     ClinicExpenseCategory,
     HomeExpense,
     HomeExpenseCategory,
+    LabCharge,
     Patient,
     Treatment,
     TreatmentCategory,
@@ -43,6 +44,41 @@ class TotalsRepository(BaseRepository):
             )
         )
         return parse_money(value)
+
+    async def lab_charge_total(self, clinic_id: UUID, from_date: date, to_date: date) -> Decimal:
+        value = await self.session.scalar(
+            select(func.coalesce(func.sum(LabCharge.amount), 0)).where(
+                LabCharge.clinic_id == clinic_id,
+                LabCharge.deleted_at.is_(None),
+                LabCharge.charge_date >= from_date,
+                LabCharge.charge_date <= to_date,
+            )
+        )
+        return parse_money(value)
+
+    async def lab_charge_lines(self, clinic_id: UUID, from_date: date, to_date: date) -> Sequence[tuple]:
+        stmt = (
+            select(
+                LabCharge.charge_date,
+                LabCharge.lab_name,
+                LabCharge.notes,
+                LabCharge.amount,
+                TreatmentTransaction.serial_no,
+                Patient.name,
+                func.coalesce(TreatmentTransaction.sub_treatment, Treatment.name),
+            )
+            .outerjoin(Patient, Patient.id == LabCharge.patient_id)
+            .outerjoin(TreatmentTransaction, TreatmentTransaction.id == LabCharge.transaction_id)
+            .outerjoin(Treatment, Treatment.id == TreatmentTransaction.treatment_id)
+            .where(
+                LabCharge.clinic_id == clinic_id,
+                LabCharge.deleted_at.is_(None),
+                LabCharge.charge_date >= from_date,
+                LabCharge.charge_date <= to_date,
+            )
+            .order_by(LabCharge.charge_date, LabCharge.created_at)
+        )
+        return (await self.session.execute(stmt)).all()
 
     async def home_expense_total(self, user_id: UUID, from_date: date, to_date: date) -> Decimal:
         value = await self.session.scalar(

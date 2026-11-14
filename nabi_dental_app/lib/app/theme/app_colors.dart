@@ -31,6 +31,8 @@ class AppColors {
   static const Color tealSoft = Color(0xFFEAF3FF);
   static const Color lavenderSoft = Color(0xFFF0EDFA);
   static const Color mintSoft = Color(0xFFE6F5EC);
+  static const Color violet = Color(0xFF7B61C9);
+  static const Color violetSoft = Color(0xFFF2EEFC);
 }
 
 class AppSpacing {

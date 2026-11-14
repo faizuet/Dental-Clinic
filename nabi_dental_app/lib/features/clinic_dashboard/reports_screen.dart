@@ -45,8 +45,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String _income = '0.00';
   String _expenses = '0.00';
   String _profit = '0.00';
+  String _labCharges = '0.00';
   List<NamedAmount> _incomeBreakdown = [];
   List<NamedAmount> _expenseBreakdown = [];
+  List<NamedAmount> _labBreakdown = [];
   List<NamedAmount> _timeline = [];
   bool _loading = true;
   bool _syncing = false;
@@ -95,10 +97,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     }
     final income = await repo.incomeHistory(range: _range);
     final expenses = await repo.clinicExpenseHistory(range: _range);
+    final labCharges = await repo.labChargeHistory(range: _range);
     final incomeTotal = income.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
     final expenseTotal = expenses.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    final labTotal = labCharges.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
     final byTreatment = await repo.breakdown(income);
     final byCategory = await repo.breakdown(expenses);
+    final byLab = await repo.breakdown(labCharges);
     final incomeTimeline = await repo.timeline(income);
     final expenseTimeline = await repo.timeline(expenses);
     if (!mounted) {
@@ -107,9 +112,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() {
       _income = moneyFromDouble(incomeTotal);
       _expenses = moneyFromDouble(expenseTotal);
-      _profit = moneyFromDouble(incomeTotal - expenseTotal);
+      _labCharges = moneyFromDouble(labTotal);
+      _profit = moneyFromDouble(incomeTotal - expenseTotal - labTotal);
       _incomeBreakdown = byTreatment;
       _expenseBreakdown = byCategory;
+      _labBreakdown = byLab;
       _timeline = [...incomeTimeline, ...expenseTimeline];
       _loading = false;
     });
@@ -249,8 +256,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       ),
                     ] else ...[
                       SummaryCard(label: 'Income', value: formatMoney(_income, currency: currency), color: AppColors.success, icon: Icons.trending_up_rounded),
-                      SummaryCard(label: 'Expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
-                      SummaryCard(label: 'Profit', value: formatMoney(_profit, currency: currency), icon: Icons.account_balance_wallet_outlined),
+                      SummaryCard(label: 'Clinic expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
+                      SummaryCard(
+                        label: 'Lab charges',
+                        value: formatMoney(_labCharges, currency: currency),
+                        color: AppColors.violet,
+                        background: AppColors.violetSoft,
+                        icon: Icons.science_outlined,
+                      ),
+                      SummaryCard(
+                        label: moneyToDouble(_profit) < 0 ? 'Loss' : 'Profit',
+                        value: formatMoney(_profit, currency: currency),
+                        color: moneyToDouble(_profit) < 0 ? AppColors.danger : AppColors.primary,
+                        icon: Icons.account_balance_wallet_outlined,
+                      ),
                     ],
                   ],
                 ),
@@ -282,6 +301,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   _amountCard(_incomeBreakdown, currency, empty: 'No income in this range.'),
                   const SectionHeader('Expenses by category'),
                   _amountCard(_expenseBreakdown, currency, empty: 'No activity in this range.'),
+                ],
+                if (!_isHome) ...[
+                  const SectionHeader('Lab charges by lab'),
+                  _amountCard(_labBreakdown, currency, empty: 'No lab charges in this range.'),
                 ],
                 const SectionHeader('Timeline'),
                 _amountCard(_timeline, currency, empty: 'No daily totals yet.'),

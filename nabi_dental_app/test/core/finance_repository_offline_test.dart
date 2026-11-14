@@ -6,6 +6,7 @@ import 'package:nabi_dental_app/core/errors/app_exception.dart';
 import 'package:nabi_dental_app/core/finance/finance_repository.dart';
 import 'package:nabi_dental_app/core/models/finance_models.dart';
 import 'package:nabi_dental_app/core/security/device_id.dart';
+import 'package:nabi_dental_app/core/utils/period.dart';
 
 class _Api extends Mock implements ApiClient {}
 
@@ -20,12 +21,14 @@ void main() {
 
   late _Api api;
   late _Db db;
+  late _Device device;
   late FinanceRepository repo;
 
   setUp(() {
     api = _Api();
     db = _Db();
-    repo = FinanceRepository(api: api, database: db, device: _Device());
+    device = _Device();
+    repo = FinanceRepository(api: api, database: db, device: device);
     when(() => db.list('patients')).thenAnswer((_) async => const <Map<String, dynamic>>[]);
     when(() => db.list('treatments')).thenAnswer(
       (_) async => [
@@ -191,6 +194,92 @@ void main() {
     );
 
     verifyNever(() => db.upsert('treatment_transactions', any()));
+  });
+
+  test('queues a lab charge when the API is offline', () async {
+    final message = await repo.saveLabCharge(
+      date: '2026-11-13',
+      amount: '1500.00',
+      patientId: 'patient-a',
+      transactionId: 'visit-1',
+      labName: 'Smile Ceramics',
+    );
+
+    expect(message, 'Saved on this device and waiting to sync.');
+    verify(() => db.upsert('lab_charges', any())).called(1);
+    verify(
+      () => db.enqueueChange(
+        clientChangeId: any(named: 'clientChangeId'),
+        entityType: 'lab_charge',
+        entityId: any(named: 'entityId'),
+        operation: 'create',
+        payload: any(named: 'payload'),
+      ),
+    ).called(1);
+  });
+
+  test('clinic totals keep lab charges apart from clinic expenses', () async {
+    final range = DateRange(from: DateTime(2026, 11, 1), to: DateTime(2026, 11, 30), period: FinancePeriod.custom);
+    when(() => db.list('treatment_transactions')).thenAnswer(
+      (_) async => [
+        {'id': 'v1', 'transaction_date': '2026-11-12', 'amount': '10000.00'},
+      ],
+    );
+    when(() => db.list('clinic_expenses')).thenAnswer(
+      (_) async => [
+        {'id': 'e1', 'expense_date': '2026-11-12', 'amount': '2000.00'},
+      ],
+    );
+    when(() => db.list('lab_charges')).thenAnswer(
+      (_) async => [
+        {'id': 'l1', 'charge_date': '2026-11-12', 'amount': '1500.00'},
+        {'id': 'l2', 'charge_date': '2026-10-31', 'amount': '900.00'},
+      ],
+    );
+
+    final totals = await repo.clinicTotals(range);
+
+    expect(totals.income, '10000.00');
+    expect(totals.expenses, '2000.00');
+    expect(totals.labCharges, '1500.00');
+    expect(totals.profit, '6500.00');
+  });
+
+  test('legacy offline lab expenses sync as lab charges', () async {
+    when(() => db.pendingChanges()).thenAnswer(
+      (_) async => [
+        {
+          'client_change_id': 'c1',
+          'entity_type': 'clinic_expense',
+          'entity_id': 'e1',
+          'operation': 'create',
+          'payload': {'id': 'e1', 'category_id': 'cat-lab', 'expense_date': '2026-11-12', 'amount': '1500.00'},
+        },
+      ],
+    );
+    when(() => db.get('clinic_expense_categories', 'cat-lab')).thenAnswer(
+      (_) async => {'id': 'cat-lab', 'name': 'Lab Charges'},
+    );
+    when(() => db.get('clinic_expenses', 'e1')).thenAnswer(
+      (_) async => {'id': 'e1', 'expense_date': '2026-11-12', 'amount': '1500.00'},
+    );
+    when(() => db.removePending(any())).thenAnswer((_) async {});
+    when(() => db.markDeleted(any(), any())).thenAnswer((_) async {});
+    when(() => device.id()).thenAnswer((_) async => 'device-1');
+    Map<String, dynamic>? sent;
+    when(() => api.post('/api/v1/sync/push', data: any(named: 'data'))).thenAnswer((invocation) async {
+      sent = invocation.namedArguments[#data] as Map<String, dynamic>;
+      throw const OfflineException();
+    });
+
+    await expectLater(repo.pushPending(), throwsA(isA<OfflineException>()));
+
+    final change = (sent!['changes'] as List).single as Map;
+    expect(change['entity'], 'lab_charge');
+    expect(change['entity_id'], 'e1');
+    expect((change['data'] as Map)['charge_date'], '2026-11-12');
+    verify(() => db.markDeleted('clinic_expenses', 'e1')).called(1);
+    verify(() => db.upsert('lab_charges', any())).called(1);
   });
 
   test('recent patients list latest treated first', () async {

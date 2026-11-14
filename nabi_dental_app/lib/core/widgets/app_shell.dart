@@ -62,6 +62,14 @@ const clinicDestinations = [
     branch: 3,
   ),
   ClinicDestination(
+    label: 'Lab charges',
+    icon: Icons.science_outlined,
+    selectedIcon: Icons.science_rounded,
+    path: '/clinic/lab-charges',
+    matches: _isLabCharges,
+    branch: 9,
+  ),
+  ClinicDestination(
     label: 'Reports',
     icon: Icons.picture_as_pdf_outlined,
     selectedIcon: Icons.picture_as_pdf_rounded,
@@ -118,6 +126,7 @@ bool _isDashboard(String location) => location == '/clinic';
 bool _isPatients(String location) => location.startsWith('/clinic/patients');
 bool _isTreatments(String location) => location.startsWith('/clinic/income');
 bool _isExpenses(String location) => location.startsWith('/clinic/expenses');
+bool _isLabCharges(String location) => location.startsWith('/clinic/lab-charges');
 bool _isReports(String location) => location.startsWith('/clinic/reports');
 bool _isSettings(String location) => location.startsWith('/settings');
 bool _isHomeDashboard(String location) => location == '/home' || location == '/home/budget';

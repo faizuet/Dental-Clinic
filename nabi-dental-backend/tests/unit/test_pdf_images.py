@@ -138,9 +138,11 @@ def test_clinic_pdf_drops_sub_treatment_column():
         currency="PKR",
         total_income=Decimal("8000.00"),
         total_expenses=Decimal("1000.00"),
-        profit=Decimal("7000.00"),
+        total_lab_charges=Decimal("1500.00"),
+        profit=Decimal("5500.00"),
         income_count=1,
         expense_count=0,
+        lab_charge_count=1,
         patient_count=1,
         income_by_treatment=[NamedAmount(name="Scaling", amount=Decimal("8000.00"))],
         expenses_by_category=[],
@@ -156,6 +158,16 @@ def test_clinic_pdf_drops_sub_treatment_column():
             )
         ],
         expense_lines=[],
+        lab_charge_lines=[
+            ReportLine(
+                entry_date=date(2026, 9, 3),
+                name="Smile Ceramics",
+                amount=Decimal("1500.00"),
+                serial_no=12,
+                patient_name="Ali Khan",
+                sub_treatment="Zirconia Crown",
+            )
+        ],
         timeline=[],
     )
     pdf = render_clinic_pdf(report, clinic_name="Nabi Dental")
@@ -165,3 +177,5 @@ def test_clinic_pdf_drops_sub_treatment_column():
     assert "Scaling" in text
     assert "Income" in text
     assert "Profit / loss" in text
+    assert "Lab charges" in text
+    assert "Smile Ceramics" in text

@@ -12,6 +12,7 @@ import '../errors/friendly_error.dart';
 import '../media/clinic_image_picker.dart';
 import '../models/finance_models.dart';
 import '../security/device_id.dart';
+import '../utils/dates.dart';
 import '../utils/money.dart';
 import '../utils/period.dart';
 import '../utils/phone.dart';
@@ -23,6 +24,7 @@ const _collections = {
   'patient': 'patients',
   'clinic_expense_category': 'clinic_expense_categories',
   'clinic_expense': 'clinic_expenses',
+  'lab_charge': 'lab_charges',
   'home_expense_category': 'home_expense_categories',
   'home_expense': 'home_expenses',
   'home_budget': 'home_budgets',
@@ -38,6 +40,7 @@ class ClinicTotals {
   const ClinicTotals({
     required this.income,
     required this.expenses,
+    required this.labCharges,
     required this.profit,
     required this.range,
     this.online = true,
@@ -45,6 +48,7 @@ class ClinicTotals {
 
   final String income;
   final String expenses;
+  final String labCharges;
   final String profit;
   final DateRange range;
   final bool online;
@@ -160,6 +164,7 @@ class FinanceRepository {
       if (needsHydrate) {
         await _hydrateRest();
       }
+      await _hydrateLabCharges();
       await _hydrateHome();
       await _pruneDuplicateFinanceCatalogs();
       await _pruneDuplicateMonthBudgets();
@@ -175,6 +180,7 @@ class FinanceRepository {
         if (force || await _clinicCacheEmpty()) {
           await _hydrateRest();
         }
+        await _hydrateLabCharges();
         await _hydrateHome();
         await _pruneDuplicateFinanceCatalogs();
         await _db.setMeta('last_sync', DateTime.now().toUtc().toIso8601String());
@@ -295,7 +301,10 @@ class FinanceRepository {
     return _uniqueCatalogItems(items);
   }
 
-  Future<List<CatalogItem>> clinicExpenseCategories() => _categories('clinic_expense_categories');
+  Future<List<CatalogItem>> clinicExpenseCategories() async {
+    final items = await _categories('clinic_expense_categories');
+    return items.where((item) => !isLabChargeCategoryName(item.name)).toList();
+  }
 
   Future<List<CatalogItem>> homeExpenseCategories() async {
     final items = await _categories('home_expense_categories');
@@ -411,10 +420,12 @@ class FinanceRepository {
   Future<ClinicTotals> clinicTotals(DateRange range) async {
     final income = _sumRows(await _db.list('treatment_transactions'), range);
     final expenses = _sumRows(await _db.list('clinic_expenses'), range);
+    final labCharges = _sumRows(await _db.list('lab_charges'), range);
     return ClinicTotals(
       income: moneyFromDouble(income),
       expenses: moneyFromDouble(expenses),
-      profit: moneyFromDouble(income - expenses),
+      labCharges: moneyFromDouble(labCharges),
+      profit: moneyFromDouble(income - expenses - labCharges),
       range: range,
     );
   }
@@ -1006,6 +1017,152 @@ class FinanceRepository {
     return _filterEntries(await _db.list('clinic_expenses'), range: range, search: search);
   }
 
+  Future<List<LabCharge>> labCharges({DateRange? range, String? search}) async {
+    final rows = await _namedLabCharges(await _db.list('lab_charges'));
+    var items = rows.map(LabCharge.fromJson).toList();
+    if (range != null) {
+      items = items.where((item) => range.containsIso(item.date)).toList();
+    }
+    final needle = search?.trim().toLowerCase();
+    if (needle != null && needle.isNotEmpty) {
+      items = items.where((item) {
+        return item.displayLab.toLowerCase().contains(needle) ||
+            (item.notes ?? '').toLowerCase().contains(needle) ||
+            (item.patientName ?? '').toLowerCase().contains(needle) ||
+            (item.patientPhone ?? '').toLowerCase().contains(needle) ||
+            (item.visitLabel ?? '').toLowerCase().contains(needle);
+      }).toList();
+    }
+    items.sort((a, b) => b.date.compareTo(a.date));
+    return items;
+  }
+
+  Future<List<MoneyEntry>> labChargeHistory({DateRange? range, String? search}) async {
+    return [for (final item in await labCharges(range: range, search: search)) item.toEntry()];
+  }
+
+  Future<LabCharge?> labChargeById(String id) async {
+    final row = await _db.get('lab_charges', id);
+    if (row == null || row['deleted_at'] != null) {
+      return null;
+    }
+    return LabCharge.fromJson((await _namedLabCharges([row])).first);
+  }
+
+  Future<String> saveLabCharge({
+    required String date,
+    required String amount,
+    String? patientId,
+    String? transactionId,
+    String? labName,
+    String? notes,
+  }) async {
+    final payload = {
+      'id': _uuid.v4(),
+      'charge_date': date,
+      'amount': amount,
+      'patient_id': patientId,
+      'transaction_id': transactionId,
+      'lab_name': labName,
+      'notes': notes,
+    };
+    try {
+      final response = await _api.post('/api/v1/lab-charges', data: payload);
+      await _db.upsert('lab_charges', _asMap(response.data) ?? {...payload, 'version': 1});
+      return 'Lab charge saved.';
+    } on OfflineException {
+      await _db.upsert('lab_charges', {...payload, 'version': 1});
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'lab_charge',
+        entityId: payload['id'].toString(),
+        operation: 'create',
+        payload: payload,
+      );
+      return 'Saved on this device and waiting to sync.';
+    }
+  }
+
+  Future<String> updateLabCharge(
+    LabCharge charge, {
+    required String date,
+    required String amount,
+    String? patientId,
+    String? transactionId,
+    String? labName,
+    String? notes,
+  }) async {
+    final patch = {
+      'charge_date': date,
+      'amount': amount,
+      'patient_id': patientId,
+      'transaction_id': transactionId,
+      'lab_name': labName,
+      'notes': notes,
+    };
+    try {
+      final response = await _api.patch('/api/v1/lab-charges/${charge.id}', data: {'version': charge.version, ...patch});
+      await _db.upsert(
+        'lab_charges',
+        _asMap(response.data) ?? {...charge.toJson(), ...patch, 'version': charge.version + 1},
+      );
+      return 'Lab charge updated.';
+    } on OfflineException {
+      await _db.upsert('lab_charges', {...charge.toJson(), ...patch, 'version': charge.version + 1});
+      await _db.enqueueChange(
+        clientChangeId: _uuid.v4(),
+        entityType: 'lab_charge',
+        entityId: charge.id,
+        operation: 'update',
+        payload: patch,
+        baseVersion: charge.version,
+      );
+      return 'Saved on this device and waiting to sync.';
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _namedLabCharges(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) {
+      return rows;
+    }
+    final patients = {
+      for (final row in await _db.list('patients', includeDeleted: true)) row['id'].toString(): row,
+    };
+    final visits = {
+      for (final row in await _db.list('treatment_transactions', includeDeleted: true)) row['id'].toString(): row,
+    };
+    return [
+      for (final row in rows)
+        {
+          ...row,
+          'patient_name': patients[row['patient_id']?.toString()]?['name'],
+          'patient_phone': patients[row['patient_id']?.toString()]?['phone'],
+          'visit_label': _visitLabel(visits[row['transaction_id']?.toString()]),
+        },
+    ];
+  }
+
+  String? _visitLabel(Map<String, dynamic>? visit) {
+    if (visit == null) {
+      return null;
+    }
+    final serial = visit['serial_no'];
+    final treatment = jsonText(visit['sub_treatment']) ?? jsonText(visit['catalog_name']);
+    final date = jsonText(visit['transaction_date']);
+    return [
+      if (serial != null) '#$serial',
+      if (treatment != null) treatment,
+      if (date != null) formatDisplayDate(date),
+    ].join(' · ');
+  }
+
+  Future<void> _hydrateLabCharges() async {
+    try {
+      final rows = await _allPages('/api/v1/lab-charges', extra: {'page_size': 100, 'sort': '-charge_date'});
+      await _db.upsertAll('lab_charges', rows);
+    } catch (_) {}
+  }
+
   Future<List<MoneyEntry>> homeExpenseHistory({DateRange? range, String? search}) async {
     return _filterEntries(await _db.list('home_expenses'), range: range, search: search);
   }
@@ -1354,10 +1511,20 @@ class FinanceRepository {
 
   Future<void> pushPending() async {
     final pending = <Map<String, dynamic>>[];
+    final labIds = <String>{};
     for (final row in await _db.pendingChanges()) {
       final entity = row['entity_type']?.toString() ?? '';
       if (_retiredSyncEntities.contains(entity)) {
         await _db.removePending(row['client_change_id'].toString());
+        continue;
+      }
+      if (entity == 'clinic_expense' && row['operation'] == 'create' && await _isLegacyLabExpense(row)) {
+        labIds.add(row['entity_id'].toString());
+        pending.add(await _requeueAsLabCharge(row));
+        continue;
+      }
+      if (entity == 'clinic_expense' && labIds.contains(row['entity_id'].toString())) {
+        pending.add(await _requeueAsLabCharge(row));
         continue;
       }
       pending.add(row);
@@ -1408,6 +1575,62 @@ class FinanceRepository {
         await _db.setPendingStatus(change['client_change_id'].toString(), 'failed');
       }
     }
+  }
+
+  Future<bool> _isLegacyLabExpense(Map<String, dynamic> change) async {
+    final payload = change['payload'];
+    final categoryId = payload is Map ? payload['category_id']?.toString() : null;
+    if (categoryId == null) {
+      return false;
+    }
+    final category = await _db.get('clinic_expense_categories', categoryId);
+    return isLabChargeCategoryName(category?['name']?.toString());
+  }
+
+  // Offline entries made under the old "Lab Charges" expense category are sent as lab charges
+  // so they are not rejected by the server or counted as clinic expenses.
+  Future<Map<String, dynamic>> _requeueAsLabCharge(Map<String, dynamic> change) async {
+    final payload = Map<String, dynamic>.from((change['payload'] as Map?) ?? {});
+    final id = change['entity_id'].toString();
+    final operation = change['operation'].toString();
+    final data = <String, dynamic>{
+      if (operation == 'create') 'id': id,
+      if (payload.containsKey('expense_date')) 'charge_date': payload['expense_date'],
+      if (payload.containsKey('amount')) 'amount': payload['amount'],
+      if (payload.containsKey('notes')) 'notes': payload['notes'],
+    };
+    final baseVersion = change['base_version'] as int?;
+    final clientChangeId = _uuid.v4();
+    await _db.removePending(change['client_change_id'].toString());
+    await _db.enqueueChange(
+      clientChangeId: clientChangeId,
+      entityType: 'lab_charge',
+      entityId: id,
+      operation: operation,
+      payload: data,
+      baseVersion: baseVersion,
+    );
+    if (operation == 'create') {
+      final local = await _db.get('clinic_expenses', id);
+      await _db.markDeleted('clinic_expenses', id);
+      if (local != null && local['deleted_at'] == null) {
+        await _db.upsert('lab_charges', {
+          'id': id,
+          'charge_date': local['expense_date'] ?? data['charge_date'],
+          'amount': local['amount'] ?? data['amount'],
+          'notes': local['notes'],
+          'version': local['version'] ?? 1,
+        });
+      }
+    }
+    return {
+      'client_change_id': clientChangeId,
+      'entity_type': 'lab_charge',
+      'entity_id': id,
+      'operation': operation,
+      if (baseVersion != null) 'base_version': baseVersion,
+      'payload': data,
+    };
   }
 
   Future<ResponseBytes> _export(String path, DateRange range, String format) async {
@@ -1807,7 +2030,7 @@ class FinanceRepository {
   double _sumRows(List<Map<String, dynamic>> rows, DateRange range) {
     var total = 0.0;
     for (final row in rows) {
-      final raw = (row['transaction_date'] ?? row['expense_date'] ?? row['date'] ?? '').toString();
+      final raw = (row['transaction_date'] ?? row['expense_date'] ?? row['charge_date'] ?? row['date'] ?? '').toString();
       final date = raw.length >= 10 ? raw.substring(0, 10) : raw;
       if (!range.containsIso(date)) {
         continue;

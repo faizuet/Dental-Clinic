@@ -33,10 +33,12 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
         [
             ("Total treatment income", format_money(report.total_income)),
             ("Total clinic expenses", format_money(report.total_expenses)),
+            ("Total lab charges", format_money(report.total_lab_charges)),
             ("Profit / loss", format_money(report.profit)),
             ("Patients treated", report.patient_count),
             ("Treatments", report.income_count),
             ("Expense entries", report.expense_count),
+            ("Lab charge entries", report.lab_charge_count),
         ],
     )
     _write_named_sheet(workbook, "Income by treatment", ["Treatment", "Amount"], [(item.name, item.amount) for item in report.income_by_treatment])
@@ -65,6 +67,23 @@ def render_clinic_xlsx(report: ClinicReport, *, clinic_name: str) -> bytes:
         ["Date", "Category", "Notes", "Amount"],
         [[format_display_date(item.entry_date), item.name, item.detail or "", item.amount] for item in report.expense_lines],
         money_cols={4},
+    )
+    _write_table_sheet(
+        workbook,
+        "Lab charges",
+        ["Date", "Patient", "Visit", "Lab", "Notes", "Amount"],
+        [
+            [
+                format_display_date(item.entry_date),
+                item.patient_name or "",
+                " ".join(part for part in [f"#{item.serial_no}" if item.serial_no else None, item.sub_treatment] if part),
+                item.name,
+                item.detail or "",
+                item.amount,
+            ]
+            for item in report.lab_charge_lines
+        ],
+        money_cols={6},
     )
     _write_timeline_sheet(workbook, report.timeline, include_income=True)
     return _save(workbook)
@@ -131,12 +150,18 @@ def _write_timeline_sheet(workbook, points, *, include_income: bool) -> None:
         _write_table_sheet(
             workbook,
             "Timeline",
-            ["Period", "Income", "Expenses", "Profit"],
+            ["Period", "Income", "Expenses", "Lab charges", "Profit"],
             [
-                [format_display_date(item.period) if "-" in str(item.period) else item.period, item.income, item.expenses, item.profit]
+                [
+                    format_display_date(item.period) if "-" in str(item.period) else item.period,
+                    item.income,
+                    item.expenses,
+                    item.lab_charges,
+                    item.profit,
+                ]
                 for item in points
             ],
-            money_cols={2, 3, 4},
+            money_cols={2, 3, 4, 5},
         )
         return
     _write_table_sheet(

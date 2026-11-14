@@ -87,6 +87,7 @@ void main() {
     expect(find.text('Patients'), findsOneWidget);
     expect(find.text('Treatments'), findsOneWidget);
     expect(find.text('Expenses'), findsOneWidget);
+    expect(find.text('Lab charges'), findsOneWidget);
     expect(find.text('Reports'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Nabi Dental'), findsWidgets);
@@ -117,6 +118,7 @@ void main() {
     expect(find.text('Settings'), findsWidgets);
     expect(find.text('Patients'), findsNothing);
     expect(find.text('Treatments'), findsNothing);
+    expect(find.text('Lab charges'), findsNothing);
     expect(find.text('Construction Finance'), findsNothing);
     expect(find.text('Home dashboard'), findsOneWidget);
   });

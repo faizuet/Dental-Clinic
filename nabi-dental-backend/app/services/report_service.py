@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exports.pdf import render_clinic_pdf, render_home_pdf, render_treatment_pdf
 from app.exports.xlsx import render_clinic_xlsx, render_home_xlsx
-from app.models import ClinicExpense, HomeExpense, TreatmentTransaction, User
+from app.models import ClinicExpense, HomeExpense, LabCharge, TreatmentTransaction, User
 from app.services.treatment_service import TreatmentService
 from app.utils.treatment_details import clinical_summary, resolved_sub_treatment, tooth_label
 from app.repositories.totals import TotalsRepository, _date_bucket
@@ -42,19 +42,23 @@ class ReportService:
         validate_inclusive_range(from_date, to_date)
         income = await self.totals.treatment_income_total(user.clinic_id, from_date, to_date)
         expenses = await self.totals.clinic_expense_total(user.clinic_id, from_date, to_date)
+        lab_charges = await self.totals.lab_charge_total(user.clinic_id, from_date, to_date)
         income_rows = await self.totals.income_by_treatment(user.clinic_id, from_date, to_date)
         expense_rows = await self.totals.clinic_expenses_by_category(user.clinic_id, from_date, to_date)
         income_lines = await self.totals.clinic_income_lines(user.clinic_id, from_date, to_date)
         expense_lines = await self.totals.clinic_expense_lines(user.clinic_id, from_date, to_date)
+        lab_lines = await self.totals.lab_charge_lines(user.clinic_id, from_date, to_date)
         timeline = await self._clinic_timeline(user.clinic_id, from_date, to_date, group_by)
         return ClinicReport(
             period=PeriodWindow(from_date=from_date, to_date=to_date),
             currency=user.clinic.currency,
             total_income=income,
             total_expenses=expenses,
-            profit=parse_money(income - expenses),
+            total_lab_charges=lab_charges,
+            profit=parse_money(income - expenses - lab_charges),
             income_count=len(income_lines),
             expense_count=len(expense_lines),
+            lab_charge_count=len(lab_lines),
             patient_count=await self.totals.clinic_patient_count(user.clinic_id, from_date, to_date),
             income_by_treatment=[
                 NamedAmount(id=str(row[0]), name=row[1], amount=parse_money(row[2])) for row in income_rows
@@ -64,6 +68,7 @@ class ReportService:
             ],
             income_lines=[_income_line(row) for row in income_lines],
             expense_lines=[_line(row) for row in expense_lines],
+            lab_charge_lines=[_lab_line(row) for row in lab_lines],
             timeline=timeline,
         )
 
@@ -139,6 +144,7 @@ class ReportService:
     ) -> list[TimelinePoint]:
         income_bucket = _date_bucket(TreatmentTransaction.transaction_date, group_by)
         expense_bucket = _date_bucket(ClinicExpense.expense_date, group_by)
+        lab_bucket = _date_bucket(LabCharge.charge_date, group_by)
         income_stmt = (
             select(income_bucket.label("bucket"), func.coalesce(func.sum(TreatmentTransaction.amount), 0))
             .where(
@@ -159,19 +165,32 @@ class ReportService:
             )
             .group_by(expense_bucket)
         )
+        lab_stmt = (
+            select(lab_bucket.label("bucket"), func.coalesce(func.sum(LabCharge.amount), 0))
+            .where(
+                LabCharge.clinic_id == clinic_id,
+                LabCharge.deleted_at.is_(None),
+                LabCharge.charge_date >= from_date,
+                LabCharge.charge_date <= to_date,
+            )
+            .group_by(lab_bucket)
+        )
         income_map = {row[0]: parse_money(row[1]) for row in (await self.session.execute(income_stmt)).all()}
         expense_map = {row[0]: parse_money(row[1]) for row in (await self.session.execute(expense_stmt)).all()}
-        keys = sorted(set(income_map) | set(expense_map))
+        lab_map = {row[0]: parse_money(row[1]) for row in (await self.session.execute(lab_stmt)).all()}
+        keys = sorted(set(income_map) | set(expense_map) | set(lab_map))
         points: list[TimelinePoint] = []
         for key in keys:
             income = income_map.get(key, Decimal("0.00"))
             expenses = expense_map.get(key, Decimal("0.00"))
+            lab_charges = lab_map.get(key, Decimal("0.00"))
             points.append(
                 TimelinePoint(
                     period=str(key),
                     income=income,
                     expenses=expenses,
-                    profit=parse_money(income - expenses),
+                    lab_charges=lab_charges,
+                    profit=parse_money(income - expenses - lab_charges),
                 )
             )
         return points
@@ -197,6 +216,18 @@ class ReportService:
 
 def _line(row) -> ReportLine:
     return ReportLine(entry_date=row[0], name=row[1], detail=row[2], amount=parse_money(row[3]))
+
+
+def _lab_line(row) -> ReportLine:
+    return ReportLine(
+        entry_date=row[0],
+        name=row[1] or "Lab charge",
+        detail=row[2],
+        amount=parse_money(row[3]),
+        serial_no=row[4],
+        patient_name=row[5],
+        sub_treatment=row[6],
+    )
 
 
 def _income_line(row) -> ReportLine:

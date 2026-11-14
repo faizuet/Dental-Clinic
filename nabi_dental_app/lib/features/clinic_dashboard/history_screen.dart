@@ -36,6 +36,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
     this.onAdd,
     this.addLabel,
     this.showPatient = false,
+    this.totalLabel,
   });
 
   final String title;
@@ -50,6 +51,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final Future<void> Function()? onAdd;
   final String? addLabel;
   final bool showPatient;
+  final String? totalLabel;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -159,6 +161,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           message: 'Are you sure you want to delete this clinic expense? This action cannot be undone.',
           confirm: 'Delete Expense',
           success: 'Clinic expense deleted successfully.',
+        );
+      case 'lab_charge':
+        return (
+          title: 'Delete Lab Charge?',
+          message: 'Are you sure you want to delete this lab charge? It will be removed from lab charge totals.',
+          confirm: 'Delete Lab Charge',
+          success: 'Lab charge deleted successfully.',
         );
       case 'home_expense':
         return (
@@ -585,6 +594,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               ),
               if (_syncing) const LinearProgressIndicator(minHeight: 2),
+              if (widget.totalLabel != null && _items.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 4, AppLayout.horizontalPadding(context), 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${widget.totalLabel} · ${_items.length} ${_items.length == 1 ? 'entry' : 'entries'}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                        ),
+                      ),
+                      MoneyText(
+                        formatMoney(
+                          moneyFromDouble(_items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount))),
+                          currency: currency,
+                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
               if (_from != null && _to != null)
                 Padding(
                   padding: EdgeInsets.symmetric(horizontal: AppLayout.horizontalPadding(context)),
@@ -706,6 +736,30 @@ class ClinicExpenseHistoryScreen extends StatelessWidget {
       loader: (repo, {range, search}) => repo.clinicExpenseHistory(range: range, search: search),
       addLabel: 'Add expense',
       onAdd: () => context.push('/clinic/expenses'),
+    );
+  }
+}
+
+class LabChargeHistoryScreen extends StatelessWidget {
+  const LabChargeHistoryScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return HistoryScreen(
+      title: 'Lab charges',
+      backTo: '/clinic',
+      collection: 'lab_charges',
+      entityType: 'lab_charge',
+      deletePath: (id) => '/api/v1/lab-charges/$id',
+      updatePath: (id) => '/api/v1/lab-charges/$id',
+      loader: (repo, {range, search}) => repo.labChargeHistory(range: range, search: search),
+      showPatient: true,
+      totalLabel: 'Total lab charges',
+      addLabel: 'Add lab charge',
+      onAdd: () => context.push('/clinic/lab-charges/new'),
+      onEdit: (context, entry) async {
+        await context.push('/clinic/lab-charges/${entry.id}/edit');
+      },
     );
   }
 }

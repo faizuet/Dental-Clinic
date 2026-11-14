@@ -317,6 +317,83 @@ class MoneyEntry {
       };
 }
 
+const labChargeCategoryNames = {'lab charges', 'lab charge', 'lab'};
+
+bool isLabChargeCategoryName(String? name) => labChargeCategoryNames.contains((name ?? '').trim().toLowerCase());
+
+class LabCharge {
+  const LabCharge({
+    required this.id,
+    required this.date,
+    required this.amount,
+    this.patientId,
+    this.transactionId,
+    this.labName,
+    this.notes,
+    this.version = 1,
+    this.patientName,
+    this.patientPhone,
+    this.visitLabel,
+  });
+
+  final String id;
+  final String date;
+  final String amount;
+  final String? patientId;
+  final String? transactionId;
+  final String? labName;
+  final String? notes;
+  final int version;
+  final String? patientName;
+  final String? patientPhone;
+  final String? visitLabel;
+
+  String get displayLab => labName ?? 'Lab charge';
+
+  factory LabCharge.fromJson(Map<String, dynamic> json) {
+    final raw = (json['charge_date'] ?? '').toString();
+    return LabCharge(
+      id: json['id'].toString(),
+      date: raw.length >= 10 ? raw.substring(0, 10) : raw,
+      amount: json['amount'].toString(),
+      patientId: jsonText(json['patient_id']),
+      transactionId: jsonText(json['transaction_id']),
+      labName: jsonText(json['lab_name']),
+      notes: jsonText(json['notes']),
+      version: jsonInt(json['version'], fallback: 1),
+      patientName: jsonText(json['patient_name']),
+      patientPhone: jsonText(json['patient_phone']),
+      visitLabel: jsonText(json['visit_label']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'charge_date': date,
+        'amount': amount,
+        'patient_id': patientId,
+        'transaction_id': transactionId,
+        'lab_name': labName,
+        'notes': notes,
+        'version': version,
+      };
+
+  MoneyEntry toEntry() => MoneyEntry(
+        id: id,
+        catalogId: transactionId ?? '',
+        catalogName: displayLab,
+        date: date,
+        amount: amount,
+        notes: notes,
+        version: version,
+        patientId: patientId,
+        patientName: patientName ?? 'No patient linked',
+        patientPhone: patientPhone,
+        subTreatment: visitLabel,
+        detailsText: visitLabel == null ? null : 'Visit $visitLabel',
+      );
+}
+
 class HomeBudget {
   const HomeBudget({
     required this.id,

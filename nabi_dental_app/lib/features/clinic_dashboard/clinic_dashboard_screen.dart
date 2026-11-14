@@ -218,6 +218,13 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                                     icon: Icons.receipt_long_outlined,
                                   ),
                                   SummaryCard(
+                                    label: 'Total lab charges',
+                                    value: formatMoney(totals.labCharges, currency: currency),
+                                    color: AppColors.violet,
+                                    background: AppColors.violetSoft,
+                                    icon: Icons.science_outlined,
+                                  ),
+                                  SummaryCard(
                                     label: moneyToDouble(totals.profit) < 0 ? 'Loss' : 'Profit',
                                     value: formatMoney(totals.profit, currency: currency),
                                     color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.primary,
@@ -251,6 +258,15 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                         label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        style: _labActionStyle,
+                        onPressed: () => appPushAndRefresh(context, '/clinic/lab-charges/new', () => _load(silent: true)),
+                        icon: const Icon(Icons.science_outlined),
+                        label: const Text('Lab charge', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    ),
                   ],
                 )
               else ...[
@@ -269,6 +285,15 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                     onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
                     icon: const Icon(Icons.receipt_long_outlined),
                     label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Stretch(
+                  child: FilledButton.icon(
+                    style: _labActionStyle,
+                    onPressed: () => appPushAndRefresh(context, '/clinic/lab-charges/new', () => _load(silent: true)),
+                    icon: const Icon(Icons.science_outlined),
+                    label: const Text('Lab charge', maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ),
               ],
@@ -367,6 +392,24 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       }
       if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
         return Colors.white.withValues(alpha: 0.10);
+      }
+      return null;
+    }),
+  );
+
+  static final ButtonStyle _labActionStyle = FilledButton.styleFrom(
+    minimumSize: const Size(64, 48),
+    backgroundColor: AppColors.violet,
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: AppColors.violetSoft,
+    disabledForegroundColor: AppColors.muted,
+  ).copyWith(
+    overlayColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.pressed)) {
+        return Colors.white.withValues(alpha: 0.18);
+      }
+      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
+        return Colors.white.withValues(alpha: 0.12);
       }
       return null;
     }),

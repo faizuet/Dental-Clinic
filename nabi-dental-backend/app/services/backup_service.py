@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ REMINDER_AFTER_DAYS = settings.BACKUP_REMINDER_DAYS
 PG_TIMEOUT_SECONDS = 180
 MAX_BACKUP_BYTES = 1_500_000_000
 MAX_UNCOMPRESSED_BYTES = 2_000_000_000
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -42,12 +44,16 @@ class BackupService:
         upload_dir: Path | None = None,
         dump_database=None,
         restore_database=None,
+        upgrade_database=None,
     ) -> None:
         self.upload_dir = Path(upload_dir or settings.UPLOAD_DIR)
         self._use_pg_dump = dump_database is None
         self._use_pg_restore = restore_database is None
         self._dump_database = dump_database or self._pg_dump
         self._restore_database = restore_database or self._pg_restore
+        if upgrade_database is None:
+            upgrade_database = self._alembic_upgrade if restore_database is None else (lambda: None)
+        self._upgrade_database = upgrade_database
 
     def status(self) -> dict[str, object]:
         last = self._read_last_export()
@@ -59,7 +65,7 @@ class BackupService:
         }
 
     def tools_available(self) -> bool:
-        return bool(shutil.which("pg_dump") and shutil.which("pg_restore"))
+        return bool(shutil.which("pg_dump") and shutil.which("pg_restore") and shutil.which("psql"))
 
     def create(self) -> BackupArtifact:
         self._require_tools(dump=True)
@@ -111,6 +117,7 @@ class BackupService:
             dump_path = extracted / DATABASE_DUMP_NAME
             uploads_source = extracted / UPLOADS_DIR_NAME
             self._restore_database(dump_path)
+            self._upgrade_database()
             self.upload_dir.mkdir(parents=True, exist_ok=True)
             self._replace_uploads(uploads_source, self.upload_dir)
             restored_at = datetime.now(timezone.utc)
@@ -125,7 +132,7 @@ class BackupService:
 
     def _require_tools(self, *, dump: bool = False, restore: bool = False) -> None:
         need_dump = dump and self._use_pg_dump and not shutil.which("pg_dump")
-        need_restore = restore and self._use_pg_restore and not shutil.which("pg_restore")
+        need_restore = restore and self._use_pg_restore and not (shutil.which("pg_restore") and shutil.which("psql"))
         if need_dump or need_restore:
             raise AppError(
                 ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -146,11 +153,12 @@ class BackupService:
         env["PGCLIENTENCODING"] = "UTF8"
         return args, env
 
-    def _run(self, command: list[str], env: dict[str, str], *, timeout: int) -> None:
+    def _run(self, command: list[str], env: dict[str, str], *, timeout: int, cwd: Path | None = None) -> str:
         try:
             completed = subprocess.run(
                 command,
                 env=env,
+                cwd=cwd,
                 check=False,
                 capture_output=True,
                 timeout=timeout,
@@ -173,6 +181,7 @@ class BackupService:
                 "The clinic could not complete backup or restore. Keep Docker running and try again.",
                 status_code=500,
             )
+        return completed.stdout.decode("utf-8", errors="replace")
 
     def _pg_dump(self, dest: Path) -> None:
         args, env = self._pg_connection()
@@ -183,21 +192,53 @@ class BackupService:
         )
 
     def _pg_restore(self, dump_path: Path) -> None:
+        # Tables added after the backup was made (for example lab_charges) reference tables
+        # in the dump, so pg_restore --clean cannot drop those. Drop them first in the same
+        # transaction; the schema upgrade after restore recreates them from the old data.
         args, env = self._pg_connection()
+        raw_script = dump_path.with_name("restore-raw.sql")
+        script = dump_path.with_name("restore.sql")
+        prelude = dump_path.with_name("prelude.sql")
+        self._run(
+            ["pg_restore", "--clean", "--if-exists", "--no-owner", "--no-acl", f"--file={raw_script}", str(dump_path)],
+            env,
+            timeout=PG_TIMEOUT_SECONDS,
+        )
+        _strip_unsupported_settings(raw_script, script)
+        dumped = _dump_tables(self._run(["pg_restore", "--list", str(dump_path)], env, timeout=PG_TIMEOUT_SECONDS))
+        current = self._run(
+            ["psql", "--no-psqlrc", "-At", "-c", "SELECT tablename FROM pg_tables WHERE schemaname = 'public'", *args],
+            env,
+            timeout=PG_TIMEOUT_SECONDS,
+        ).split()
+        stale = sorted(set(current) - dumped)
+        prelude.write_text(
+            "".join(f'DROP TABLE IF EXISTS public."{name}" CASCADE;\n' for name in stale),
+            encoding="utf-8",
+        )
         self._run(
             [
-                "pg_restore",
-                "--clean",
-                "--if-exists",
-                "--no-owner",
-                "--no-acl",
+                "psql",
+                "--no-psqlrc",
+                "--quiet",
                 "--single-transaction",
-                "--exit-on-error",
+                "--set=ON_ERROR_STOP=1",
+                f"--file={prelude}",
+                f"--file={script}",
                 *args,
-                str(dump_path),
             ],
             env,
             timeout=PG_TIMEOUT_SECONDS,
+        )
+
+    def _alembic_upgrade(self) -> None:
+        env = os.environ.copy()
+        env["DATABASE_URL"] = settings.DATABASE_URL
+        self._run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            env,
+            timeout=PG_TIMEOUT_SECONDS,
+            cwd=BACKEND_ROOT,
         )
 
     def _copy_uploads(self, source: Path, dest: Path) -> None:
@@ -282,3 +323,34 @@ class BackupService:
             "bytes": size,
         }
         self._last_backup_path().write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _strip_unsupported_settings(source: Path, dest: Path) -> None:
+    # The image ships PostgreSQL 17 client tools; script output always sets transaction_timeout,
+    # which the PostgreSQL 16 server rejects. Zero is already the default, so the line is dropped.
+    with source.open("r", encoding="utf-8") as reader, dest.open("w", encoding="utf-8") as writer:
+        for line in reader:
+            if line.startswith("SET transaction_timeout"):
+                continue
+            writer.write(line)
+
+
+def _dump_tables(listing: str) -> set[str]:
+    tables: set[str] = set()
+    for line in listing.splitlines():
+        if line.startswith(";"):
+            continue
+        parts = line.split()
+        if "TABLE" not in parts:
+            continue
+        index = parts.index("TABLE")
+        if parts[index + 1 : index + 2] == ["public"] and len(parts) > index + 2:
+            tables.add(parts[index + 2])
+    return tables
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        raise SystemExit("Usage: python -m app.services.backup_service <backup.zip>")
+    BackupService().restore(Path(sys.argv[1]))
+    print("Restore finished.")
