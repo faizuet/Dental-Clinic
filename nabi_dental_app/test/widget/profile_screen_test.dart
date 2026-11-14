@@ -33,7 +33,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),
@@ -59,7 +59,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Dr Owner'), findsWidgets);
-    expect(find.text('owner@example.com'), findsWidgets);
+    expect(find.text('nabidentalclinic@gmail.com'), findsWidgets);
     expect(find.text('Add photo'), findsOneWidget);
     expect(find.text('D'), findsOneWidget);
     expect(find.widgetWithText(TextField, 'Your name'), findsOneWidget);

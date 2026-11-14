@@ -563,3 +563,93 @@ async def test_deleting_patient_keeps_treatment_payments(client):
     )
     assert dashboard.status_code == 200
     assert dashboard.json()["total_income"] == "8000.00"
+
+
+@pytest.mark.asyncio
+async def test_patient_phone_is_optional_and_can_be_added_later(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    rct_id = await _treatment_id(client, headers, "Root Canal Treatment (RCT)")
+
+    first = await client.post("/api/v1/patients", headers=headers, json={"name": "No Phone Yet"})
+    assert first.status_code == 201, first.text
+    assert first.json()["name"] == "No Phone Yet"
+    assert first.json()["phone"] is None
+
+    second = await client.post(
+        "/api/v1/patients",
+        headers=headers,
+        json={"name": "Also Waiting", "phone": "   "},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["phone"] is None
+
+    patient_id = first.json()["id"]
+    visit = await client.post(
+        "/api/v1/treatment-transactions",
+        headers=headers,
+        json={
+            "treatment_id": rct_id,
+            "patient_id": patient_id,
+            "transaction_date": "2026-09-21",
+            "amount": "4500.00",
+            "sub_treatment": "Root Canal Treatment (RCT)",
+        },
+    )
+    assert visit.status_code == 201, visit.text
+    tx_id = visit.json()["id"]
+
+    renamed = await client.patch(
+        f"/api/v1/patients/{patient_id}",
+        headers=headers,
+        json={"version": first.json()["version"], "name": "Amina Noor"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "Amina Noor"
+    assert renamed.json()["phone"] is None
+
+    numbered = await client.patch(
+        f"/api/v1/patients/{patient_id}",
+        headers=headers,
+        json={"version": renamed.json()["version"], "phone": "03123456789"},
+    )
+    assert numbered.status_code == 200, numbered.text
+    assert numbered.json()["name"] == "Amina Noor"
+    assert numbered.json()["phone"] == "03123456789"
+
+    cleared = await client.patch(
+        f"/api/v1/patients/{patient_id}",
+        headers=headers,
+        json={"version": numbered.json()["version"], "phone": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["name"] == "Amina Noor"
+    assert cleared.json()["phone"] is None
+
+    invalid = await client.patch(
+        f"/api/v1/patients/{patient_id}",
+        headers=headers,
+        json={"version": cleared.json()["version"], "phone": "12345"},
+    )
+    assert invalid.status_code == 422, invalid.text
+
+    kept = await client.get(f"/api/v1/treatment-transactions/{tx_id}", headers=headers)
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["id"] == tx_id
+    assert kept.json()["amount"] == "4500.00"
+    assert kept.json()["patient_id"] == patient_id
+    assert kept.json()["patient_name"] == "Amina Noor"
+
+    listed = await client.get("/api/v1/patients", headers=headers, params={"search": "Amina"})
+    assert listed.status_code == 200, listed.text
+    match = next(item for item in listed.json()["items"] if item["id"] == patient_id)
+    assert match["name"] == "Amina Noor"
+    assert match["phone"] is None
+
+    dashboard = await client.get(
+        "/api/v1/dashboard/clinic",
+        headers=headers,
+        params={"period": "custom", "from_date": "2026-09-21", "to_date": "2026-09-21"},
+    )
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["total_income"] == "4500.00"

@@ -119,6 +119,7 @@ class FinanceRepository {
     required ApiClient api,
     required AppDatabase database,
     required DeviceIdentity device,
+    this.onChanged,
   })  : _api = api,
         _db = database,
         _device = device;
@@ -126,6 +127,9 @@ class FinanceRepository {
   final ApiClient _api;
   final AppDatabase _db;
   final DeviceIdentity _device;
+  final void Function()? onChanged;
+
+  void _publish() => onChanged?.call();
   static const _uuid = Uuid();
   final _serverCatalogIds = <String>{};
   final _attachmentBytes = <String, List<int>>{};
@@ -291,6 +295,7 @@ class FinanceRepository {
     }
     await _db.markDeleted('conflicts', conflict.id);
     await refresh(force: true);
+    _publish();
   }
 
   Future<List<CatalogItem>> treatments() async {
@@ -580,6 +585,7 @@ class FinanceRepository {
       }
       await _db.upsert('patients', saved);
       _serverCatalogIds.add(saved['id'].toString());
+      _publish();
       return PatientRecord.fromJson(saved);
     } on OfflineException {
       final local = {
@@ -595,6 +601,7 @@ class FinanceRepository {
         operation: 'create',
         payload: payload,
       );
+      _publish();
       return PatientRecord.fromJson(local);
     }
   }
@@ -627,6 +634,7 @@ class FinanceRepository {
         throw const AppException('The patient could not be updated. Please try again.', code: 'SERVER', statusCode: 500);
       }
       await _db.upsert('patients', saved);
+      _publish();
       return PatientRecord.fromJson(saved);
     } on OfflineException {
       final local = {...patient.toJson(), ...patch, 'version': patient.version + 1};
@@ -642,6 +650,7 @@ class FinanceRepository {
         payload: patch,
         baseVersion: patient.version,
       );
+      _publish();
       return PatientRecord.fromJson(local);
     }
   }
@@ -655,6 +664,7 @@ class FinanceRepository {
       version: patient.version,
     );
     await _snapshotDeletedPatient(patient);
+    _publish();
   }
 
   Future<void> _snapshotDeletedPatient(PatientRecord patient) async {
@@ -878,6 +888,7 @@ class FinanceRepository {
       saved['details'] = merged['details'];
       saved['version'] = merged['version'];
       await _db.upsert('treatment_transactions', saved);
+      _publish();
       if (failedImages > 0) {
         final detail = lastImageError == null ? '' : ' ${friendlyError(lastImageError, feature: 'upload')}';
         throw AppException(
@@ -905,6 +916,7 @@ class FinanceRepository {
         operation: 'create',
         payload: payload,
       );
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -1003,6 +1015,7 @@ class FinanceRepository {
       saved['details'] = merged['details'];
       saved['version'] = merged['version'];
       await _db.upsert('treatment_transactions', saved);
+      _publish();
       if (failedImages > 0) {
         final detail = lastImageError == null ? '' : ' ${friendlyError(lastImageError, feature: 'upload')}';
         throw AppException(
@@ -1036,6 +1049,7 @@ class FinanceRepository {
         payload: payload,
         baseVersion: entry.version,
       );
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -1096,6 +1110,7 @@ class FinanceRepository {
     try {
       final response = await _api.post('/api/v1/lab-charges', data: payload);
       await _db.upsert('lab_charges', _asMap(response.data) ?? {...payload, 'version': 1});
+      _publish();
       return 'Lab charge saved.';
     } on OfflineException {
       await _db.upsert('lab_charges', {...payload, 'version': 1});
@@ -1106,6 +1121,7 @@ class FinanceRepository {
         operation: 'create',
         payload: payload,
       );
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -1133,6 +1149,7 @@ class FinanceRepository {
         'lab_charges',
         _asMap(response.data) ?? {...charge.toJson(), ...patch, 'version': charge.version + 1},
       );
+      _publish();
       return 'Lab charge updated.';
     } on OfflineException {
       await _db.upsert('lab_charges', {...charge.toJson(), ...patch, 'version': charge.version + 1});
@@ -1144,6 +1161,7 @@ class FinanceRepository {
         payload: patch,
         baseVersion: charge.version,
       );
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -1268,6 +1286,7 @@ class FinanceRepository {
       final saved = _asMap(response.data) ?? {...entry.toJson(), ...patch, 'version': entry.version + 1};
       saved['catalog_name'] = entry.catalogName;
       await _db.upsert(collection, saved);
+      _publish();
       return 'Updated.';
     } on OfflineException {
       final local = {...entry.toJson(), ...patch, 'version': entry.version + 1};
@@ -1280,6 +1299,7 @@ class FinanceRepository {
         payload: patch,
         baseVersion: entry.version,
       );
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -1304,6 +1324,7 @@ class FinanceRepository {
         baseVersion: entry.version,
       );
     }
+    _publish();
   }
 
   Future<HomeBudget?> budgetFor(int year, int month) async {
@@ -1326,6 +1347,7 @@ class FinanceRepository {
           'amount': amount,
         });
         await _storeMonthBudget(year, month, _asMap(response.data));
+        _publish();
         return;
       } on AppException catch (error) {
         if (!_isMissingRoute(error)) {
@@ -1333,6 +1355,7 @@ class FinanceRepository {
         }
       }
       await _saveBudgetByPeriod(year: year, month: month, amount: amount);
+      _publish();
     } on OfflineException {
       final local = {
         'id': existing?.id ?? _uuid.v4(),
@@ -1350,6 +1373,7 @@ class FinanceRepository {
         payload: existing == null ? local : {'amount': amount},
         baseVersion: existing?.version,
       );
+      _publish();
     }
   }
 
@@ -1940,30 +1964,49 @@ class FinanceRepository {
     if (rows.isEmpty) {
       return rows;
     }
-    final needsNames = rows.any((row) {
-      final named = (row['catalog_name']?.toString() ?? '').isNotEmpty;
-      final hasPatient = row['patient_id'] != null && row['patient_id'].toString().isNotEmpty;
-      final patientNamed = (row['patient_name']?.toString() ?? '').isNotEmpty;
-      return !named || (hasPatient && !patientNamed);
+    final needsCatalog = rows.any((row) => (row['catalog_name']?.toString() ?? '').isEmpty);
+    final hasPatient = rows.any((row) {
+      final id = row['patient_id']?.toString() ?? '';
+      return id.isNotEmpty;
     });
-    if (!needsNames) {
+    if (!needsCatalog && !hasPatient) {
       return rows;
     }
-    final items = await treatments();
-    final names = {for (final item in items) item.id: item.name};
-    final categories = {for (final item in items) item.id: item.categoryName};
-    final patients = {for (final item in await _db.list('patients')) item['id'].toString(): item};
+    final names = <String, String>{};
+    final categories = <String, String?>{};
+    if (needsCatalog) {
+      for (final item in await treatments()) {
+        names[item.id] = item.name;
+        categories[item.id] = item.categoryName;
+      }
+    }
+    final patients = hasPatient
+        ? {for (final item in await _db.list('patients')) item['id'].toString(): item}
+        : const <String, Map<String, dynamic>>{};
     return [
-      for (final row in rows)
-        {
-          ...row,
-          'catalog_name': names[row['treatment_id'].toString()] ?? row['catalog_name'] ?? 'Treatment',
-          'category_name': categories[row['treatment_id'].toString()] ?? row['category_name'],
-          'sub_treatment': row['sub_treatment'] ?? (row['details'] is Map ? row['details']['sub_treatment'] : null),
-          'patient_name': row['patient_name'] ?? patients[row['patient_id']?.toString()]?['name'],
-          'patient_phone': row['patient_phone'] ?? patients[row['patient_id']?.toString()]?['phone'],
-        },
+      for (final row in rows) _overlayPatientIdentity(row, patients, names, categories, fillCatalog: needsCatalog),
     ];
+  }
+
+  Map<String, dynamic> _overlayPatientIdentity(
+    Map<String, dynamic> row,
+    Map<String, Map<String, dynamic>> patients,
+    Map<String, String> names,
+    Map<String, String?> categories, {
+    required bool fillCatalog,
+  }) {
+    final live = patients[row['patient_id']?.toString()];
+    final liveName = live?['name']?.toString().trim();
+    return {
+      ...row,
+      if (fillCatalog) ...{
+        'catalog_name': names[row['treatment_id'].toString()] ?? row['catalog_name'] ?? 'Treatment',
+        'category_name': categories[row['treatment_id'].toString()] ?? row['category_name'],
+        'sub_treatment': row['sub_treatment'] ?? (row['details'] is Map ? row['details']['sub_treatment'] : null),
+      },
+      'patient_name': liveName != null && liveName.isNotEmpty ? liveName : row['patient_name'],
+      'patient_phone': live != null ? live['phone'] : row['patient_phone'],
+    };
   }
 
   Future<Set<String>> _pendingEntityIds(String entityType) async {
@@ -1983,7 +2026,11 @@ class FinanceRepository {
         await _db.markDeleted('patients', id);
       }
     }
-    await _db.upsertAll('patients', remote);
+    final incoming = [
+      for (final row in remote)
+        if (!pendingIds.contains(row['id'].toString())) row,
+    ];
+    await _db.upsertAll('patients', incoming);
   }
 
   Never _throwXrayOffline() {
@@ -2120,6 +2167,7 @@ class FinanceRepository {
         row['catalog_name'] = lookup[row['treatment_id']?.toString() ?? row['category_id']?.toString()] ?? 'Item';
         await _db.upsert(collection, row);
       }
+      _publish();
       return 'Saved and synced.';
     } on OfflineException {
       for (final row in items) {
@@ -2134,6 +2182,7 @@ class FinanceRepository {
           payload: row,
         );
       }
+      _publish();
       return 'Saved on this device and waiting to sync.';
     }
   }
@@ -2185,6 +2234,7 @@ final financeRepositoryProvider = Provider((ref) {
     api: ref.watch(apiClientProvider),
     database: ref.watch(databaseProvider),
     device: ref.watch(deviceIdentityProvider),
+    onChanged: () => ref.read(financeEpochProvider.notifier).state++,
   );
 });
 

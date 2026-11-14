@@ -61,7 +61,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     super.initState();
     ref.listenManual(financeEpochProvider, (previous, next) {
       if (previous != next) {
-        _load(silent: true);
+        _load(silent: true, localOnly: true);
       }
     });
     _load();
@@ -70,6 +70,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   bool get _isHome => widget.kind == ReportKind.home;
 
   Future<void> _apply(FinanceRepository repo) async {
+    final token = _loadToken;
     if (_isHome) {
       final expenses = await repo.homeExpenseHistory(range: _range);
       final expenseTotal = expenses.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
@@ -79,7 +80,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         _range,
         defaultBudget: ref.read(sessionProvider).user?.defaultHomeBudget ?? '30000.00',
       );
-      if (!mounted) {
+      if (!mounted || token != _loadToken) {
         return;
       }
       setState(() {
@@ -104,7 +105,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final byLab = await repo.breakdown(labCharges);
     final incomeTimeline = await repo.timeline(income);
     final expenseTimeline = await repo.timeline(expenses);
-    if (!mounted) {
+    if (!mounted || token != _loadToken) {
       return;
     }
     setState(() {
@@ -120,7 +121,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     });
   }
 
-  Future<void> _load({bool silent = false, bool force = false}) async {
+  var _loadToken = 0;
+
+  Future<void> _load({bool silent = false, bool force = false, bool localOnly = false}) async {
+    final token = ++_loadToken;
     if (!silent && _incomeBreakdown.isEmpty && _expenseBreakdown.isEmpty) {
       setState(() {
         _loading = true;
@@ -130,16 +134,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     try {
       final repo = ref.read(financeRepositoryProvider);
       await _apply(repo);
-      if (mounted) {
-        setState(() => _syncing = true);
+      if (!mounted || token != _loadToken) {
+        return;
       }
+      if (localOnly) {
+        setState(() => _syncing = false);
+        return;
+      }
+      setState(() => _syncing = true);
       await repo.refresh(force: force);
       await _apply(repo);
-      if (mounted) {
-        setState(() => _syncing = false);
+      if (!mounted || token != _loadToken) {
+        return;
       }
+      setState(() => _syncing = false);
     } catch (error) {
-      if (mounted) {
+      if (mounted && token == _loadToken) {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;

@@ -16,6 +16,7 @@ import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_memory_image.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/page_kit.dart';
+import 'patient_form_dialog.dart';
 
 class PatientRecordScreen extends ConsumerStatefulWidget {
   const PatientRecordScreen({super.key, required this.patientId});
@@ -32,6 +33,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   final _images = <String, List<int>>{};
   bool _loading = true;
   bool _opening = false;
+  bool _saving = false;
   String? _error;
 
   @override
@@ -104,6 +106,48 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   String get _addTreatmentLocation =>
       '/clinic/income?patientId=${Uri.encodeQueryComponent(widget.patientId)}';
 
+  Future<void> _editPatient() async {
+    final patient = _patient;
+    if (patient == null || _opening || _saving) {
+      return;
+    }
+    final repo = ref.read(financeRepositoryProvider);
+    final patients = await repo.patients();
+    if (!mounted) {
+      return;
+    }
+    final result = await showDialog<({String name, String phone})>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => PatientFormDialog(existing: patient, patients: patients),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final updated = await repo.updatePatient(
+        patient,
+        name: result.name,
+        phone: result.phone.isEmpty ? null : result.phone,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() => _patient = updated);
+      showAppSnack(context, 'Patient updated.');
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        showAppSnack(context, friendlyError(error), error: true);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
+  }
+
   Future<void> _openOnce(String location) async {
     if (_opening) {
       return;
@@ -129,12 +173,18 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
         title: patient?.name ?? 'Patient record',
         fallback: '/clinic/patients',
         actions: [
-          if (patient != null)
+          if (patient != null) ...[
+            IconButton(
+              tooltip: 'Edit patient',
+              onPressed: _opening || _saving ? null : _editPatient,
+              icon: const Icon(Icons.edit_rounded),
+            ),
             IconButton(
               tooltip: 'Add treatment',
-              onPressed: _opening ? null : () => _openOnce(_addTreatmentLocation),
+              onPressed: _opening || _saving ? null : () => _openOnce(_addTreatmentLocation),
               icon: const Icon(Icons.add_rounded),
             ),
+          ],
         ],
       ),
       body: AppStateSwitch(
@@ -176,17 +226,8 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
     );
   }
 
-  bool get _active {
-    if (_treatments.isEmpty) {
-      return false;
-    }
-    final last = DateTime.tryParse(_treatments.first.date);
-    return last != null && DateTime.now().difference(last).inDays <= 180;
-  }
-
   Widget _profileHeader(PatientRecord patient) {
     final theme = Theme.of(context);
-    final active = _active;
     final notes = patient.notes;
     return TablePanel(
       child: Padding(
@@ -209,19 +250,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 4,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              Text(patient.name, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-                              StatusPill(
-                                label: active ? 'Active' : 'Inactive',
-                                color: active ? AppColors.success : AppColors.muted,
-                                soft: active ? AppColors.successSoft : AppColors.background,
-                              ),
-                            ],
-                          ),
+                          Text(patient.name, style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 20,
@@ -240,10 +269,21 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
                     ),
                   ],
                 ),
-                PrimaryAction(
-                  label: 'Add Treatment',
-                  icon: Icons.add_rounded,
-                  onPressed: _opening ? null : () => _openOnce(_addTreatmentLocation),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _opening || _saving ? null : _editPatient,
+                      icon: const Icon(Icons.edit_rounded, size: 18),
+                      label: const Text('Edit patient'),
+                    ),
+                    PrimaryAction(
+                      label: 'Add Treatment',
+                      icon: Icons.add_rounded,
+                      onPressed: _opening || _saving ? null : () => _openOnce(_addTreatmentLocation),
+                    ),
+                  ],
                 ),
               ],
             ),

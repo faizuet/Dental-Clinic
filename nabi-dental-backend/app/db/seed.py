@@ -53,12 +53,26 @@ async def _get_or_create_clinic(session: AsyncSession) -> Clinic:
     return clinic
 
 
+_LEGACY_OWNER_EMAIL = "owner@example.com"
+
+
+async def _user_by_email(session: AsyncSession, email: str) -> User | None:
+    result = await session.execute(select(User).where(func.lower(User.email) == email))
+    return result.scalar_one_or_none()
+
+
 async def _get_or_create_owner(session: AsyncSession, clinic: Clinic) -> User:
     email = settings.OWNER_EMAIL.strip().lower()
-    result = await session.execute(select(User).where(func.lower(User.email) == email))
-    user = result.scalar_one_or_none()
+    user = await _user_by_email(session, email)
     if user:
         return user
+    if email != _LEGACY_OWNER_EMAIL:
+        legacy = await _user_by_email(session, _LEGACY_OWNER_EMAIL)
+        if legacy is not None:
+            legacy.email = email
+            await session.flush()
+            logger.info("Renamed placeholder owner email", extra={"user_id": str(legacy.id)})
+            return legacy
     user = User(
         clinic_id=clinic.id,
         full_name=settings.OWNER_FULL_NAME,

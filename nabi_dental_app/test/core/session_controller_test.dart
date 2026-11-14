@@ -17,7 +17,7 @@ void main() {
   const user = UserProfile(
     id: '1',
     fullName: 'Owner',
-    email: 'owner@example.com',
+    email: 'nabidentalclinic@gmail.com',
     role: 'owner',
     defaultHomeBudget: '50000.00',
   );
@@ -59,7 +59,7 @@ void main() {
 
     expect(controller.state.gate, AppRouteGate.ready);
     expect(controller.state.hasTokens, isTrue);
-    expect(controller.state.user?.email, 'owner@example.com');
+    expect(controller.state.user?.email, 'nabidentalclinic@gmail.com');
   });
 
   test('bootstrap with an expired session returns to login', () async {
@@ -79,12 +79,12 @@ void main() {
     when(() => auth.login(email: any(named: 'email'), password: any(named: 'password')))
         .thenAnswer((_) async => (user, clinic));
 
-    final ok = await controller.login('owner@example.com', 'ChangeMeNow!1');
+    final ok = await controller.login('nabidentalclinic@gmail.com', 'ChangeMeNow!1');
 
     expect(ok, isTrue);
     expect(controller.state.gate, AppRouteGate.ready);
     expect(controller.state.hasTokens, isTrue);
-    expect(controller.state.user?.email, 'owner@example.com');
+    expect(controller.state.user?.email, 'nabidentalclinic@gmail.com');
     expect(controller.state.clinic?.name, 'Nabi Dental Clinic');
   });
 
@@ -92,7 +92,7 @@ void main() {
     when(() => auth.login(email: any(named: 'email'), password: any(named: 'password')))
         .thenThrow(const UnauthorizedException('Invalid email or password.'));
 
-    final ok = await controller.login('owner@example.com', 'wrong');
+    final ok = await controller.login('nabidentalclinic@gmail.com', 'wrong');
 
     expect(ok, isFalse);
     expect(controller.state.gate, AppRouteGate.login);

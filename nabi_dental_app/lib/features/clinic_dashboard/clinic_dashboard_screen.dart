@@ -42,19 +42,21 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   bool _online = true;
   String? _loadError;
   BackupStatus _backup = const BackupStatus();
+  var _loadToken = 0;
 
   @override
   void initState() {
     super.initState();
     ref.listenManual(financeEpochProvider, (previous, next) {
       if (previous != next) {
-        _load(silent: true);
+        _load(silent: true, localOnly: true);
       }
     });
     _load();
   }
 
-  Future<void> _load({bool silent = false, bool force = false}) async {
+  Future<void> _load({bool silent = false, bool force = false, bool localOnly = false}) async {
+    final token = ++_loadToken;
     if (!silent && _totals == null) {
       setState(() {
         _loading = true;
@@ -69,36 +71,41 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       final localRecent = await repo.recentClinicPatients();
       final localActivity = await repo.recentClinicActivity();
       final backup = await repo.backupStatus();
-      if (mounted) {
-        setState(() {
-          _totals = local;
-          _patientCount = localCounts;
-          _recent = localRecent;
-          _activity = localActivity;
-          _backup = backup;
-          _loading = false;
-          _syncing = true;
-          _loadError = null;
-        });
+      if (!mounted || token != _loadToken) {
+        return;
+      }
+      setState(() {
+        _totals = local;
+        _patientCount = localCounts;
+        _recent = localRecent;
+        _activity = localActivity;
+        _backup = backup;
+        _loading = false;
+        _syncing = !localOnly;
+        _loadError = null;
+      });
+      if (localOnly) {
+        return;
       }
       final online = await repo.refresh(force: force);
       final totals = await repo.clinicTotals(range);
       final counts = await _counts(repo);
       final recent = await repo.recentClinicPatients();
       final activity = await repo.recentClinicActivity();
-      if (mounted) {
-        setState(() {
-          _online = online;
-          _totals = totals;
-          _patientCount = counts;
-          _recent = recent;
-          _activity = activity;
-          _loading = false;
-          _syncing = false;
-        });
+      if (!mounted || token != _loadToken) {
+        return;
       }
+      setState(() {
+        _online = online;
+        _totals = totals;
+        _patientCount = counts;
+        _recent = recent;
+        _activity = activity;
+        _loading = false;
+        _syncing = false;
+      });
     } catch (error) {
-      if (mounted) {
+      if (mounted && token == _loadToken) {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;

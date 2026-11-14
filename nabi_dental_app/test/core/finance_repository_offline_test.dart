@@ -314,4 +314,47 @@ void main() {
     expect(recent.first.lastTreatment, 'RCT');
     expect(recent.last.lastVisitDate, isNull);
   });
+
+  test('a patient can be saved without a phone and updated later', () async {
+    final created = await repo.savePatient(name: 'No Phone Yet');
+    expect(created.name, 'No Phone Yet');
+    expect(created.phone, isNull);
+
+    final withPhone = await repo.updatePatient(created, name: 'No Phone Yet', phone: '03123456789');
+    expect(withPhone.phone, '03123456789');
+
+    final renamed = await repo.updatePatient(withPhone, name: 'Amina Noor', phone: null);
+    expect(renamed.name, 'Amina Noor');
+    expect(renamed.phone, isNull);
+  });
+
+  test('recent activity uses the current patient name after an edit', () async {
+    when(() => db.list('patients')).thenAnswer(
+      (_) async => [
+        {'id': 'p1', 'name': 'Amina Noor', 'phone': '03123456789'},
+      ],
+    );
+    when(() => db.list('treatment_transactions')).thenAnswer(
+      (_) async => [
+        {
+          'id': 'v1',
+          'treatment_id': 't1',
+          'catalog_name': 'RCT',
+          'transaction_date': '2026-11-12',
+          'amount': '8000.00',
+          'patient_id': 'p1',
+          'patient_name': 'Ali Khan',
+          'patient_phone': '03001234567',
+        },
+      ],
+    );
+    when(() => db.list('clinic_expenses')).thenAnswer((_) async => const <Map<String, dynamic>>[]);
+    when(() => db.list('lab_charges')).thenAnswer((_) async => const <Map<String, dynamic>>[]);
+
+    final activity = await repo.recentClinicActivity();
+
+    expect(activity, hasLength(1));
+    expect(activity.single.title, 'RCT for Amina Noor');
+    expect(activity.single.amount, '8000.00');
+  });
 }

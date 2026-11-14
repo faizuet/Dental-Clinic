@@ -56,14 +56,16 @@ void main() {
     await pumpLogin(tester);
 
     expect(find.text('Nabi Dental Clinic'), findsOneWidget);
+    expect(find.text('Healthy Smile, Brighter Life'), findsOneWidget);
+    expect(find.text('Access your clinic management system'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
-        (widget) => widget is Image && widget.image is AssetImage && (widget.image as AssetImage).assetName.contains('clinic_portrait'),
+        (widget) => widget is Image && widget.image is AssetImage && (widget.image as AssetImage).assetName.contains('login_hero'),
       ),
       findsOneWidget,
     );
     expect(find.text('Sign in'), findsWidgets);
-    expect(find.text('Email'), findsOneWidget);
+    expect(find.text('Email Address'), findsOneWidget);
     expect(find.text('Password'), findsOneWidget);
     expect(find.text('PIN'), findsNothing);
     expect(find.textContaining('PIN'), findsNothing);
@@ -85,7 +87,7 @@ void main() {
         .thenThrow(const UnauthorizedException('Invalid email or password.'));
 
     await pumpLogin(tester);
-    await tester.enterText(find.byType(TextFormField).at(0), 'owner@example.com');
+    await tester.enterText(find.byType(TextFormField).at(0), 'nabidentalclinic@gmail.com');
     await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();
@@ -98,7 +100,7 @@ void main() {
     const user = UserProfile(
       id: '1',
       fullName: 'Owner',
-      email: 'owner@example.com',
+      email: 'nabidentalclinic@gmail.com',
       role: 'owner',
       defaultHomeBudget: '50000.00',
     );
@@ -106,7 +108,7 @@ void main() {
         .thenAnswer((_) async => (user, clinic));
 
     await pumpLogin(tester);
-    await tester.enterText(find.byType(TextFormField).at(0), 'owner@example.com');
+    await tester.enterText(find.byType(TextFormField).at(0), 'nabidentalclinic@gmail.com');
     await tester.enterText(find.byType(TextFormField).at(1), 'ChangeMeNow!1');
     await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
     await tester.pumpAndSettle();

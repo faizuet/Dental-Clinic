@@ -32,12 +32,12 @@ def test_ensure_jwt_secret_keeps_existing_unique_key(tmp_path: Path, monkeypatch
 
 def test_ensure_jwt_secret_replaces_example_and_writes_env(tmp_path: Path, monkeypatch):
     env = tmp_path / ".env"
-    env.write_text("JWT_SECRET_KEY=change-me-to-a-long-random-secret\nOWNER_EMAIL=owner@example.com\n", encoding="utf-8")
+    env.write_text("JWT_SECRET_KEY=change-me-to-a-long-random-secret\nOWNER_EMAIL=nabidentalclinic@gmail.com\n", encoding="utf-8")
     monkeypatch.setenv("JWT_SECRET_KEY", "change-me-to-a-long-random-secret")
     secret = ensure_jwt_secret(env_path=env, persist=True)
     assert not is_insecure_jwt(secret)
     assert read_env_value(env, "JWT_SECRET_KEY") == secret
-    assert read_env_value(env, "OWNER_EMAIL") == "owner@example.com"
+    assert read_env_value(env, "OWNER_EMAIL") == "nabidentalclinic@gmail.com"
 
 
 def test_upsert_env_value_appends_missing_key(tmp_path: Path):
