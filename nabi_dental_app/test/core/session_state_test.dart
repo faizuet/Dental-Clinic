@@ -6,7 +6,7 @@ void main() {
   const user = UserProfile(
     id: '1',
     fullName: 'Owner',
-    email: 'owner@example.com',
+    email: 'nabidentalclinic@gmail.com',
     role: 'owner',
     defaultHomeBudget: '50000.00',
   );

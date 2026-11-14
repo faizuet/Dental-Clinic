@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme/app_colors.dart';
-import '../../core/auth/auth_repository.dart';
 import '../../core/auth/passwords.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/errors/friendly_error.dart';

@@ -782,6 +782,7 @@ class _AddPatientDialogState extends State<_AddPatientDialog> {
                   decoration: const InputDecoration(
                     labelText: 'Phone number',
                     hintText: '03XXXXXXXXX',
+                    helperText: 'Optional. You can add it later.',
                     prefixIcon: Icon(Icons.phone_outlined),
                     counterText: '',
                   ),

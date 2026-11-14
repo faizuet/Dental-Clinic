@@ -56,4 +56,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/app_icon.png
-    - assets/brand/clinic_portrait.jpg
+    - assets/brand/login_hero.jpg
+    - assets/brand/dental_banner.jpg

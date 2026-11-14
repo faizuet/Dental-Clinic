@@ -34,7 +34,7 @@ SessionController _session() {
       user: UserProfile(
         id: '1',
         fullName: 'Dr Owner',
-        email: 'owner@example.com',
+        email: 'nabidentalclinic@gmail.com',
         role: 'owner',
         defaultHomeBudget: '50000.00',
       ),
@@ -111,7 +111,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),
@@ -178,7 +178,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),
@@ -245,7 +245,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),
@@ -396,5 +396,53 @@ void main() {
     expect(find.text('The patient could not be deleted.'), findsOneWidget);
     expect(find.text('faiz khan'), findsOneWidget);
     expect(find.text('Patient deleted successfully.'), findsNothing);
+  });
+
+  testWidgets('saves a new patient when the phone number is left blank', (tester) async {
+    final finance = _Finance();
+    when(() => finance.patients()).thenAnswer(
+      (_) async => const [PatientRecord(id: '1', name: 'Sara Ahmed')],
+    );
+    when(() => finance.refresh(force: any(named: 'force'))).thenAnswer((_) async => true);
+    when(() => finance.savePatient(name: 'Ali Khan', phone: null)).thenAnswer(
+      (_) async => const PatientRecord(id: 'new', name: 'Ali Khan'),
+    );
+
+    await _pumpPatients(tester, finance);
+    await tester.tap(find.byTooltip('Add patient'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Optional. You can add it later.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Patient name'), 'Ali Khan');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    verify(() => finance.savePatient(name: 'Ali Khan', phone: null)).called(1);
+    expect(find.text('Patient saved.'), findsOneWidget);
+    expect(find.text(pakistaniMobileMessage), findsNothing);
+  });
+
+  testWidgets('edit patient saves a new name and a phone number added later', (tester) async {
+    final finance = _Finance();
+    when(() => finance.patients()).thenAnswer(
+      (_) async => const [PatientRecord(id: '1', name: 'faiz khan')],
+    );
+    when(() => finance.refresh(force: any(named: 'force'))).thenAnswer((_) async => true);
+    when(() => finance.updatePatient(any(), name: 'Amina Noor', phone: '03123456789')).thenAnswer(
+      (_) async => const PatientRecord(id: '1', name: 'Amina Noor', phone: '03123456789'),
+    );
+
+    await _pumpPatients(tester, finance);
+    await tester.tap(find.byTooltip('Edit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit patient'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'Patient name'), 'Amina Noor');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Phone number'), '03123456789');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    verify(() => finance.updatePatient(any(), name: 'Amina Noor', phone: '03123456789')).called(1);
+    expect(find.text('Patient updated.'), findsOneWidget);
   });
 }

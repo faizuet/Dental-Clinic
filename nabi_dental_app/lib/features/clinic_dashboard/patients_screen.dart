@@ -9,15 +9,13 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
-import '../../core/utils/phone.dart';
 import '../../core/widgets/app_controls.dart';
+import 'patient_form_dialog.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/page_kit.dart';
-
-enum _PatientFilter { all, active, inactive }
 
 enum _RegisteredRange { allTime, thisMonth, thisYear }
 
@@ -33,12 +31,10 @@ class PatientsScreen extends ConsumerStatefulWidget {
 
 class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   static const _pageSize = 25;
-  static const _activeDays = 180;
 
   final _search = TextEditingController();
   List<PatientRecord> _patients = [];
   Map<String, String> _lastVisit = const {};
-  _PatientFilter _filter = _PatientFilter.all;
   _RegisteredRange _range = _RegisteredRange.allTime;
   int _page = 0;
   bool _loading = true;
@@ -71,14 +67,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     super.dispose();
   }
 
-  bool _isActive(PatientRecord patient) {
-    final last = parseFlexibleDate(_lastVisit[patient.id]);
-    if (last == null) {
-      return false;
-    }
-    return DateTime.now().difference(last).inDays <= _activeDays;
-  }
-
   bool _registeredIn(PatientRecord patient, _RegisteredRange range) {
     if (range == _RegisteredRange.allTime) {
       return true;
@@ -100,12 +88,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
       if (needle.isNotEmpty &&
           !item.name.toLowerCase().contains(needle) &&
           !(item.phone ?? '').toLowerCase().contains(needle)) {
-        return false;
-      }
-      if (_filter == _PatientFilter.active && !_isActive(item)) {
-        return false;
-      }
-      if (_filter == _PatientFilter.inactive && _isActive(item)) {
         return false;
       }
       return _registeredIn(item, _range);
@@ -217,7 +199,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     final result = await showDialog<({String name, String phone})>(
       context: context,
       useRootNavigator: true,
-      builder: (dialogContext) => _PatientFormDialog(existing: existing, patients: _patients),
+      builder: (dialogContext) => PatientFormDialog(existing: existing, patients: _patients),
     );
     await _afterDialog();
     if (!mounted || result == null) {
@@ -265,7 +247,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         context: context,
         title: 'Delete Patient?',
         message:
-            'Are you sure you want to delete ${patient.name}? This action will remove the patient from the active patient list. Associated treatment records will be kept.',
+            'Are you sure you want to delete ${patient.name}? This action will remove the patient from the patient list. Associated treatment records will be kept.',
         confirmLabel: 'Delete Patient',
         onConfirm: () => ref.read(financeRepositoryProvider).deletePatient(patient),
       );
@@ -276,21 +258,10 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         _patients = [for (final item in _patients) if (item.id != patient.id) item];
         _message = null;
       });
-      ref.read(financeEpochProvider.notifier).state++;
       showAppSnack(context, 'Patient deleted successfully.');
     } finally {
       _deleting = false;
     }
-  }
-
-  Widget _status(PatientRecord patient) {
-    final active = _isActive(patient);
-    return Tooltip(
-      message: active ? 'Visited in the last 6 months' : 'No visit in the last 6 months',
-      child: active
-          ? const StatusPill(label: 'Active')
-          : const StatusPill(label: 'Inactive', color: AppColors.muted, soft: AppColors.background),
-    );
   }
 
   List<Widget> _actions(PatientRecord patient) {
@@ -314,7 +285,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                 DataColumn(label: Text('Patient Name')),
                 DataColumn(label: Text('Phone')),
                 DataColumn(label: Text('Registered On')),
-                DataColumn(label: Text('Status')),
                 DataColumn(label: Text('Actions')),
               ],
               rows: [
@@ -342,7 +312,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                           text: items[index].createdAt == null ? '—' : formatDisplayDate(items[index].createdAt),
                         ),
                       ),
-                      DataCell(_status(items[index])),
                       DataCell(Row(mainAxisSize: MainAxisSize.min, children: _actions(items[index]))),
                     ],
                   ),
@@ -363,18 +332,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
             onTap: _busy ? null : () => _openRecord(items[index]),
             leading: InitialsAvatar(name: items[index].name, size: 40),
             title: _patientName(items[index], maxLines: 1),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (items[index].phone != null) Text(items[index].phone!),
-                  _status(items[index]),
-                ],
-              ),
-            ),
+            subtitle: items[index].phone == null ? null : Text(items[index].phone!),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: _actions(items[index])),
           ),
         ],
@@ -385,11 +343,19 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   Widget _stats() {
     final now = DateTime.now();
     final thisMonth = _patients.where((item) => _registeredIn(item, _RegisteredRange.thisMonth)).length;
-    final treatedThisMonth = {
-      for (final entry in _lastVisit.entries)
-        if (parseFlexibleDate(entry.value)?.year == now.year && parseFlexibleDate(entry.value)?.month == now.month) entry.key,
-    }.where((id) => _patients.any((item) => item.id == id)).length;
-    final active = _patients.where(_isActive).length;
+    final ids = {for (final item in _patients) item.id};
+    var treatedThisMonth = 0;
+    var treatedThisYear = 0;
+    for (final entry in _lastVisit.entries) {
+      final date = parseFlexibleDate(entry.value);
+      if (date == null || date.year != now.year || !ids.contains(entry.key)) {
+        continue;
+      }
+      treatedThisYear++;
+      if (date.month == now.month) {
+        treatedThisMonth++;
+      }
+    }
     return StatStrip(
       items: [
         MiniStat(
@@ -414,12 +380,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
           soft: AppColors.violetSoft,
         ),
         MiniStat(
-          label: 'Active Patients',
-          value: '$active',
-          icon: Icons.verified_rounded,
+          label: 'Treated This Year',
+          value: '$treatedThisYear',
+          icon: Icons.event_available_rounded,
           color: AppColors.orange,
           soft: AppColors.warningSoft,
-          caption: '6 months',
         ),
       ],
     );
@@ -460,18 +425,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     return TablePanel(
       header: FilterBar(
         filters: [
-          SegmentPills<_PatientFilter>(
-            value: _filter,
-            options: const [
-              (value: _PatientFilter.all, label: 'All Patients'),
-              (value: _PatientFilter.active, label: 'Active'),
-              (value: _PatientFilter.inactive, label: 'Inactive'),
-            ],
-            onChanged: (value) => setState(() {
-              _filter = value;
-              _page = 0;
-            }),
-          ),
           _rangeMenu(),
           FilterSearch(
             controller: _search,
@@ -586,133 +539,6 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
           _tableSection(items),
         ],
       ),
-    );
-  }
-}
-
-class _PatientFormDialog extends StatefulWidget {
-  const _PatientFormDialog({this.existing, this.patients = const []});
-
-  final PatientRecord? existing;
-  final List<PatientRecord> patients;
-
-  @override
-  State<_PatientFormDialog> createState() => _PatientFormDialogState();
-}
-
-class _PatientFormDialogState extends State<_PatientFormDialog> {
-  late final TextEditingController _name;
-  late final TextEditingController _phone;
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.existing?.name ?? '');
-    _phone = TextEditingController(text: widget.existing?.phone ?? '');
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _phone.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (_formKey.currentState?.validate() != true) {
-      return;
-    }
-    Navigator.pop(context, (name: _name.text.trim(), phone: _phone.text.trim()));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final inset = size.width < 360 ? 16.0 : 24.0;
-    final adding = widget.existing == null;
-    return AlertDialog(
-      insetPadding: EdgeInsets.symmetric(horizontal: inset, vertical: 24),
-      contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-      title: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(AppRadii.md)),
-            child: Icon(
-              adding ? Icons.person_add_alt_1_rounded : Icons.person_outline_rounded,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(adding ? 'Add patient' : 'Edit patient', maxLines: 2, overflow: TextOverflow.ellipsis),
-                Text(
-                  adding ? 'Register a new patient for this clinic' : 'Update the patient name or phone',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: AppLayout.dialogWidth(context),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _name,
-                textCapitalization: TextCapitalization.words,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.person_outline_rounded)),
-                validator: (value) {
-                  if (value == null || value.trim().length < 2) {
-                    return 'Enter the patient name.';
-                  }
-                  return null;
-                },
-                onFieldSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _phone,
-                keyboardType: TextInputType.phone,
-                inputFormatters: pakistaniMobileInputFormatters,
-                maxLength: 11,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                decoration: const InputDecoration(
-                  labelText: 'Phone number',
-                  hintText: '03XXXXXXXXX',
-                  counterText: '',
-                  prefixIcon: Icon(Icons.call_outlined),
-                ),
-                validator: (value) {
-                  return validateOptionalPakistaniMobile(value) ??
-                      duplicatePatientPhoneWarning(
-                        patients: widget.patients,
-                        phone: value,
-                        excludeId: widget.existing?.id,
-                      );
-                },
-                onFieldSubmitted: (_) => _submit(),
-              ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _submit, child: const Text('Save')),
-      ],
     );
   }
 }

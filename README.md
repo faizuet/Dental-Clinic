@@ -176,7 +176,7 @@ On first start the API container runs migrations, seeds the owner account, and w
 | API | http://127.0.0.1:8001 |
 | Docs | http://127.0.0.1:8001/docs |
 | Postgres (host) | port `5433` |
-| Seed email | `owner@example.com` |
+| Seed email | `nabidentalclinic@gmail.com` |
 | Seed password | `ChangeMeNow!1` (must be changed on first sign-in) |
 
 The desktop app uses `http://127.0.0.1:8001` unless you pass `--dart-define=API_BASE_URL=...`. After the images are on the laptop, clinic work does not need the public internet.

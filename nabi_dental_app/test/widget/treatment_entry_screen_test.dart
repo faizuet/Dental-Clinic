@@ -52,7 +52,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),

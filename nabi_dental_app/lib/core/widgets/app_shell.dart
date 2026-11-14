@@ -241,7 +241,7 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
         openDrawer: showSidebar ? null : () => _scaffoldKey.currentState?.openDrawer(),
         tools: _TopBarTools(
           name: name,
-          showSearch: !_homeActive,
+          showSearch: _location == '/clinic',
           onSearch: (query) => context.go('/clinic/patients?q=${Uri.encodeQueryComponent(query)}'),
           onProfile: () => context.go('/settings/profile'),
         ),
@@ -326,7 +326,7 @@ class _TopBarToolsState extends State<_TopBarTools> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.showSearch && wide)
+        if (widget.showSearch && wide) ...[
           SizedBox(
             width: 300,
             height: 44,
@@ -354,7 +354,8 @@ class _TopBarToolsState extends State<_TopBarTools> {
               ),
             ),
           ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
         Tooltip(
           message: 'Open profile',
           child: Material(

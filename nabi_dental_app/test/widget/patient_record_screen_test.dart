@@ -22,6 +22,10 @@ class _Db extends Mock implements AppDatabase {}
 class _Finance extends Mock implements FinanceRepository {}
 
 void main() {
+  setUpAll(() {
+    registerFallbackValue(const PatientRecord(id: '0', name: 'fallback'));
+  });
+
   testWidgets('Add treatment opens the visit form for that patient', (tester) async {
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
@@ -45,7 +49,7 @@ void main() {
         user: UserProfile(
           id: '1',
           fullName: 'Dr Owner',
-          email: 'owner@example.com',
+          email: 'nabidentalclinic@gmail.com',
           role: 'owner',
           defaultHomeBudget: '50000.00',
         ),
@@ -90,5 +94,98 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('entry-patient-a'), findsOneWidget);
+  });
+
+  testWidgets('edit patient updates the name and phone on the profile', (tester) async {
+    tester.view.physicalSize = const Size(1200, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    var patient = const PatientRecord(id: 'patient-a', name: 'faiz khan');
+    const visit = MoneyEntry(
+      id: 'visit-1',
+      catalogId: 't1',
+      catalogName: 'Root Canal Treatment (RCT)',
+      date: '2026-11-12',
+      amount: '8000.00',
+      patientId: 'patient-a',
+      patientName: 'faiz khan',
+    );
+    final finance = _Finance();
+    when(() => finance.patientById('patient-a')).thenAnswer((_) async => patient);
+    when(() => finance.patientById('patient-a', remote: true)).thenAnswer((_) async => patient);
+    when(() => finance.patientTreatments('patient-a')).thenAnswer((_) async => const [visit]);
+    when(() => finance.patientTreatments('patient-a', remote: true)).thenAnswer((_) async => const [visit]);
+    when(() => finance.patients()).thenAnswer((_) async => [patient]);
+    when(() => finance.updatePatient(any(), name: any(named: 'name'), phone: any(named: 'phone'))).thenAnswer((
+      invocation,
+    ) async {
+      patient = PatientRecord(
+        id: 'patient-a',
+        name: invocation.namedArguments[#name] as String,
+        phone: invocation.namedArguments[#phone] as String?,
+      );
+      return patient;
+    });
+
+    final controller = SessionController(
+      auth: _Auth(),
+      tokens: _Tokens(),
+      database: _Db(),
+    )..state = const SessionState(
+        initialized: true,
+        hasTokens: true,
+        user: UserProfile(
+          id: '1',
+          fullName: 'Dr Owner',
+          email: 'nabidentalclinic@gmail.com',
+          role: 'owner',
+          defaultHomeBudget: '50000.00',
+        ),
+        clinic: ClinicProfile(
+          id: '1',
+          name: 'Nabi Dental',
+          currency: 'PKR',
+          timezone: 'Asia/Karachi',
+        ),
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((ref) => controller),
+          financeRepositoryProvider.overrideWithValue(finance),
+        ],
+        child: MaterialApp.router(
+          theme: buildAppTheme(),
+          routerConfig: GoRouter(
+            initialLocation: '/clinic/patients/patient-a',
+            routes: [
+              GoRoute(path: '/clinic', builder: (_, __) => const SizedBox()),
+              GoRoute(
+                path: '/clinic/patients/:id',
+                builder: (_, state) => PatientRecordScreen(patientId: state.pathParameters['id']!),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Root Canal Treatment (RCT)'), findsWidgets);
+    await tester.tap(find.byTooltip('Edit patient'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Patient name'), 'Amina Noor');
+    await tester.enterText(find.widgetWithText(TextFormField, 'Phone number'), '03123456789');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Amina Noor'), findsWidgets);
+    expect(find.text('03123456789'), findsOneWidget);
+    expect(find.textContaining('Root Canal Treatment (RCT)'), findsWidgets);
+    expect(find.text('Patient updated.'), findsOneWidget);
+    verify(() => finance.updatePatient(any(), name: 'Amina Noor', phone: '03123456789')).called(1);
   });
 }

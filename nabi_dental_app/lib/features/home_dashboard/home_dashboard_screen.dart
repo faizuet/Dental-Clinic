@@ -38,19 +38,21 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
   bool _syncing = false;
   bool _online = true;
   String? _loadError;
+  var _loadToken = 0;
 
   @override
   void initState() {
     super.initState();
     ref.listenManual(financeEpochProvider, (previous, next) {
       if (previous != next) {
-        _load(silent: true);
+        _load(silent: true, localOnly: true);
       }
     });
     _load(force: true);
   }
 
-  Future<void> _load({bool silent = false, bool force = false}) async {
+  Future<void> _load({bool silent = false, bool force = false, bool localOnly = false}) async {
+    final token = ++_loadToken;
     if (!silent && _totals == null) {
       setState(() {
         _loading = true;
@@ -63,29 +65,34 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
     try {
       final local = await repo.homeTotals(range, defaultBudget: defaultBudget);
       final localRecent = await repo.recentHomeExpenses();
-      if (mounted) {
-        setState(() {
-          _totals = local;
-          _recent = localRecent;
-          _loading = false;
-          _syncing = true;
-          _loadError = null;
-        });
+      if (!mounted || token != _loadToken) {
+        return;
+      }
+      setState(() {
+        _totals = local;
+        _recent = localRecent;
+        _loading = false;
+        _syncing = !localOnly;
+        _loadError = null;
+      });
+      if (localOnly) {
+        return;
       }
       final online = await repo.refresh(force: force);
       final totals = await repo.homeTotals(range, defaultBudget: defaultBudget);
       final recent = await repo.recentHomeExpenses();
-      if (mounted) {
-        setState(() {
-          _online = online;
-          _totals = totals;
-          _recent = recent;
-          _loading = false;
-          _syncing = false;
-        });
+      if (!mounted || token != _loadToken) {
+        return;
       }
+      setState(() {
+        _online = online;
+        _totals = totals;
+        _recent = recent;
+        _loading = false;
+        _syncing = false;
+      });
     } catch (error) {
-      if (mounted) {
+      if (mounted && token == _loadToken) {
         setState(() {
           _loadError = friendlyError(error);
           _loading = false;

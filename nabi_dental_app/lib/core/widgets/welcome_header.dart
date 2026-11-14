@@ -74,7 +74,7 @@ class WelcomeHeader extends StatelessWidget {
                 right: 0,
                 top: 0,
                 bottom: 0,
-                width: 360,
+                width: 460,
                 child: IgnorePointer(child: _clinicArt()),
               ),
             Padding(
@@ -168,36 +168,15 @@ class WelcomeHeader extends StatelessWidget {
     return ShaderMask(
       shaderCallback: (bounds) => const LinearGradient(
         colors: [Colors.transparent, Colors.white],
-        stops: [0.0, 0.35],
+        stops: [0.0, 0.4],
       ).createShader(bounds),
       blendMode: BlendMode.dstIn,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.primary.withValues(alpha: 0.10), AppColors.primary.withValues(alpha: 0.22)],
-          ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              right: 150,
-              bottom: -6,
-              child: Icon(Icons.airline_seat_recline_extra_rounded, size: 120, color: AppColors.primary.withValues(alpha: 0.30)),
-            ),
-            Positioned(
-              right: 96,
-              top: 6,
-              child: Icon(Icons.light_rounded, size: 56, color: AppColors.primary.withValues(alpha: 0.26)),
-            ),
-            Positioned(
-              right: 30,
-              bottom: 18,
-              child: Icon(Icons.medical_services_rounded, size: 52, color: AppColors.primary.withValues(alpha: 0.22)),
-            ),
-          ],
-        ),
+      child: Image.asset(
+        'assets/brand/dental_banner.jpg',
+        fit: BoxFit.cover,
+        alignment: const Alignment(0.55, -0.1),
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
       ),
     );
   }

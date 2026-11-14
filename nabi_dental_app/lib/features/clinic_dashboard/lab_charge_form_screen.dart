@@ -163,7 +163,6 @@ class _LabChargeFormScreenState extends ConsumerState<LabChargeFormScreen> {
               labName: _text(_labName),
               notes: _text(_notes),
             );
-      ref.read(financeEpochProvider.notifier).state++;
       if (mounted) {
         setState(() => _dirty = false);
         showAppSnack(context, message);

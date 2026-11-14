@@ -222,7 +222,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     setState(() {
       _items = [for (final item in _items) if (item.id != entry.id) item];
     });
-    ref.read(financeEpochProvider.notifier).state++;
     showAppSnack(context, copy.success);
   }
 

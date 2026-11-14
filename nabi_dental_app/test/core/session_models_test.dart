@@ -6,7 +6,7 @@ void main() {
     final user = UserProfile.fromJson({
       'id': '8c2f0d7a-1b2c-4d5e-8f90-1234567890ab',
       'full_name': 'Clinic Owner',
-      'email': 'owner@example.com',
+      'email': 'nabidentalclinic@gmail.com',
       'role': 'owner',
       'default_home_budget': '75000.00',
     });
@@ -29,7 +29,7 @@ void main() {
     final user = UserProfile.fromJson({
       'id': '8c2f0d7a-1b2c-4d5e-8f90-1234567890ab',
       'full_name': 'Clinic Owner',
-      'email': 'owner@example.com',
+      'email': 'nabidentalclinic@gmail.com',
       'role': 'owner',
       'default_home_budget': '75000.00',
       'has_avatar': true,
@@ -42,7 +42,7 @@ void main() {
     final user = UserProfile.fromJson({
       'id': '8c2f0d7a-1b2c-4d5e-8f90-1234567890ab',
       'full_name': 'Clinic Owner',
-      'email': 'owner@example.com',
+      'email': 'nabidentalclinic@gmail.com',
       'role': 'owner',
       'default_home_budget': '75000.00',
       'must_change_password': true,

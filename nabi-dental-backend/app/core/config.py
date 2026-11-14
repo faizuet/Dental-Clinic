@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = "Asia/Karachi"
     DEFAULT_HOME_BUDGET: Decimal = Decimal("30000.00")
 
-    OWNER_EMAIL: str = "owner@example.com"
+    OWNER_EMAIL: str = "nabidentalclinic@gmail.com"
     OWNER_PASSWORD: str = "ChangeMeNow!1"
     OWNER_FULL_NAME: str = "Clinic Owner"
 
