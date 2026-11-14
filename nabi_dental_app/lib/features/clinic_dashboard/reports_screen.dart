@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -232,9 +234,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           _periodPanel(),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (_syncing) ...[
             const LinearProgressIndicator(minHeight: 2),
             const SizedBox(height: 12),
@@ -251,7 +253,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       StatStrip(items: _stats(currency)),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 4),
                       ..._breakdowns(currency),
                     ],
                   ),
@@ -264,7 +266,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   Widget _periodPanel() {
     return TablePanel(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         child: Wrap(
           spacing: 16,
           runSpacing: 12,
@@ -367,22 +369,27 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       items: _timeline,
       currency: currency,
       empty: 'No daily totals yet.',
-      bars: false,
+      chart: _ReportChart.columns,
     );
     if (_isHome) {
       return [
-        _panel(
-          title: 'Expenses by category',
-          subtitle: 'Where household money went',
-          icon: Icons.category_rounded,
-          color: AppColors.aqua,
-          soft: AppColors.aquaSoft,
-          items: _expenseBreakdown,
-          currency: currency,
-          empty: 'No household spending in this range.',
+        _ReportBoard(
+          wide: [
+            _panel(
+              title: 'Expenses by category',
+              subtitle: 'Where household money went',
+              icon: Icons.category_rounded,
+              color: AppColors.aqua,
+              soft: AppColors.aquaSoft,
+              items: _expenseBreakdown,
+              currency: currency,
+              empty: 'No household spending in this range.',
+              chart: _shareChart(_expenseBreakdown),
+            ),
+            timeline,
+          ],
+          flexes: const [5, 6],
         ),
-        const SizedBox(height: 20),
-        timeline,
       ];
     }
     final income = _panel(
@@ -394,6 +401,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       items: _incomeBreakdown,
       currency: currency,
       empty: 'No income in this range.',
+      chart: _ReportChart.bars,
     );
     final expenses = _panel(
       title: 'Expenses by category',
@@ -404,6 +412,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       items: _expenseBreakdown,
       currency: currency,
       empty: 'No activity in this range.',
+      chart: _shareChart(_expenseBreakdown),
     );
     final labs = _panel(
       title: 'Lab charges by lab',
@@ -414,12 +423,67 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       items: _labBreakdown,
       currency: currency,
       empty: 'No lab charges in this range.',
+      chart: _labChart(_labBreakdown),
     );
     return [
-      AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: income, secondary: expenses),
-      const SizedBox(height: 20),
-      AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: labs, secondary: timeline),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 980) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                income,
+                const SizedBox(height: 12),
+                expenses,
+                const SizedBox(height: 12),
+                labs,
+                const SizedBox(height: 12),
+                timeline,
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 6, child: income),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 5,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        expenses,
+                        const SizedBox(height: 12),
+                        labs,
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              timeline,
+            ],
+          );
+        },
+      ),
     ];
+  }
+
+  _ReportChart _shareChart(List<NamedAmount> items) {
+    if (items.length >= 2 && items.length <= 6) {
+      return _ReportChart.ring;
+    }
+    return _ReportChart.bars;
+  }
+
+  _ReportChart _labChart(List<NamedAmount> items) {
+    if (items.length >= 2 && items.length <= 4) {
+      return _ReportChart.share;
+    }
+    return _ReportChart.bars;
   }
 
   Widget _panel({
@@ -431,7 +495,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     required List<NamedAmount> items,
     required String currency,
     required String empty,
-    bool bars = true,
+    required _ReportChart chart,
   }) {
     final total = items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
     return TablePanel(
@@ -457,61 +521,565 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
       child: items.isEmpty
           ? EmptyState(message: empty)
-          : Column(
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  if (i > 0) const Divider(height: 1, indent: 20, endIndent: 20),
-                  _row(items[i], currency, color: color, share: bars && total > 0 ? moneyToDouble(items[i].amount) / total : null),
-                ],
-              ],
+          : _ReportChartView(
+              items: items,
+              currency: currency,
+              color: color,
+              soft: soft,
+              icon: icon,
+              total: total,
+              chart: chart,
             ),
     );
   }
+}
 
-  Widget _row(NamedAmount item, String currency, {required Color color, double? share}) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+enum _ReportChart { bars, ring, share, columns }
+
+class _ReportBoard extends StatelessWidget {
+  const _ReportBoard({required this.wide, this.flexes = const [1, 1]});
+
+  final List<Widget> wide;
+  final List<int> flexes;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 900 || wide.length < 2) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Text(
-                  formatDisplayDateLabel(item.name),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-              ),
-              if (share != null) ...[
-                Text('${(share * 100).toStringAsFixed(share >= 0.1 ? 0 : 1)}%', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
-                const SizedBox(width: 12),
+              for (var i = 0; i < wide.length; i++) ...[
+                if (i > 0) const SizedBox(height: 12),
+                wide[i],
               ],
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: MoneyText(formatMoney(item.amount, currency: currency), style: theme.textTheme.titleSmall),
-              ),
             ],
-          ),
-          if (share != null) ...[
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadii.full),
-              child: LinearProgressIndicator(
-                value: share.clamp(0, 1).toDouble(),
-                minHeight: 6,
-                color: color,
-                backgroundColor: color.withValues(alpha: 0.12),
-              ),
-            ),
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < wide.length; i++) ...[
+              if (i > 0) const SizedBox(width: 12),
+              Expanded(flex: flexes[i], child: wide[i]),
+            ],
           ],
+        );
+      },
+    );
+  }
+}
+
+class _ReportChartView extends StatelessWidget {
+  const _ReportChartView({
+    required this.items,
+    required this.currency,
+    required this.color,
+    required this.soft,
+    required this.icon,
+    required this.total,
+    required this.chart,
+  });
+
+  final List<NamedAmount> items;
+  final String currency;
+  final Color color;
+  final Color soft;
+  final IconData icon;
+  final double total;
+  final _ReportChart chart;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (chart) {
+      _ReportChart.bars => _RankedBars(items: items, currency: currency, color: color, total: total),
+      _ReportChart.ring => _ShareRing(
+          items: items,
+          currency: currency,
+          color: color,
+          soft: soft,
+          icon: icon,
+          total: total,
+        ),
+      _ReportChart.share => _StackedShare(items: items, currency: currency, color: color, total: total),
+      _ReportChart.columns => _ColumnChart(items: items, currency: currency, color: color, soft: soft),
+    };
+  }
+}
+
+class _RankedBars extends StatelessWidget {
+  const _RankedBars({required this.items, required this.currency, required this.color, required this.total});
+
+  final List<NamedAmount> items;
+  final String currency;
+  final Color color;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        children: [
+          for (final item in items)
+            _BarRow(item: item, currency: currency, color: color, total: total),
         ],
       ),
     );
   }
 }
+
+class _BarRow extends StatelessWidget {
+  const _BarRow({required this.item, required this.currency, required this.color, required this.total});
+
+  final NamedAmount item;
+  final String currency;
+  final Color color;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final amount = moneyToDouble(item.amount);
+    final share = total > 0 ? amount / total : 0.0;
+    final label = formatDisplayDateLabel(item.name);
+    final money = formatMoney(item.amount, currency: currency);
+    final percent = _percentLabel(share);
+    return Tooltip(
+      message: _chartTip(label, money, percent),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(percent, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+                const SizedBox(width: 10),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 148),
+                  child: Text(
+                    money,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.full),
+              child: SizedBox(
+                height: 8,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ColoredBox(color: color.withValues(alpha: 0.12)),
+                    FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: share.clamp(0, 1).toDouble(),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: [color.withValues(alpha: 0.72), color]),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ShareRing extends StatelessWidget {
+  const _ShareRing({
+    required this.items,
+    required this.currency,
+    required this.color,
+    required this.soft,
+    required this.icon,
+    required this.total,
+  });
+
+  final List<NamedAmount> items;
+  final String currency;
+  final Color color;
+  final Color soft;
+  final IconData icon;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _chartColors(color, items.length);
+    final shares = [for (final item in items) total > 0 ? moneyToDouble(item.amount) / total : 0.0];
+    final ring = SizedBox(
+      width: 124,
+      height: 124,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: const Size.square(124),
+            painter: _DonutPainter(shares: shares, colors: colors),
+          ),
+          Container(
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(color: soft, shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 26),
+          ),
+        ],
+      ),
+    );
+    final legend = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < items.length; i++)
+          _LegendLine(
+            color: colors[i],
+            label: formatDisplayDateLabel(items[i].name),
+            amount: formatMoney(items[i].amount, currency: currency),
+            percent: _percentLabel(shares[i]),
+          ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 380) {
+            return Column(
+              children: [
+                ring,
+                const SizedBox(height: 8),
+                legend,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              ring,
+              const SizedBox(width: 16),
+              Expanded(child: legend),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StackedShare extends StatelessWidget {
+  const _StackedShare({required this.items, required this.currency, required this.color, required this.total});
+
+  final List<NamedAmount> items;
+  final String currency;
+  final Color color;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = _chartColors(color, items.length);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 14,
+              child: Row(
+                children: [
+                  for (var i = 0; i < items.length; i++)
+                    Expanded(
+                      flex: math.max(1, (total > 0 ? moneyToDouble(items[i].amount) / total * 1000 : 1).round()),
+                      child: Tooltip(
+                        message: _chartTip(
+                          formatDisplayDateLabel(items[i].name),
+                          formatMoney(items[i].amount, currency: currency),
+                          _percentLabel(total > 0 ? moneyToDouble(items[i].amount) / total : 0),
+                        ),
+                        child: ColoredBox(color: colors[i]),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < items.length; i++)
+            _LegendLine(
+              color: colors[i],
+              label: formatDisplayDateLabel(items[i].name),
+              amount: formatMoney(items[i].amount, currency: currency),
+              percent: _percentLabel(total > 0 ? moneyToDouble(items[i].amount) / total : 0),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ColumnChart extends StatelessWidget {
+  const _ColumnChart({
+    required this.items,
+    required this.currency,
+    required this.color,
+    required this.soft,
+  });
+
+  final List<NamedAmount> items;
+  final String currency;
+  final Color color;
+  final Color soft;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxAmount = items.fold<double>(0, (max, item) {
+      final value = moneyToDouble(item.amount);
+      return value > max ? value : max;
+    });
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const slot = 116.0;
+          final scroll = items.length > 12;
+          final expand = !scroll && items.length * slot > constraints.maxWidth;
+          final showAmount = items.length <= 8;
+          final columns = [
+            for (final item in items)
+              _ColumnMark(
+                label: formatDisplayDateLabel(item.name),
+                amount: formatMoney(item.amount, currency: currency),
+                factor: maxAmount > 0 ? moneyToDouble(item.amount) / maxAmount : 0,
+                color: color,
+                showAmount: showAmount,
+                expand: expand,
+              ),
+          ];
+          final row = Row(
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: columns,
+          );
+          final chart = DecoratedBox(
+            decoration: BoxDecoration(
+              color: soft.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
+              child: scroll ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: row) : row,
+            ),
+          );
+          if (expand || scroll) {
+            return chart;
+          }
+          return Align(alignment: Alignment.center, child: chart);
+        },
+      ),
+    );
+  }
+}
+
+class _ColumnMark extends StatelessWidget {
+  const _ColumnMark({
+    required this.label,
+    required this.amount,
+    required this.factor,
+    required this.color,
+    required this.showAmount,
+    required this.expand,
+  });
+
+  final String label;
+  final String amount;
+  final double factor;
+  final Color color;
+  final bool showAmount;
+  final bool expand;
+
+  @override
+  Widget build(BuildContext context) {
+    final heightFactor = factor <= 0 ? 0.0 : factor.clamp(0.08, 1.0).toDouble();
+    final mark = Tooltip(
+        message: _chartTip(label, amount, null),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (showAmount)
+                Text(
+                  amount,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700, color: AppColors.text),
+                ),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 78,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: FractionallySizedBox(
+                    heightFactor: heightFactor,
+                    child: Container(
+                      width: 28,
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [color, color.withValues(alpha: 0.55)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(height: 1, color: color.withValues(alpha: 0.18)),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppColors.muted),
+              ),
+            ],
+          ),
+        ),
+    );
+    if (!expand) {
+      return SizedBox(width: 116, child: mark);
+    }
+    return Expanded(child: mark);
+  }
+}
+
+class _LegendLine extends StatelessWidget {
+  const _LegendLine({required this.color, required this.label, required this.amount, required this.percent});
+
+  final Color color;
+  final String label;
+  final String amount;
+  final String percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: _chartTip(label, amount, percent),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(percent, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+            const SizedBox(width: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 132),
+              child: Text(
+                amount,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DonutPainter extends CustomPainter {
+  const _DonutPainter({required this.shares, required this.colors});
+
+  final List<double> shares;
+  final List<Color> colors;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 16.0;
+    final rect = Offset.zero & size;
+    final arc = rect.deflate(stroke / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.butt;
+    final gaps = shares.where((share) => share > 0).length > 1 ? 0.045 : 0.0;
+    var start = -math.pi / 2;
+    for (var i = 0; i < shares.length; i++) {
+      final sweep = math.max(0.0, shares[i] * math.pi * 2 - gaps);
+      if (sweep <= 0) {
+        continue;
+      }
+      paint.color = colors[i % colors.length];
+      canvas.drawArc(arc, start, sweep, false, paint);
+      start += shares[i] * math.pi * 2;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutPainter oldDelegate) {
+    return oldDelegate.shares != shares || oldDelegate.colors != colors;
+  }
+}
+
+List<Color> _chartColors(Color base, int count) {
+  final hsl = HSLColor.fromColor(base);
+  return [
+    for (var i = 0; i < count; i++)
+      i == 0
+          ? base
+          : hsl
+              .withLightness((hsl.lightness + i * 0.09).clamp(0.34, 0.74))
+              .withSaturation((hsl.saturation - i * 0.06).clamp(0.32, 1))
+              .toColor(),
+  ];
+}
+
+String _percentLabel(double share) {
+  return '${(share * 100).toStringAsFixed(share >= 0.1 ? 0 : 1)}%';
+}
+
+String _chartTip(String label, String amount, String? percent) {
+  if (percent == null) {
+    return '$label\n$amount';
+  }
+  return '$label\n$amount · $percent';
+}
+
 
 class ClinicReportsScreen extends StatelessWidget {
   const ClinicReportsScreen({super.key});

@@ -64,7 +64,7 @@ async def list_patient_treatments(
         search=None,
         page=page,
         page_size=page_size,
-        sort="-transaction_date",
+        sort="-created_at",
         patient_id=patient_id,
     )
     return paginated(

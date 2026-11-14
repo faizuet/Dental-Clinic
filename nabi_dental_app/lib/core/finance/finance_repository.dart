@@ -17,6 +17,37 @@ import '../utils/money.dart';
 import '../utils/period.dart';
 import '../utils/phone.dart';
 
+DateTime? _recordInstant(String? createdAt, String? date) {
+  final created = DateTime.tryParse((createdAt ?? '').trim());
+  if (created != null) {
+    return created.toUtc();
+  }
+  final raw = (date ?? '').trim();
+  if (raw.length >= 10) {
+    final day = DateTime.tryParse(raw.substring(0, 10));
+    if (day != null) {
+      return DateTime.utc(day.year, day.month, day.day);
+    }
+  }
+  return null;
+}
+
+int _newestFirst(DateTime? a, DateTime? b, String aId, String bId) {
+  if (a != null && b != null) {
+    final byTime = b.compareTo(a);
+    if (byTime != 0) {
+      return byTime;
+    }
+  } else if (a != null || b != null) {
+    return a == null ? 1 : -1;
+  }
+  return bId.compareTo(aId);
+}
+
+int _compareEntries(MoneyEntry a, MoneyEntry b) {
+  return _newestFirst(_recordInstant(a.createdAt, a.date), _recordInstant(b.createdAt, b.date), a.id, b.id);
+}
+
 const _collections = {
   'treatment_category': 'treatment_categories',
   'treatment': 'treatments',
@@ -462,37 +493,43 @@ class FinanceRepository {
   Future<List<RecentClinicPatient>> recentClinicPatients({int limit = 6}) async {
     final registered = await _localPatients();
     final byId = {for (final item in registered) item.id: item};
-    final visits = await incomeHistory();
-    final seen = <String>{};
-    final recent = <RecentClinicPatient>[];
-    for (final visit in visits) {
+    final grouped = <String, List<MoneyEntry>>{};
+    for (final visit in await incomeHistory()) {
       final id = visit.patientId;
-      if (id == null || id.isEmpty || !seen.add(id)) {
+      if (id == null || id.isEmpty) {
         continue;
       }
-      final patient = byId[id] ??
-          PatientRecord(
-            id: id,
-            name: visit.displayPatientName,
-            phone: visit.patientPhone,
-          );
-      final treatment = visit.subTreatment?.trim();
+      grouped.putIfAbsent(id, () => []).add(visit);
+    }
+    final records = [...registered];
+    for (final entry in grouped.entries) {
+      if (byId.containsKey(entry.key)) {
+        continue;
+      }
+      final visit = entry.value.first;
+      records.add(
+        PatientRecord(
+          id: entry.key,
+          name: visit.displayPatientName,
+          phone: visit.patientPhone,
+          createdAt: visit.createdAt,
+        ),
+      );
+    }
+    _sortPatients(records);
+    final recent = <RecentClinicPatient>[];
+    for (final patient in records) {
+      final last = _latestVisit(grouped[patient.id]);
+      final treatment = last?.subTreatment?.trim();
       recent.add(
         RecentClinicPatient(
           patient: patient,
-          lastVisitDate: visit.date,
-          lastTreatment: treatment != null && treatment.isNotEmpty ? treatment : visit.catalogName,
+          lastVisitDate: last?.date,
+          lastTreatment: last == null
+              ? null
+              : (treatment != null && treatment.isNotEmpty ? treatment : last.catalogName),
         ),
       );
-      if (recent.length >= limit) {
-        return recent;
-      }
-    }
-    for (final patient in registered) {
-      if (!seen.add(patient.id)) {
-        continue;
-      }
-      recent.add(RecentClinicPatient(patient: patient));
       if (recent.length >= limit) {
         break;
       }
@@ -500,31 +537,60 @@ class FinanceRepository {
     return recent;
   }
 
+  MoneyEntry? _latestVisit(List<MoneyEntry>? visits) {
+    MoneyEntry? last;
+    for (final visit in visits ?? const <MoneyEntry>[]) {
+      if (last == null || visit.date.compareTo(last.date) > 0 || (visit.date == last.date && _compareEntries(visit, last) < 0)) {
+        last = visit;
+      }
+    }
+    return last;
+  }
+
   Future<List<ClinicActivity>> recentClinicActivity({int limit = 6}) async {
     final items = [
       for (final visit in await incomeHistory())
-        ClinicActivity(
-          kind: ClinicActivityKind.treatment,
-          title: '${visit.subTreatment?.trim().isNotEmpty == true ? visit.subTreatment : visit.catalogName} for ${visit.displayPatientName}',
-          date: visit.date,
-          amount: visit.amount,
+        (
+          activity: ClinicActivity(
+            kind: ClinicActivityKind.treatment,
+            title: '${visit.subTreatment?.trim().isNotEmpty == true ? visit.subTreatment : visit.catalogName} for ${visit.displayPatientName}',
+            date: visit.date,
+            amount: visit.amount,
+          ),
+          createdAt: visit.createdAt,
+          id: visit.id,
         ),
       for (final expense in await clinicExpenseHistory())
-        ClinicActivity(
-          kind: ClinicActivityKind.expense,
-          title: '${expense.catalogName} expense',
-          date: expense.date,
-          amount: expense.amount,
+        (
+          activity: ClinicActivity(
+            kind: ClinicActivityKind.expense,
+            title: '${expense.catalogName} expense',
+            date: expense.date,
+            amount: expense.amount,
+          ),
+          createdAt: expense.createdAt,
+          id: expense.id,
         ),
       for (final charge in await labCharges())
-        ClinicActivity(
-          kind: ClinicActivityKind.labCharge,
-          title: charge.patientName == null ? '${charge.displayLab} lab charge' : '${charge.displayLab} for ${charge.patientName}',
-          date: charge.date,
-          amount: charge.amount,
+        (
+          activity: ClinicActivity(
+            kind: ClinicActivityKind.labCharge,
+            title: charge.patientName == null ? '${charge.displayLab} lab charge' : '${charge.displayLab} for ${charge.patientName}',
+            date: charge.date,
+            amount: charge.amount,
+          ),
+          createdAt: charge.createdAt,
+          id: charge.id,
         ),
-    ]..sort((a, b) => b.date.compareTo(a.date));
-    return items.take(limit).toList();
+    ]..sort(
+        (a, b) => _newestFirst(
+          _recordInstant(a.createdAt, a.activity.date),
+          _recordInstant(b.createdAt, b.activity.date),
+          a.id,
+          b.id,
+        ),
+      );
+    return [for (final item in items.take(limit)) item.activity];
   }
 
   Future<List<PatientRecord>> patients({String? search, bool remote = false}) async {
@@ -720,10 +786,13 @@ class FinanceRepository {
       return _localPatientTreatments(patientId);
     }
     try {
-      final rows = await _allPages('/api/v1/patients/$patientId/treatments', extra: {'page_size': 100});
+      final rows = await _allPages(
+        '/api/v1/patients/$patientId/treatments',
+        extra: {'page_size': 100, 'sort': '-created_at'},
+      );
       final named = await _namedTransactions(rows);
       await _db.upsertAll('treatment_transactions', named);
-      return [for (final row in named) MoneyEntry.fromJson(row)];
+      return _sortEntries([for (final row in named) MoneyEntry.fromJson(row)]);
     } on OfflineException {
       return _localPatientTreatments(patientId);
     } on AppException {
@@ -733,10 +802,10 @@ class FinanceRepository {
 
   Future<List<MoneyEntry>> _localPatientTreatments(String patientId) async {
     final rows = await _namedTransactions(await _db.list('treatment_transactions'));
-    return [
+    return _sortEntries([
       for (final row in rows)
         if (row['patient_id']?.toString() == patientId) MoneyEntry.fromJson(row),
-    ];
+    ]);
   }
 
   Future<List<int>> treatmentAttachmentBytes(String transactionId, String attachmentId) async {
@@ -908,7 +977,10 @@ class FinanceRepository {
       payload['patient_name'] = patientName;
       payload['patient_phone'] = patientPhone;
       payload['version'] = 1;
-      await _db.upsert('treatment_transactions', payload);
+      await _db.upsert('treatment_transactions', {
+        ...payload,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
       await _db.enqueueChange(
         clientChangeId: _uuid.v4(),
         entityType: 'treatment_transaction',
@@ -1055,7 +1127,8 @@ class FinanceRepository {
   }
 
   Future<List<MoneyEntry>> clinicExpenseHistory({DateRange? range, String? search}) async {
-    return _filterEntries(await _db.list('clinic_expenses'), range: range, search: search);
+    final rows = await _namedExpenses(await _db.list('clinic_expenses'), 'clinic_expense_categories');
+    return _filterEntries(rows, range: range, search: search);
   }
 
   Future<List<LabCharge>> labCharges({DateRange? range, String? search}) async {
@@ -1074,7 +1147,9 @@ class FinanceRepository {
             (item.visitLabel ?? '').toLowerCase().contains(needle);
       }).toList();
     }
-    items.sort((a, b) => b.date.compareTo(a.date));
+    items.sort(
+      (a, b) => _newestFirst(_recordInstant(a.createdAt, a.date), _recordInstant(b.createdAt, b.date), a.id, b.id),
+    );
     return items;
   }
 
@@ -1209,7 +1284,8 @@ class FinanceRepository {
   }
 
   Future<List<MoneyEntry>> homeExpenseHistory({DateRange? range, String? search}) async {
-    return _filterEntries(await _db.list('home_expenses'), range: range, search: search);
+    final rows = await _namedExpenses(await _db.list('home_expenses'), 'home_expense_categories');
+    return _filterEntries(rows, range: range, search: search);
   }
 
   Future<String> saveIncomeBatch({
@@ -1861,7 +1937,7 @@ class FinanceRepository {
       _allPages('/api/v1/treatment-categories', extra: {'page_size': 100}),
       _allPages('/api/v1/clinic-expense-categories', extra: {'page_size': 100}),
       _allPages('/api/v1/patients', extra: {'page_size': 100, 'sort': '-created_at'}),
-      _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-transaction_date'}),
+      _allPages('/api/v1/treatment-transactions', extra: {'page_size': 100, 'sort': '-created_at'}),
       _allPages('/api/v1/clinic-expenses', extra: {'page_size': 100, 'sort': '-expense_date'}),
     ]);
     final treatments = pages[0];
@@ -2057,25 +2133,66 @@ class FinanceRepository {
 
   void _sortPatients(List<PatientRecord> items) {
     items.sort((a, b) {
-      final aCreated = a.createdAt ?? '';
-      final bCreated = b.createdAt ?? '';
-      if (aCreated.isNotEmpty && bCreated.isNotEmpty) {
-        final created = bCreated.compareTo(aCreated);
-        if (created != 0) {
-          return created;
-        }
+      final byTime = _newestFirst(_recordInstant(a.createdAt, null), _recordInstant(b.createdAt, null), '', '');
+      final aCreated = a.createdAt?.trim().isNotEmpty == true;
+      final bCreated = b.createdAt?.trim().isNotEmpty == true;
+      if (byTime != 0 && (aCreated || bCreated)) {
+        return byTime;
       }
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      if (byName != 0) {
+        return byName;
+      }
+      return b.id.compareTo(a.id);
     });
   }
 
+  List<MoneyEntry> _sortEntries(List<MoneyEntry> entries) {
+    entries.sort(_compareEntries);
+    return entries;
+  }
+
+  String? _usefulCatalogName(Object? value) => usefulCatalogName(value);
+
+  void _assignCatalogName(Map<String, dynamic> row, Map<String, String> lookup) {
+    final categoryId = row['category_id']?.toString();
+    final treatmentId = row['treatment_id']?.toString();
+    final resolved = (categoryId != null && categoryId.isNotEmpty ? lookup[categoryId] : null) ??
+        (treatmentId != null && treatmentId.isNotEmpty ? lookup[treatmentId] : null);
+    final label = _usefulCatalogName(resolved) ??
+        _usefulCatalogName(row['catalog_name']) ??
+        _usefulCatalogName(row['category_name']);
+    if (label != null) {
+      row['catalog_name'] = label;
+      return;
+    }
+    if (categoryId != null && categoryId.isNotEmpty) {
+      row.remove('catalog_name');
+      return;
+    }
+    row['catalog_name'] = 'Item';
+  }
+
   Future<List<Map<String, dynamic>>> _namedExpenses(List<Map<String, dynamic>> rows, String collection) async {
-    final names = {
-      for (final row in await _db.list(collection)) row['id'].toString(): row['name']?.toString() ?? 'Category',
-    };
+    if (rows.isEmpty) {
+      return rows;
+    }
+    final names = <String, String>{};
+    for (final row in await _db.list(collection, includeDeleted: true)) {
+      final name = _usefulCatalogName(row['name']);
+      if (name != null) {
+        names[row['id'].toString()] = name;
+      }
+    }
     return [
       for (final row in rows)
-        {...row, 'catalog_name': names[row['category_id'].toString()] ?? row['catalog_name'] ?? 'Category'},
+        {
+          ...row,
+          'catalog_name': names[row['category_id']?.toString()] ??
+              _usefulCatalogName(row['catalog_name']) ??
+              _usefulCatalogName(row['category_name']) ??
+              'Category',
+        },
     ];
   }
 
@@ -2095,7 +2212,7 @@ class FinanceRepository {
             (entry.detailsText ?? '').toLowerCase().contains(needle);
       }).toList();
     }
-    entries.sort((a, b) => b.date.compareTo(a.date));
+    entries.sort(_compareEntries);
     return entries;
   }
 
@@ -2138,12 +2255,19 @@ class FinanceRepository {
           'notes': row.notes,
         },
     ];
+    final names = <String, String>{};
+    for (final row in await _db.list(catalogCollection, includeDeleted: true)) {
+      final name = _usefulCatalogName(row['name']);
+      if (name != null) {
+        names[row['id'].toString()] = name;
+      }
+    }
     return _saveBatch(
       path: path,
       collection: collection,
       entityType: entityType,
       items: items,
-      names: {},
+      names: names,
       loadNames: categories,
     );
   }
@@ -2164,14 +2288,14 @@ class FinanceRepository {
       final response = await _api.post(path, data: {'items': items});
       final saved = _asMaps(response.data, items);
       for (final row in saved) {
-        row['catalog_name'] = lookup[row['treatment_id']?.toString() ?? row['category_id']?.toString()] ?? 'Item';
+        _assignCatalogName(row, lookup);
         await _db.upsert(collection, row);
       }
       _publish();
       return 'Saved and synced.';
     } on OfflineException {
       for (final row in items) {
-        row['catalog_name'] = lookup[row['treatment_id']?.toString() ?? row['category_id']?.toString()] ?? 'Item';
+        _assignCatalogName(row, lookup);
         row['version'] = 1;
         await _db.upsert(collection, row);
         await _db.enqueueChange(

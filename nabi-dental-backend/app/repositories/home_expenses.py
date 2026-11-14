@@ -2,6 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 
 from app.models import HomeBudget, HomeExpense, HomeExpenseCategory
 from app.repositories.base import BaseRepository, apply_sort
@@ -71,7 +72,11 @@ class HomeExpenseCategoryRepository(BaseRepository):
 
 class HomeExpenseRepository(BaseRepository):
     def _base(self, user_id: UUID, *, include_deleted: bool = False):
-        stmt = select(HomeExpense).where(HomeExpense.user_id == user_id)
+        stmt = (
+            select(HomeExpense)
+            .options(selectinload(HomeExpense.category))
+            .where(HomeExpense.user_id == user_id)
+        )
         if not include_deleted:
             stmt = stmt.where(HomeExpense.deleted_at.is_(None))
         return stmt

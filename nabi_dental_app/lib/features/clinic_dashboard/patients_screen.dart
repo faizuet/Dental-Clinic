@@ -50,6 +50,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   void initState() {
     super.initState();
     _search.text = widget.initialQuery ?? '';
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _load(silent: true, localOnly: true);
+      }
+    });
     _load();
     if (widget.openAdd) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -115,7 +120,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     return latest;
   }
 
-  Future<void> _load({bool silent = false, bool force = false}) async {
+  Future<void> _load({bool silent = false, bool force = false, bool localOnly = false}) async {
     if (!silent && _patients.isEmpty) {
       setState(() {
         _loading = true;
@@ -131,9 +136,12 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
           _patients = local;
           _lastVisit = visits;
           _loading = false;
-          _syncing = true;
+          _syncing = !localOnly;
           _loadError = null;
         });
+      }
+      if (localOnly) {
+        return;
       }
       await repo.refresh(force: force);
       final items = await repo.patients();

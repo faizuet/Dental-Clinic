@@ -94,6 +94,7 @@ class ClinicExpenseService:
             setattr(record, key, value)
         record.bump()
         await self.session.flush()
+        await self.session.refresh(record, attribute_names=["category"])
         return record
 
     async def delete_expense(self, user: User, expense_id: uuid.UUID, version: int) -> None:
@@ -119,7 +120,9 @@ class ClinicExpenseService:
             amount=payload.amount,
             notes=payload.notes,
         )
-        return await self.expenses.add(record)
+        saved = await self.expenses.add(record)
+        await self.session.refresh(saved, attribute_names=["category"])
+        return saved
 
     async def _require_active_category(self, user: User, category_id: uuid.UUID) -> ClinicExpenseCategory:
         category = await self.get_category(user, category_id)

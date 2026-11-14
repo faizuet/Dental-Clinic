@@ -82,6 +82,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _load(silent: true, network: false);
+      }
+    });
     _load();
   }
 

@@ -282,7 +282,7 @@ void main() {
     verify(() => db.upsert('lab_charges', any())).called(1);
   });
 
-  test('recent patients list latest treated first', () async {
+  test('recent patients lists the newest registration first', () async {
     when(() => db.list('patients')).thenAnswer(
       (_) async => [
         {'id': 'p-new', 'name': 'New Patient', 'created_at': '2026-11-13T10:00:00Z'},
@@ -309,10 +309,54 @@ void main() {
     );
 
     final recent = await repo.recentClinicPatients(limit: 6);
-    expect(recent.map((item) => item.patient.id).toList(), ['p-old', 'p-new']);
-    expect(recent.first.lastVisitDate, '2026-11-12');
-    expect(recent.first.lastTreatment, 'RCT');
-    expect(recent.last.lastVisitDate, isNull);
+    expect(recent.map((item) => item.patient.id).toList(), ['p-new', 'p-old']);
+    expect(recent.first.lastVisitDate, isNull);
+    expect(recent.last.lastVisitDate, '2026-11-12');
+    expect(recent.last.lastTreatment, 'RCT');
+  });
+
+  test('patients and treatment history use creation time, newest first', () async {
+    when(() => db.list('patients')).thenAnswer(
+      (_) async => [
+        {'id': 'morning', 'name': 'Morning Patient', 'created_at': '2026-11-14T09:00:00Z'},
+        {'id': 'later', 'name': 'Later Patient', 'created_at': '2026-11-14T10:00:00.000000+00:00'},
+      ],
+    );
+    when(() => db.list('treatment_transactions')).thenAnswer(
+      (_) async => [
+        {
+          'id': 'older-entry',
+          'treatment_id': 't1',
+          'catalog_name': 'Check Up / Consultation',
+          'transaction_date': '2026-11-14',
+          'amount': '1500.00',
+          'patient_id': 'later',
+          'patient_name': 'Later Patient',
+          'created_at': '2026-11-14T09:00:00Z',
+        },
+        {
+          'id': 'newer-entry',
+          'treatment_id': 't1',
+          'catalog_name': 'Check Up / Consultation',
+          'transaction_date': '2026-11-10',
+          'amount': '2000.00',
+          'patient_id': 'later',
+          'patient_name': 'Later Patient',
+          'created_at': '2026-11-14T10:00:00.000000+00:00',
+        },
+      ],
+    );
+
+    final patients = await repo.patients();
+    expect(patients.map((item) => item.id).toList(), ['later', 'morning']);
+
+    final history = await repo.incomeHistory();
+    expect(history.map((item) => item.id).toList(), ['newer-entry', 'older-entry']);
+
+    final visits = await repo.patientTreatments('later');
+    expect(visits.map((item) => item.id).toList(), ['newer-entry', 'older-entry']);
+    expect(visits.first.date, '2026-11-10');
+    expect(visits.last.amount, '1500.00');
   });
 
   test('a patient can be saved without a phone and updated later', () async {
@@ -356,5 +400,32 @@ void main() {
     expect(activity, hasLength(1));
     expect(activity.single.title, 'RCT for Amina Noor');
     expect(activity.single.amount, '8000.00');
+  });
+
+  test('clinic expense history keeps Materials instead of the Item placeholder', () async {
+    when(() => db.list('clinic_expenses')).thenAnswer(
+      (_) async => [
+        {
+          'id': 'e1',
+          'category_id': 'cat-materials',
+          'expense_date': '2026-11-14',
+          'amount': '2000.00',
+          'notes': 'Dental Materials',
+          'catalog_name': 'Item',
+        },
+      ],
+    );
+    when(() => db.list('clinic_expense_categories', includeDeleted: true)).thenAnswer(
+      (_) async => [
+        {'id': 'cat-materials', 'name': 'Materials'},
+      ],
+    );
+
+    final items = await repo.clinicExpenseHistory();
+
+    expect(items, hasLength(1));
+    expect(items.single.catalogName, 'Materials');
+    expect(items.single.notes, 'Dental Materials');
+    expect(items.single.amount, '2000.00');
   });
 }

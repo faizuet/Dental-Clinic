@@ -2,6 +2,7 @@ from datetime import date
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 
 from app.models import ClinicExpense, ClinicExpenseCategory
 from app.repositories.base import BaseRepository, apply_sort
@@ -71,7 +72,7 @@ class ClinicExpenseCategoryRepository(BaseRepository):
 
 class ClinicExpenseRepository(BaseRepository):
     def _base(self, clinic_id: UUID, *, include_deleted: bool = False):
-        stmt = select(ClinicExpense).where(ClinicExpense.clinic_id == clinic_id)
+        stmt = select(ClinicExpense).options(selectinload(ClinicExpense.category)).where(ClinicExpense.clinic_id == clinic_id)
         if not include_deleted:
             stmt = stmt.where(ClinicExpense.deleted_at.is_(None))
         return stmt

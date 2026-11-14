@@ -172,7 +172,7 @@ class PatientRepository(BaseRepository):
         if search and search.strip():
             pattern = f"%{search.strip()}%"
             stmt = stmt.where(or_(Patient.name.ilike(pattern), Patient.phone.ilike(pattern)))
-        stmt = apply_sort(stmt, Patient, sort, "name", {"name", "created_at", "updated_at"})
+        stmt = apply_sort(stmt, Patient, sort, "-created_at", {"name", "created_at", "updated_at"})
         items, total = await self.paginate(stmt, page=page, page_size=page_size)
         return list(items), total
 
@@ -279,7 +279,7 @@ class TreatmentTransactionRepository(BaseRepository):
             stmt,
             TreatmentTransaction,
             sort,
-            "-transaction_date",
+            "-created_at",
             {"transaction_date", "amount", "created_at", "quantity", "serial_no"},
         )
         items, total = await self.paginate(stmt, page=page, page_size=page_size)

@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.constants import SyncEntity, SyncItemStatus, SyncOperation
 from app.core.exceptions import AppError, ConflictError, VersionConflictError
@@ -351,6 +352,10 @@ class SyncService:
     ):
         model = MODELS[entity]
         stmt = select(model)
+        if entity == SyncEntity.CLINIC_EXPENSE:
+            stmt = stmt.options(selectinload(ClinicExpense.category))
+        elif entity == SyncEntity.HOME_EXPENSE:
+            stmt = stmt.options(selectinload(HomeExpense.category))
         if entity.value.startswith("home_"):
             stmt = stmt.where(model.user_id == user.id)
         else:
