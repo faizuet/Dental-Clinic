@@ -11,7 +11,23 @@ from app.services.backup_service import (
     DATABASE_DUMP_NAME,
     MANIFEST_NAME,
     BackupService,
+    _dump_tables,
 )
+
+
+def test_dump_tables_reads_pg_restore_listing():
+    listing = "\n".join(
+        [
+            ";",
+            "; Archive created at 2026-11-14 10:00:00 PKT",
+            "215; 1259 16390 TABLE public clinics postgres",
+            "216; 1259 16402 TABLE public clinic_expenses postgres",
+            "3401; 0 16390 TABLE DATA public clinics postgres",
+            "3402; 2606 16420 CONSTRAINT public clinics clinics_pkey postgres",
+            "3403; 1259 16430 INDEX public ix_users_clinic_id postgres",
+        ]
+    )
+    assert _dump_tables(listing) == {"clinics", "clinic_expenses"}
 
 
 def _write_zip(path: Path, *, kind: str = BACKUP_KIND, dump: bytes = b"DUMP", uploads: dict[str, bytes] | None = None) -> None:

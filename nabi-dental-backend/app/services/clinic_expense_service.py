@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import ErrorCode
+from app.core.constants import LAB_CHARGE_CATEGORY_NAMES, ErrorCode
 from app.core.exceptions import ConflictError, ValidationAppError
 from app.models import ClinicExpense, ClinicExpenseCategory, User
 from app.repositories.base import ensure_version, require_record
@@ -28,6 +28,7 @@ class ClinicExpenseService:
         )
 
     async def create_category(self, user: User, payload: ClinicExpenseCategoryCreate) -> ClinicExpenseCategory:
+        _reject_lab_category(payload.name)
         if await self.categories.name_taken(user.clinic_id, payload.name):
             raise ConflictError("A clinic expense category with this name already exists.")
         record = ClinicExpenseCategory(
@@ -46,6 +47,8 @@ class ClinicExpenseService:
     ) -> ClinicExpenseCategory:
         record = await self.get_category(user, category_id)
         ensure_version(record, payload.version)
+        if payload.name:
+            _reject_lab_category(payload.name)
         if payload.name and await self.categories.name_taken(user.clinic_id, payload.name, exclude_id=record.id):
             raise ConflictError("A clinic expense category with this name already exists.")
         data = payload.model_dump(exclude_unset=True, exclude={"version"})
@@ -126,3 +129,11 @@ class ClinicExpenseService:
                 details=[{"field": "category_id", "message": "Select an active category."}],
             )
         return category
+
+
+def _reject_lab_category(name: str) -> None:
+    if name.strip().lower() in LAB_CHARGE_CATEGORY_NAMES:
+        raise ValidationAppError(
+            "Lab charges have their own section. Add them under Lab charges instead of clinic expenses.",
+            details=[{"field": "name", "message": "Choose a different category name."}],
+        )

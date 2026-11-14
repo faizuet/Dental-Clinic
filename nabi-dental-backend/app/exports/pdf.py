@@ -42,6 +42,7 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
             [
                 ("Income", _money(report.total_income, report.currency), SUCCESS),
                 ("Clinic expenses", _money(report.total_expenses, report.currency), TEXT),
+                ("Lab charges", _money(report.total_lab_charges, report.currency), TEXT),
                 ("Profit / loss", _money(report.profit, report.currency), DANGER if report.profit < 0 else SUCCESS),
             ]
         ),
@@ -52,6 +53,7 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
                 ("Patients treated", str(report.patient_count)),
                 ("Treatments", str(report.income_count)),
                 ("Expense entries", str(report.expense_count)),
+                ("Lab charge entries", str(report.lab_charge_count)),
             ],
         ),
         *_named_section("Income by treatment", report.income_by_treatment, report.currency),
@@ -84,6 +86,23 @@ def render_clinic_pdf(report: ClinicReport, *, clinic_name: str) -> bytes:
             ],
             [72, 150, 170, 80],
             [3],
+        ),
+        *_line_section(
+            "Lab charges",
+            ["Date", "Patient", "Visit", "Lab", "Notes", "Amount"],
+            [
+                [
+                    format_display_date(item.entry_date),
+                    item.patient_name or "—",
+                    _visit_label(item),
+                    item.name,
+                    item.detail or "—",
+                    _money(item.amount, report.currency),
+                ]
+                for item in report.lab_charge_lines
+            ],
+            [60, 86, 90, 82, 84, 70],
+            [5],
         ),
         *_timeline_section(report.timeline, report.currency, include_income=True),
     ]
@@ -379,7 +398,7 @@ def _period_label(from_date, to_date) -> str:
 def _metric_cards(items: list[tuple[str, str, object]]) -> list:
     styles = _styles()
     cards = []
-    card_width = 154
+    card_width = 154 if len(items) <= 3 else int(486 / len(items)) - 8
     for label, value, color in items:
         value_style = ParagraphStyle(
             f"MetricValue{len(cards)}",
@@ -497,13 +516,26 @@ def _timeline_section(points, currency: str, *, include_income: bool) -> list:
                 format_display_date(item.period) if "-" in str(item.period) else item.period,
                 _money(item.income, currency) if item.income is not None else "—",
                 _money(item.expenses, currency) if item.expenses is not None else "—",
+                _money(item.lab_charges, currency) if item.lab_charges is not None else "—",
                 _money(item.profit, currency) if item.profit is not None else "—",
             ]
             for item in points
         ]
-        return _line_section("Period summary", ["Period", "Income", "Expenses", "Profit"], rows, [140, 110, 110, 112], [1, 2, 3])
+        return _line_section(
+            "Period summary",
+            ["Period", "Income", "Expenses", "Lab charges", "Profit"],
+            rows,
+            [112, 90, 90, 90, 90],
+            [1, 2, 3, 4],
+        )
     rows = [[format_display_date(item.period) if "-" in str(item.period) else item.period, _money(item.expenses, currency) if item.expenses is not None else "—"] for item in points]
     return _line_section("Monthly / period spending", ["Period", "Amount"], rows, [280, 192], [1])
+
+
+def _visit_label(item) -> str:
+    parts = [f"#{item.serial_no}" if item.serial_no else None, item.sub_treatment]
+    label = " ".join(part for part in parts if part)
+    return label or "—"
 
 
 def _pdf_text(value) -> str:

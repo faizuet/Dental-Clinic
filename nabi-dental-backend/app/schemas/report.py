@@ -26,9 +26,10 @@ class TimelinePoint(APIModel):
     period: str
     income: Decimal | None = None
     expenses: Decimal | None = None
+    lab_charges: Decimal | None = None
     profit: Decimal | None = None
 
-    @field_serializer("income", "expenses", "profit")
+    @field_serializer("income", "expenses", "lab_charges", "profit")
     def serialize_money(self, value: Decimal | None) -> str | None:
         if value is None:
             return None
@@ -56,17 +57,20 @@ class ClinicReport(APIModel):
     currency: str
     total_income: Decimal
     total_expenses: Decimal
+    total_lab_charges: Decimal
     profit: Decimal
     income_count: int = 0
     expense_count: int = 0
+    lab_charge_count: int = 0
     patient_count: int = 0
     income_by_treatment: list[NamedAmount]
     expenses_by_category: list[NamedAmount]
     income_lines: list[ReportLine] = []
     expense_lines: list[ReportLine] = []
+    lab_charge_lines: list[ReportLine] = []
     timeline: list[TimelinePoint]
 
-    @field_serializer("total_income", "total_expenses", "profit")
+    @field_serializer("total_income", "total_expenses", "total_lab_charges", "profit")
     def serialize_money(self, value: Decimal) -> str:
         return format_money(value)
 

@@ -14,9 +14,10 @@ class ClinicDashboard(APIModel):
     currency: str
     total_income: Decimal
     total_expenses: Decimal
+    total_lab_charges: Decimal
     profit: Decimal
 
-    @field_serializer("total_income", "total_expenses", "profit")
+    @field_serializer("total_income", "total_expenses", "total_lab_charges", "profit")
     def serialize_money(self, value: Decimal) -> str:
         return format_money(value)
 

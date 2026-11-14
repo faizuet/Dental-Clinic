@@ -41,6 +41,7 @@ class DashboardService:
         )
         income = await self.totals.treatment_income_total(user.clinic_id, start, end)
         expenses = await self.totals.clinic_expense_total(user.clinic_id, start, end)
+        lab_charges = await self.totals.lab_charge_total(user.clinic_id, start, end)
         return ClinicDashboard(
             period=period,
             from_date=start,
@@ -48,7 +49,8 @@ class DashboardService:
             currency=user.clinic.currency,
             total_income=income,
             total_expenses=expenses,
-            profit=parse_money(income - expenses),
+            total_lab_charges=lab_charges,
+            profit=parse_money(income - expenses - lab_charges),
         )
 
     async def home(

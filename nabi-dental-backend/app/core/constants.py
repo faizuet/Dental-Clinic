@@ -47,6 +47,7 @@ class SyncEntity(StrEnum):
     PATIENT = "patient"
     CLINIC_EXPENSE_CATEGORY = "clinic_expense_category"
     CLINIC_EXPENSE = "clinic_expense"
+    LAB_CHARGE = "lab_charge"
     HOME_EXPENSE_CATEGORY = "home_expense_category"
     HOME_EXPENSE = "home_expense"
     HOME_BUDGET = "home_budget"
@@ -88,7 +89,6 @@ SEED_TREATMENTS: dict[str, list[str]] = {
 }
 
 SEED_CLINIC_EXPENSE_CATEGORIES = [
-    "Lab Charges",
     "Materials",
     "Equipment",
     "Salaries",
@@ -96,6 +96,10 @@ SEED_CLINIC_EXPENSE_CATEGORIES = [
     "Utilities",
     "Other",
 ]
+
+# Lab charges live in their own table; these names are reserved so they are never
+# counted as clinic expenses again. Keep in sync with migration 0006.
+LAB_CHARGE_CATEGORY_NAMES = frozenset({"lab charges", "lab charge", "lab"})
 
 SEED_HOME_EXPENSE_CATEGORIES = [
     "Fresh Vegetables",

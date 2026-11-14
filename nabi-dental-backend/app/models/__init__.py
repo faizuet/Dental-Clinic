@@ -4,6 +4,7 @@ from app.models.clinic_expense_category import ClinicExpenseCategory
 from app.models.home_budget import HomeBudget
 from app.models.home_expense import HomeExpense
 from app.models.home_expense_category import HomeExpenseCategory
+from app.models.lab_charge import LabCharge
 from app.models.patient import Patient
 from app.models.refresh_token import RefreshToken
 from app.models.sync_change import SyncChange
@@ -24,6 +25,7 @@ __all__ = [
     "TreatmentAttachment",
     "ClinicExpenseCategory",
     "ClinicExpense",
+    "LabCharge",
     "HomeExpenseCategory",
     "HomeExpense",
     "HomeBudget",

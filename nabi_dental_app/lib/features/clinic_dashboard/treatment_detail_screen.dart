@@ -126,6 +126,16 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
             icon: const Icon(Icons.edit_outlined),
           ),
           IconButton(
+            tooltip: 'Add lab charge',
+            onPressed: entry == null
+                ? null
+                : () => appPush(
+                      context,
+                      '/clinic/lab-charges/new?transactionId=${Uri.encodeQueryComponent(widget.id)}',
+                    ),
+            icon: const Icon(Icons.science_outlined),
+          ),
+          IconButton(
             tooltip: 'Export PDF',
             onPressed: entry == null || _exporting ? null : _export,
             icon: const Icon(Icons.picture_as_pdf_outlined),

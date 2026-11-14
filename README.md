@@ -12,7 +12,7 @@ The clinic owner signs in once, then switches between **Clinic** and **Home** in
 
 | Domain | What it manages |
 | ------ | --------------- |
-| **Clinic** | Patients, treatments, visit history, X-rays, clinic expenses, income / profit reports |
+| **Clinic** | Patients, treatments, visit history, X-rays, clinic expenses, lab charges, income / profit reports |
 | **Home** | Grocery expenses, monthly budget, remaining amount, household reports |
 
 It does **not** include appointments, staff rosters, multiple clinics, Construction, or cloud deployment.
@@ -25,8 +25,9 @@ It does **not** include appointments, staff rosters, multiple clinics, Construct
 - Official treatment catalog (15 treatments), with extra clinical fields only when that treatment needs them
 - Visit history that never overwrites an earlier visit
 - Treatment fee, notes, serial number, and up to eight X-ray images per visit
-- Clinic expenses by category (Lab Charges, Materials, Equipment, Salaries, Rent, Utilities, Other)
-- Dashboard totals for income, expenses, and profit
+- Clinic expenses by category (Materials, Equipment, Salaries, Rent, Utilities, Other)
+- Lab charges as their own section, optionally linked to a patient and one of their visits
+- Dashboard totals for income, clinic expenses, lab charges, and profit
 - Inclusive date-range reports with PDF and Excel export
 - Individual visit PDF, including X-rays when files are present
 
@@ -43,6 +44,12 @@ Patient (name + phone)
 ```
 
 Income totals use the stored fee. Quantity is not multiplied into clinic income.
+
+**Lab charges**
+
+Lab charges are kept apart from clinic expenses, so neither total includes the other. Each entry has a date, amount, optional lab name and notes, and an optional patient and visit. Profit is income minus clinic expenses minus lab charges. Add one from the dashboard, the **Lab charges** menu, or a treatment's detail screen.
+
+Older data that used a "Lab Charges" expense category is moved into lab charges automatically by migration `0006_lab_charges` the first time the API starts after the update. Entries keep their IDs and history and are not counted twice. Take a backup before upgrading.
 
 **Official treatments:** Check Up / Consultation, Simple Extraction, Surgical Extraction, Root Canal Treatment (RCT), Obturation (RCT), Temporary Filling, Permanent Filling, Composite Filling, Scaling, Porcelain Bridge, Zirconia Crown, Braces Fresh, Braces Visits, Braces Retainer, Dental Gems.
 
@@ -134,7 +141,8 @@ Clinic
   ├── Users
   ├── Patients
   ├── Treatment categories → Treatments → Visits → X-ray files
-  └── Clinic expense categories → Clinic expenses
+  ├── Clinic expense categories → Clinic expenses
+  └── Lab charges (optional patient + visit)
 
 User
   ├── Home grocery categories → Home expenses
@@ -183,7 +191,7 @@ Clinic records live in the Docker Postgres volume. X-rays and the profile photo 
 2. Choose a folder, preferably a USB drive
 3. Keep that zip off the clinic laptop
 
-**Settings → Restore from backup** replaces patients, treatments, fees, expenses, and X-rays on this computer. Sync waiting changes first. Sign in again after restore.
+**Settings → Restore from backup** replaces patients, treatments, fees, expenses, lab charges, and X-rays on this computer. Sync waiting changes first. Sign in again after restore.
 
 PowerShell fallback:
 
@@ -193,7 +201,7 @@ cd nabi-dental-backend
 .\scripts\restore.ps1 -ZipPath E:\ClinicBackups\nabi-dental-backup-2026-11-13-0900.zip
 ```
 
-The restore script asks you to type `RESTORE`. The zip contains `manifest.json`, a Postgres dump, and the `uploads` folder. It does not include `.env` or passwords in plain text.
+Restoring an older backup brings its database up to the current version automatically. The restore script asks you to type `RESTORE`. The zip contains `manifest.json`, a Postgres dump, and the `uploads` folder. It does not include `.env` or passwords in plain text.
 
 ---
 
@@ -203,7 +211,7 @@ Reports use inclusive `from_date` / `to_date`. The app sends today, the current 
 
 | Report | Contents |
 | ------ | -------- |
-| Clinic PDF / Excel | Treatment rows, clinic expenses, income / expense / profit totals |
+| Clinic PDF / Excel | Treatment rows, clinic expenses, lab charges, income / expense / lab / profit totals |
 | Home PDF / Excel | Grocery spend by category, budget, remaining |
 | Visit PDF | One treatment, with X-rays when files are present |
 
@@ -225,6 +233,7 @@ Base path `/api/v1`. Health: `GET /health`. Database: `GET /ready`.
 | `/treatment-categories`, `/treatments` | Clinic treatment catalog |
 | `/treatment-transactions` | Visits, X-ray upload, visit PDF |
 | `/clinic-expense-categories`, `/clinic-expenses` | Clinic spending |
+| `/lab-charges` | Lab charges, separate from clinic expenses |
 | `/home-expense-categories`, `/home-expenses`, `/home-budgets` | Home grocery spending |
 | `/dashboard` | Clinic and home period totals |
 | `/reports` | JSON plus `/export?format=pdf\|xlsx` for clinic and home |

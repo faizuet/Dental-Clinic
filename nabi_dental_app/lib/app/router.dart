@@ -8,6 +8,7 @@ import '../features/authentication/splash_screen.dart';
 import '../features/clinic_dashboard/clinic_dashboard_screen.dart';
 import '../features/clinic_dashboard/expense_entry_screen.dart';
 import '../features/clinic_dashboard/history_screen.dart';
+import '../features/clinic_dashboard/lab_charge_form_screen.dart';
 import '../features/clinic_dashboard/patient_record_screen.dart';
 import '../features/clinic_dashboard/patients_screen.dart';
 import '../features/clinic_dashboard/reports_screen.dart';
@@ -151,6 +152,33 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               appRoute('/home/reports', () => const HomeReportsScreen()),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/clinic/lab-charges',
+                pageBuilder: (context, state) => buildAppPage(state, const LabChargeHistoryScreen()),
+                routes: [
+                  GoRoute(
+                    path: 'new',
+                    pageBuilder: (context, state) => buildAppPage(
+                      state,
+                      LabChargeFormScreen(
+                        patientId: state.uri.queryParameters['patientId'],
+                        transactionId: state.uri.queryParameters['transactionId'],
+                      ),
+                    ),
+                  ),
+                  GoRoute(
+                    path: ':id/edit',
+                    pageBuilder: (context, state) => buildAppPage(
+                      state,
+                      LabChargeFormScreen(chargeId: state.pathParameters['id']!),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ],

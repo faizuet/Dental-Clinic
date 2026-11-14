@@ -11,9 +11,9 @@ async def _rct_id(client, headers) -> str:
     return next(item["id"] for item in treatments if item["name"] == "Root Canal Treatment (RCT)")
 
 
-async def _lab_id(client, headers) -> str:
+async def _materials_id(client, headers) -> str:
     categories = (await client.get("/api/v1/clinic-expense-categories", headers=headers)).json()["items"]
-    return next(item["id"] for item in categories if item["name"] == "Lab Charges")
+    return next(item["id"] for item in categories if item["name"] == "Materials")
 
 
 @pytest.mark.asyncio
@@ -21,7 +21,7 @@ async def test_batch_transactions_and_clinic_dashboard(client):
     tokens = await login(client)
     headers = auth_header(tokens)
     treatment_id = await _rct_id(client, headers)
-    category_id = await _lab_id(client, headers)
+    category_id = await _materials_id(client, headers)
     first_id = str(uuid.uuid4())
     second_id = str(uuid.uuid4())
     batch = await client.post(
@@ -69,7 +69,7 @@ async def test_negative_profit_and_soft_delete(client):
     tokens = await login(client)
     headers = auth_header(tokens)
     treatment_id = await _rct_id(client, headers)
-    category_id = await _lab_id(client, headers)
+    category_id = await _materials_id(client, headers)
     await client.post(
         "/api/v1/treatment-transactions",
         headers=headers,

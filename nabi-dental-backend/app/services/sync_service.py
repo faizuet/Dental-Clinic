@@ -15,6 +15,7 @@ from app.models import (
     HomeBudget,
     HomeExpense,
     HomeExpenseCategory,
+    LabCharge,
     Patient,
     Treatment,
     TreatmentCategory,
@@ -37,6 +38,7 @@ from app.schemas.home_expense_category import (
     HomeExpenseCategoryRead,
     HomeExpenseCategoryUpdate,
 )
+from app.schemas.lab_charge import LabChargeCreate, LabChargeRead, LabChargeUpdate
 from app.schemas.sync import SyncChangeIn, SyncPushRequest, SyncPushResponse, SyncPushResult
 from app.schemas.treatment import TreatmentCreate, TreatmentRead, TreatmentUpdate
 from app.schemas.treatment_category import TreatmentCategoryCreate, TreatmentCategoryRead, TreatmentCategoryUpdate
@@ -49,6 +51,7 @@ from app.schemas.treatment_transaction import (
 from app.services.treatment_service import serialize_transaction
 from app.services.clinic_expense_service import ClinicExpenseService
 from app.services.home_expense_service import HomeExpenseService
+from app.services.lab_charge_service import LabChargeService
 from app.services.treatment_service import TreatmentService
 from app.utils.dates import serialize_datetime
 
@@ -59,6 +62,7 @@ ENTITY_KEYS = {
     SyncEntity.PATIENT: "patients",
     SyncEntity.CLINIC_EXPENSE_CATEGORY: "clinic_expense_categories",
     SyncEntity.CLINIC_EXPENSE: "clinic_expenses",
+    SyncEntity.LAB_CHARGE: "lab_charges",
     SyncEntity.HOME_EXPENSE_CATEGORY: "home_expense_categories",
     SyncEntity.HOME_EXPENSE: "home_expenses",
     SyncEntity.HOME_BUDGET: "home_budgets",
@@ -71,6 +75,7 @@ READERS = {
     SyncEntity.PATIENT: PatientRead,
     SyncEntity.CLINIC_EXPENSE_CATEGORY: ClinicExpenseCategoryRead,
     SyncEntity.CLINIC_EXPENSE: ClinicExpenseRead,
+    SyncEntity.LAB_CHARGE: LabChargeRead,
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategoryRead,
     SyncEntity.HOME_EXPENSE: HomeExpenseRead,
     SyncEntity.HOME_BUDGET: HomeBudgetRead,
@@ -83,6 +88,7 @@ MODELS = {
     SyncEntity.PATIENT: Patient,
     SyncEntity.CLINIC_EXPENSE_CATEGORY: ClinicExpenseCategory,
     SyncEntity.CLINIC_EXPENSE: ClinicExpense,
+    SyncEntity.LAB_CHARGE: LabCharge,
     SyncEntity.HOME_EXPENSE_CATEGORY: HomeExpenseCategory,
     SyncEntity.HOME_EXPENSE: HomeExpense,
     SyncEntity.HOME_BUDGET: HomeBudget,
@@ -95,6 +101,7 @@ class SyncService:
         self.changes = SyncChangeRepository(session)
         self.treatments = TreatmentService(session)
         self.clinic_expenses = ClinicExpenseService(session)
+        self.lab_charges = LabChargeService(session)
         self.home = HomeExpenseService(session)
 
     async def push(self, user: User, payload: SyncPushRequest) -> SyncPushResponse:
@@ -224,6 +231,8 @@ class SyncService:
             return await self._mut_clinic_category(user, change, data)
         if entity == SyncEntity.CLINIC_EXPENSE:
             return await self._mut_clinic_expense(user, change, data)
+        if entity == SyncEntity.LAB_CHARGE:
+            return await self._mut_lab_charge(user, change, data)
         if entity == SyncEntity.HOME_EXPENSE_CATEGORY:
             return await self._mut_home_category(user, change, data)
         if entity == SyncEntity.HOME_EXPENSE:
@@ -293,6 +302,15 @@ class SyncService:
                 user, change.entity_id, ClinicExpenseUpdate.model_validate(data)
             )
         return await self.clinic_expenses.delete_expense(user, change.entity_id, change.base_version or 1)
+
+    async def _mut_lab_charge(self, user, change, data):
+        if change.operation == SyncOperation.CREATE:
+            payload = LabChargeCreate.model_validate(data)
+            payload.id = change.entity_id
+            return await self.lab_charges.create_charge(user, payload)
+        if change.operation == SyncOperation.UPDATE:
+            return await self.lab_charges.update_charge(user, change.entity_id, LabChargeUpdate.model_validate(data))
+        return await self.lab_charges.delete_charge(user, change.entity_id, change.base_version or 1)
 
     async def _mut_home_category(self, user, change, data):
         if change.operation == SyncOperation.CREATE:

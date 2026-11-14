@@ -38,7 +38,7 @@ async def reset_data():
                 "TRUNCATE TABLE "
                 "sync_changes, "
                 "home_budgets, home_expenses, home_expense_categories, "
-                "clinic_expenses, clinic_expense_categories, treatment_attachments, treatment_transactions, patients, "
+                "lab_charges, clinic_expenses, clinic_expense_categories, treatment_attachments, treatment_transactions, patients, "
                 "treatments, treatment_categories, refresh_tokens, users, clinics "
                 "RESTART IDENTITY CASCADE"
             )

@@ -33,14 +33,13 @@ try {
         throw "This zip is not a Nabi Dental clinic backup."
     }
 
-    docker compose cp $dumpPath db:/tmp/nabi.dump
-    docker compose exec -T db pg_restore --clean --if-exists --no-owner --no-acl --single-transaction --exit-on-error -U postgres -d nabi_dental /tmp/nabi.dump
-    docker compose exec -T db rm -f /tmp/nabi.dump
-
-    $uploads = Join-Path $work "uploads"
-    if (Test-Path $uploads) {
-        docker compose exec -T app sh -c "rm -rf /app/uploads/avatars /app/uploads/xrays && mkdir -p /app/uploads/avatars /app/uploads/xrays"
-        docker compose cp (Join-Path $uploads ".") app:/app/uploads/
+    # Same restore as Settings in the app: database, X-rays, and schema upgrade for older backups.
+    docker compose cp (Resolve-Path $ZipPath) app:/tmp/nabi-restore.zip
+    docker compose exec -T app python -m app.services.backup_service /tmp/nabi-restore.zip
+    $restoreExit = $LASTEXITCODE
+    docker compose exec -T app rm -f /tmp/nabi-restore.zip
+    if ($restoreExit -ne 0) {
+        throw "Restore failed. Keep Docker running and try again."
     }
     Write-Host "Restore finished. Open the desktop app and sign in if asked."
 }
