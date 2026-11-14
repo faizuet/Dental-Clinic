@@ -88,6 +88,7 @@ void main() {
     expect(find.text('2 changes waiting to sync'), findsOneWidget);
     expect(find.text('Change PIN'), findsNothing);
     expect(find.text('Unlock with biometrics'), findsNothing);
+    await tester.scrollUntilVisible(find.text('Change password'), 200);
     expect(find.text('Change password'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Sign out this device'), 200);
     expect(find.text('Sign out this device'), findsOneWidget);

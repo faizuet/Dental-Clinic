@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme/app_colors.dart';
 import '../utils/period.dart';
+import 'page_kit.dart';
 
 class PeriodSelector extends StatelessWidget {
   const PeriodSelector({
@@ -15,23 +15,10 @@ class PeriodSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final period in FinancePeriod.values)
-          ChoiceChip(
-            label: Text(_label(period)),
-            selected: value == period,
-            showCheckmark: false,
-            selectedColor: AppColors.purpleSoft,
-            labelStyle: TextStyle(
-              color: value == period ? AppColors.purple : AppColors.text,
-              fontWeight: FontWeight.w600,
-            ),
-            onSelected: (_) => onChanged(period),
-          ),
-      ],
+    return SegmentPills<FinancePeriod>(
+      options: [for (final period in FinancePeriod.values) (value: period, label: _label(period))],
+      value: value,
+      onChanged: onChanged,
     );
   }
 

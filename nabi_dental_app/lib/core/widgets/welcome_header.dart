@@ -17,21 +17,23 @@ class WelcomeHeader extends StatelessWidget {
   final IconData icon;
   final Widget? trailing;
 
-  String get _greeting {
+  ({String text, IconData icon, Color color}) get _greeting {
     final hour = DateTime.now().hour;
     if (hour < 12) {
-      return 'Good morning';
+      return (text: 'Good Morning', icon: Icons.wb_sunny_rounded, color: AppColors.warning);
     }
     if (hour < 17) {
-      return 'Good afternoon';
+      return (text: 'Good Afternoon', icon: Icons.wb_sunny_outlined, color: AppColors.warning);
     }
-    return 'Good evening';
+    return (text: 'Good Evening', icon: Icons.nights_stay_rounded, color: AppColors.violet);
   }
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 560;
+    final art = MediaQuery.sizeOf(context).width >= 1000;
     final dateLabel = DateFormat('EEE, d MMM').format(DateTime.now());
+    final greeting = _greeting;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadii.xl),
@@ -60,49 +62,49 @@ class WelcomeHeader extends StatelessWidget {
             Positioned(
               right: -36,
               top: -42,
-              child: _blob(140, AppColors.primary.withValues(alpha: 0.10)),
-            ),
-            Positioned(
-              right: 56,
-              bottom: -48,
-              child: _blob(110, AppColors.secondary.withValues(alpha: 0.14)),
+              child: _blob(160, AppColors.primary.withValues(alpha: 0.08)),
             ),
             Positioned(
               left: 88,
               top: -28,
-              child: _blob(72, AppColors.primary.withValues(alpha: 0.06)),
+              child: _blob(72, AppColors.primary.withValues(alpha: 0.05)),
             ),
-            Positioned(
-              left: 0,
-              top: 18,
-              bottom: 18,
-              child: Container(
-                width: 5,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(AppRadii.full),
-                ),
+            if (art)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 360,
+                child: IgnorePointer(child: _clinicArt()),
               ),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 20, 18, 20),
+              padding: const EdgeInsets.fromLTRB(22, 22, 18, 22),
               child: Row(
                 children: [
                   _iconBadge(),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 18),
+                  Container(width: 1, height: 64, color: AppColors.primary.withValues(alpha: 0.18)),
+                  const SizedBox(width: 18),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _greeting.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                greeting.text,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
+                            ),
+                            const SizedBox(width: 6),
+                            Icon(greeting.icon, size: 18, color: greeting.color),
+                          ],
                         ),
                         const SizedBox(height: 4),
                         Text(
@@ -111,7 +113,8 @@ class WelcomeHeader extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 color: AppColors.text,
-                                fontSize: 22,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w800,
                               ),
                         ),
                         const SizedBox(height: 4),
@@ -146,15 +149,56 @@ class WelcomeHeader extends StatelessWidget {
 
   Widget _iconBadge() {
     return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.border),
+      width: 72,
+      height: 72,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.secondary, AppColors.primaryDark],
+        ),
         boxShadow: AppShadows.soft,
       ),
-      child: Icon(icon, color: AppColors.primary, size: 26),
+      child: Icon(icon, color: Colors.white, size: 34),
+    );
+  }
+
+  Widget _clinicArt() {
+    return ShaderMask(
+      shaderCallback: (bounds) => const LinearGradient(
+        colors: [Colors.transparent, Colors.white],
+        stops: [0.0, 0.35],
+      ).createShader(bounds),
+      blendMode: BlendMode.dstIn,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.primary.withValues(alpha: 0.10), AppColors.primary.withValues(alpha: 0.22)],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: 150,
+              bottom: -6,
+              child: Icon(Icons.airline_seat_recline_extra_rounded, size: 120, color: AppColors.primary.withValues(alpha: 0.30)),
+            ),
+            Positioned(
+              right: 96,
+              top: 6,
+              child: Icon(Icons.light_rounded, size: 56, color: AppColors.primary.withValues(alpha: 0.26)),
+            ),
+            Positioned(
+              right: 30,
+              bottom: 18,
+              child: Icon(Icons.medical_services_rounded, size: 52, color: AppColors.primary.withValues(alpha: 0.22)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

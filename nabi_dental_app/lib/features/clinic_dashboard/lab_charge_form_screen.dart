@@ -8,6 +8,7 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -195,14 +196,19 @@ class _LabChargeFormScreenState extends ConsumerState<LabChargeFormScreen> {
         : _patients
             .where((item) => item.name.toLowerCase().contains(needle) || (item.phone ?? '').contains(needle))
             .toList();
-    return Card(
+    return TablePanel(
+      header: const PanelTitle(
+        title: 'Patient and visit (optional)',
+        subtitle: 'Link the charge to a patient and treatment visit',
+        icon: Icons.person_search_rounded,
+        color: AppColors.violet,
+        soft: AppColors.violetSoft,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Patient and visit (optional)', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
             if (_patient != null)
               Chip(
                 label: Text(
@@ -297,6 +303,14 @@ class _LabChargeFormScreenState extends ConsumerState<LabChargeFormScreen> {
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
                   children: [
+                    PageHeader(
+                      icon: Icons.science_rounded,
+                      title: _editing ? 'Edit Lab Charge' : 'Add Lab Charge',
+                      subtitle: 'Lab work costs are kept separate from clinic expenses',
+                      color: AppColors.violet,
+                      soft: AppColors.violetSoft,
+                    ),
+                    const SizedBox(height: 20),
                     DatePickerTile(
                       label: 'Date',
                       value: formatDisplayDate(_date),
@@ -317,9 +331,16 @@ class _LabChargeFormScreenState extends ConsumerState<LabChargeFormScreen> {
                     ),
                     if (_error != null) ErrorBanner(message: _error!),
                     const SizedBox(height: 8),
-                    Card(
+                    TablePanel(
+                      header: const PanelTitle(
+                        title: 'Charge details',
+                        subtitle: 'Amount, lab, and notes',
+                        icon: Icons.receipt_rounded,
+                        color: AppColors.violet,
+                        soft: AppColors.violetSoft,
+                      ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         child: Column(
                           children: [
                             TextField(
@@ -358,7 +379,7 @@ class _LabChargeFormScreenState extends ConsumerState<LabChargeFormScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 16),
                     _patientCard(),
                     const SizedBox(height: 12),
                     Stretch(

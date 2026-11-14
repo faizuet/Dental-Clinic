@@ -9,11 +9,11 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/media/clinic_image_picker.dart';
 import '../../core/profile/avatar_validation.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
-import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
 import 'profile_avatar.dart';
 
@@ -272,7 +272,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ErrorBanner(message: _message!),
                 const SizedBox(height: 16),
               ],
-              Card(
+              const PageHeader(
+                icon: Icons.account_circle_rounded,
+                title: 'Profile',
+                subtitle: 'Your photo, name, and clinic details',
+              ),
+              const SizedBox(height: 20),
+              TablePanel(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
                   child: Column(
@@ -305,10 +311,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
               ),
-              const SectionHeader('Account'),
-              Card(
+              const SizedBox(height: 20),
+              AppSplit(
+                breakpoint: 900,
+                primaryFlex: 1,
+                secondaryFlex: 1,
+                primary: TablePanel(
+                header: const PanelTitle(title: 'Account', subtitle: 'How your name appears in the app', icon: Icons.person_rounded),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: Column(
                     children: [
                       TextField(
@@ -345,10 +356,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
               ),
-              const SectionHeader('Clinic'),
-              Card(
+                secondary: TablePanel(
+                header: const PanelTitle(
+                  title: 'Clinic',
+                  subtitle: 'Shown on reports and exports',
+                  icon: Icons.local_hospital_rounded,
+                  color: AppColors.aqua,
+                  soft: AppColors.aquaSoft,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: Column(
                     children: [
                       TextField(
@@ -374,7 +391,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              ),
+              const SizedBox(height: 20),
               Stretch(
                 child: AppBusyButton(
                   busy: _busy,

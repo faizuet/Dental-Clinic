@@ -33,6 +33,12 @@ class AppColors {
   static const Color mintSoft = Color(0xFFE6F5EC);
   static const Color violet = Color(0xFF7B61C9);
   static const Color violetSoft = Color(0xFFF2EEFC);
+  static const Color aqua = Color(0xFF169C86);
+  static const Color aquaSoft = Color(0xFFE2F5F1);
+  static const Color orange = Color(0xFFF2994A);
+  static const Color navy = Color(0xFF0E2547);
+  static const Color navyDeep = Color(0xFF0A1C38);
+  static const Color tableHeader = Color(0xFFEEF4FD);
 }
 
 class AppSpacing {

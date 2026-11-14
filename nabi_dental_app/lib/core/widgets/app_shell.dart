@@ -239,13 +239,19 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
       child: AppShellController(
         hasSidebar: showSidebar,
         openDrawer: showSidebar ? null : () => _scaffoldKey.currentState?.openDrawer(),
+        tools: _TopBarTools(
+          name: name,
+          showSearch: !_homeActive,
+          onSearch: (query) => context.go('/clinic/patients?q=${Uri.encodeQueryComponent(query)}'),
+          onProfile: () => context.go('/settings/profile'),
+        ),
         child: Scaffold(
           key: _scaffoldKey,
           backgroundColor: AppColors.background,
           drawer: showSidebar
               ? null
               : Drawer(
-                  backgroundColor: AppColors.sidebar,
+                  backgroundColor: AppColors.navy,
                   child: SafeArea(
                     child: _Sidebar(
                       extended: true,
@@ -278,7 +284,6 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
                   onSelect: _open,
                   onProfile: () => context.go('/settings/profile'),
                 ),
-                const VerticalDivider(width: 1, color: AppColors.border),
               ],
               Expanded(child: widget.child),
             ],
@@ -287,6 +292,113 @@ class _ClinicAppShellState extends ConsumerState<ClinicAppShell> {
       ),
     );
   }
+}
+
+class _TopBarTools extends StatefulWidget {
+  const _TopBarTools({required this.name, required this.showSearch, required this.onSearch, required this.onProfile});
+
+  final String name;
+  final bool showSearch;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onProfile;
+
+  @override
+  State<_TopBarTools> createState() => _TopBarToolsState();
+}
+
+class _TopBarToolsState extends State<_TopBarTools> {
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _submit(String value) {
+    widget.onSearch(value.trim());
+    _search.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 1180;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.showSearch && wide)
+          SizedBox(
+            width: 300,
+            height: 44,
+            child: TextField(
+              controller: _search,
+              textInputAction: TextInputAction.search,
+              onSubmitted: _submit,
+              decoration: InputDecoration(
+                hintText: 'Search patients by name, phone...',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+                fillColor: AppColors.card,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.full),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.full),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadii.full),
+                  borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(width: 12),
+        Tooltip(
+          message: 'Open profile',
+          child: Material(
+            color: AppColors.card,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadii.full),
+              side: const BorderSide(color: AppColors.border),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadii.full),
+              onTap: widget.onProfile,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 12, 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SessionAvatar(size: 34, onTap: widget.onProfile),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 160),
+                      child: Text(
+                        widget.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    const Icon(Icons.expand_more_rounded, size: 18, color: AppColors.muted),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SidebarColors {
+  static const text = Color(0xFFDCE6F5);
+  static const muted = Color(0xFF9AACC8);
+  static const line = Color(0x1FFFFFFF);
 }
 
 class _Sidebar extends StatelessWidget {
@@ -316,7 +428,13 @@ class _Sidebar extends StatelessWidget {
     return AnimatedContainer(
       duration: AppMotion.fast,
       width: extended ? 248 : 84,
-      color: AppColors.sidebar,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.navy, AppColors.navyDeep],
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -335,13 +453,13 @@ class _Sidebar extends StatelessWidget {
                               'Nabi Dental',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall,
+                              style: theme.textTheme.titleSmall?.copyWith(color: Colors.white, fontWeight: FontWeight.w800),
                             ),
                             Text(
                               homeActive ? 'Home grocery' : clinic,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                              style: theme.textTheme.bodySmall?.copyWith(color: _SidebarColors.muted),
                             ),
                           ],
                         ),
@@ -374,7 +492,7 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          const Divider(height: 1, color: AppColors.border),
+          const Divider(height: 1, color: _SidebarColors.line),
           Padding(
             padding: EdgeInsets.fromLTRB(extended ? 8 : 8, 8, extended ? 8 : 8, 12),
             child: Tooltip(
@@ -397,7 +515,7 @@ class _Sidebar extends StatelessWidget {
                                   userName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.titleSmall,
+                                  style: theme.textTheme.titleSmall?.copyWith(color: Colors.white),
                                 ),
                               ),
                             ],
@@ -429,15 +547,15 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? AppColors.primary : AppColors.muted;
+    final color = selected ? Colors.white : _SidebarColors.muted;
     final tile = Material(
-      color: selected ? AppColors.card : Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadii.sm),
-        side: selected ? const BorderSide(color: AppColors.border) : BorderSide.none,
-      ),
+      color: selected ? AppColors.primary : Colors.transparent,
+      elevation: selected ? 3 : 0,
+      shadowColor: AppColors.primary.withValues(alpha: 0.5),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.sm)),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.sm),
+        hoverColor: Colors.white.withValues(alpha: 0.06),
         onTap: onTap,
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: extended ? 12 : 0, vertical: 12),
@@ -452,7 +570,7 @@ class _NavTile extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: selected ? AppColors.primary : AppColors.text,
+                          color: selected ? Colors.white : _SidebarColors.text,
                           fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                         ),
                       ),
@@ -518,10 +636,10 @@ class _DomainSwitcher extends StatelessWidget {
 
   Widget _chip({required String label, required bool selected, required VoidCallback onTap}) {
     return Material(
-      color: selected ? AppColors.card : Colors.transparent,
+      color: selected ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadii.sm),
-        side: BorderSide(color: selected ? AppColors.primary : AppColors.border),
+        side: BorderSide(color: selected ? AppColors.secondary : _SidebarColors.line),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -532,7 +650,7 @@ class _DomainSwitcher extends StatelessWidget {
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? AppColors.primary : AppColors.muted,
+              color: selected ? Colors.white : _SidebarColors.muted,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -550,17 +668,17 @@ class _DomainSwitcher extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: selected ? AppColors.card : Colors.transparent,
+        color: selected ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadii.sm),
-          side: selected ? const BorderSide(color: AppColors.border) : BorderSide.none,
+          side: selected ? const BorderSide(color: AppColors.secondary) : BorderSide.none,
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(AppRadii.sm),
           onTap: onTap,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Icon(icon, color: selected ? AppColors.primary : AppColors.muted, size: 22),
+            child: Icon(icon, color: selected ? Colors.white : _SidebarColors.muted, size: 22),
           ),
         ),
       ),

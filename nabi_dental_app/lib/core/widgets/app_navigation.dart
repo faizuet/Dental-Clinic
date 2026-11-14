@@ -11,10 +11,12 @@ class AppShellController extends InheritedWidget {
     required this.hasSidebar,
     required this.openDrawer,
     required super.child,
+    this.tools,
   });
 
   final bool hasSidebar;
   final VoidCallback? openDrawer;
+  final Widget? tools;
 
   static AppShellController? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<AppShellController>();
@@ -22,7 +24,7 @@ class AppShellController extends InheritedWidget {
 
   @override
   bool updateShouldNotify(AppShellController oldWidget) {
-    return hasSidebar != oldWidget.hasSidebar || openDrawer != oldWidget.openDrawer;
+    return hasSidebar != oldWidget.hasSidebar || openDrawer != oldWidget.openDrawer || tools != oldWidget.tools;
   }
 }
 
@@ -90,11 +92,21 @@ AppBar buildAppBar({
   } else {
     leading = AppBackButton(fallback: fallback);
   }
+  final tools = shell != null && shell.hasSidebar ? shell.tools : null;
   return AppBar(
     automaticallyImplyLeading: imply,
     leading: leading,
+    toolbarHeight: tools == null ? kToolbarHeight : 68,
+    titleSpacing: leading == null && !imply ? AppLayout.horizontalPadding(context) : 0,
     title: AppBarTitle(title),
-    actions: actions,
+    actions: [
+      ...?actions,
+      if (tools != null) ...[
+        const SizedBox(width: 8),
+        tools,
+      ],
+      const SizedBox(width: 12),
+    ],
     bottom: bottom,
   );
 }
@@ -198,8 +210,15 @@ void showAppSnack(BuildContext context, String message, {bool error = false}) {
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(message),
-        backgroundColor: error ? AppColors.danger : AppColors.text,
+        content: Row(
+          children: [
+            Icon(error ? Icons.error_outline_rounded : Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: error ? AppColors.danger : AppColors.navy,
+        width: MediaQuery.sizeOf(context).width >= 840 ? 460 : null,
       ),
     );
 }

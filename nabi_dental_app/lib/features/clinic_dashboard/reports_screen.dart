@@ -14,12 +14,10 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
-import '../../core/widgets/app_page.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
-import '../../core/widgets/summary_card.dart';
-
 enum ReportKind { clinic, home }
 
 class ReportsScreen extends ConsumerStatefulWidget {
@@ -189,201 +187,317 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
-    final desktop = AppLayout.isDesktop(context);
     return Scaffold(
       appBar: buildAppBar(
         context: context,
         title: widget.title,
         fallback: widget.backTo,
       ),
-      body: AppPageBody(
-        padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
-        child: RefreshIndicator(
-          onRefresh: () => _load(force: true),
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
-            children: [
-              PeriodSelector(
-                value: _period,
-                onChanged: (value) async {
-                  if (value == FinancePeriod.custom) {
-                    final picked = await pickInclusiveDateRange(context, from: _from, to: _to);
-                    if (picked == null) {
-                      return;
-                    }
-                    _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
-                    _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
-                  }
-                  setState(() => _period = value);
-                  await _load();
-                },
+      body: PageScaffoldBody(
+        onRefresh: () => _load(force: true),
+        children: [
+          PageHeader(
+            icon: _isHome ? Icons.pie_chart_rounded : Icons.insert_chart_rounded,
+            title: _isHome ? 'Home Reports' : 'Reports & Analytics',
+            subtitle: _isHome
+                ? 'Household spending against your monthly budget'
+                : 'Income, clinic expenses, lab charges, and profit for any period',
+            color: _isHome ? AppColors.aqua : AppColors.primary,
+            soft: _isHome ? AppColors.aquaSoft : AppColors.primarySoft,
+            actions: [
+              AppBusyButton(
+                outlined: true,
+                onPressed: _exporting ? null : () => _export('xlsx'),
+                busy: _exporting && _exportFormat == 'xlsx',
+                busyLabel: 'Exporting…',
+                icon: Icons.table_view_outlined,
+                label: 'Export Excel',
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Report dates: ${formatDisplayDateRange(_range.from, _range.to)} (inclusive)',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
+              AppBusyButton(
+                onPressed: _exporting ? null : () => _export('pdf'),
+                busy: _exporting && _exportFormat == 'pdf',
+                busyLabel: 'Exporting…',
+                icon: Icons.picture_as_pdf_outlined,
+                label: 'Export PDF',
               ),
-              const SizedBox(height: 12),
-              if (_syncing) ...[
-                const LinearProgressIndicator(minHeight: 2),
-                const SizedBox(height: 12),
-              ],
-              if (_loadError != null) ...[
-                StatusBanner.error(_loadError!, onRetry: () => _load(force: true)),
-                const SizedBox(height: 12),
-              ],
-              AppStateSwitch(
-                child: _loading
+            ],
+          ),
+          const SizedBox(height: 20),
+          _periodPanel(),
+          const SizedBox(height: 16),
+          if (_syncing) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 12),
+          ],
+          if (_loadError != null) ...[
+            StatusBanner.error(_loadError!, onRetry: () => _load(force: true)),
+            const SizedBox(height: 12),
+          ],
+          AppStateSwitch(
+            child: _loading
                 ? const SkeletonCards(key: ValueKey('report-skeleton'), count: 3)
                 : Column(
                     key: const ValueKey('report-body'),
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                ResponsiveGrid(
-                  minItemWidth: 240,
-                  children: [
-                    if (_isHome) ...[
-                      SummaryCard(label: 'Spending', value: formatMoney(_expenses, currency: currency), color: AppColors.warning, icon: Icons.shopping_bag_outlined),
-                      SummaryCard(label: 'Monthly budget', value: formatMoney(_income, currency: currency), color: AppColors.primary, icon: Icons.savings_outlined),
-                      SummaryCard(
-                        label: moneyToDouble(_profit) < 0 ? 'Over budget' : 'Remaining',
-                        value: formatMoney(_profit, currency: currency),
-                        color: moneyToDouble(_profit) < 0 ? AppColors.danger : AppColors.success,
-                        icon: Icons.account_balance_wallet_outlined,
-                      ),
-                    ] else ...[
-                      SummaryCard(label: 'Income', value: formatMoney(_income, currency: currency), color: AppColors.success, icon: Icons.trending_up_rounded),
-                      SummaryCard(label: 'Clinic expenses', value: formatMoney(_expenses, currency: currency), color: AppColors.danger, icon: Icons.trending_down_rounded),
-                      SummaryCard(
-                        label: 'Lab charges',
-                        value: formatMoney(_labCharges, currency: currency),
-                        color: AppColors.violet,
-                        background: AppColors.violetSoft,
-                        icon: Icons.science_outlined,
-                      ),
-                      SummaryCard(
-                        label: moneyToDouble(_profit) < 0 ? 'Loss' : 'Profit',
-                        value: formatMoney(_profit, currency: currency),
-                        color: moneyToDouble(_profit) < 0 ? AppColors.danger : AppColors.primary,
-                        icon: Icons.account_balance_wallet_outlined,
-                      ),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (_isHome) ...[
-                  const SectionHeader('Expenses by category'),
-                  _amountCard(_expenseBreakdown, currency, empty: 'No household spending in this range.'),
-                ] else if (desktop)
-                  AppSplit(
-                    primary: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SectionHeader('Income by treatment'),
-                        _amountCard(_incomeBreakdown, currency, empty: 'No income in this range.'),
-                      ],
-                    ),
-                    secondary: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SectionHeader('Expenses by category'),
-                        _amountCard(_expenseBreakdown, currency, empty: 'No activity in this range.'),
-                      ],
-                    ),
-                  )
-                else ...[
-                  const SectionHeader('Income by treatment'),
-                  _amountCard(_incomeBreakdown, currency, empty: 'No income in this range.'),
-                  const SectionHeader('Expenses by category'),
-                  _amountCard(_expenseBreakdown, currency, empty: 'No activity in this range.'),
-                ],
-                if (!_isHome) ...[
-                  const SectionHeader('Lab charges by lab'),
-                  _amountCard(_labBreakdown, currency, empty: 'No lab charges in this range.'),
-                ],
-                const SectionHeader('Timeline'),
-                _amountCard(_timeline, currency, empty: 'No daily totals yet.'),
-                const SizedBox(height: 8),
-                if (desktop)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppBusyButton(
-                          onPressed: _exporting ? null : () => _export('pdf'),
-                          busy: _exporting && _exportFormat == 'pdf',
-                          busyLabel: 'Exporting…',
-                          icon: Icons.picture_as_pdf_outlined,
-                          label: 'Export PDF',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: AppBusyButton(
-                          outlined: true,
-                          onPressed: _exporting ? null : () => _export('xlsx'),
-                          busy: _exporting && _exportFormat == 'xlsx',
-                          busyLabel: 'Exporting…',
-                          icon: Icons.table_view_outlined,
-                          label: 'Export Excel',
-                        ),
-                      ),
-                    ],
-                  )
-                else ...[
-                  Stretch(
-                    child: AppBusyButton(
-                      onPressed: _exporting ? null : () => _export('pdf'),
-                      busy: _exporting && _exportFormat == 'pdf',
-                      busyLabel: 'Exporting…',
-                      icon: Icons.picture_as_pdf_outlined,
-                      label: 'Export PDF',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Stretch(
-                    child: AppBusyButton(
-                      outlined: true,
-                      onPressed: _exporting ? null : () => _export('xlsx'),
-                      busy: _exporting && _exportFormat == 'xlsx',
-                      busyLabel: 'Exporting…',
-                      icon: Icons.table_view_outlined,
-                      label: 'Export Excel',
-                    ),
-                  ),
-                ],
+                      StatStrip(items: _stats(currency)),
+                      const SizedBox(height: 20),
+                      ..._breakdowns(currency),
                     ],
                   ),
-              ),
-            ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _periodPanel() {
+    return TablePanel(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 12,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          alignment: WrapAlignment.spaceBetween,
+          children: [
+            PeriodSelector(
+              value: _period,
+              onChanged: (value) async {
+                if (value == FinancePeriod.custom) {
+                  final picked = await pickInclusiveDateRange(context, from: _from, to: _to);
+                  if (picked == null) {
+                    return;
+                  }
+                  _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
+                  _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
+                }
+                setState(() => _period = value);
+                await _load();
+              },
+            ),
+            IconText(
+              icon: Icons.calendar_month_rounded,
+              text: '${formatDisplayDateRange(_range.from, _range.to)} (inclusive)',
+              muted: true,
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _amountCard(List<NamedAmount> items, String currency, {required String empty, Color? color}) {
-    return Card(
+  List<MiniStat> _stats(String currency) {
+    final negative = moneyToDouble(_profit) < 0;
+    if (_isHome) {
+      return [
+        MiniStat(
+          label: 'Spending',
+          value: formatMoney(_expenses, currency: currency),
+          icon: Icons.shopping_bag_rounded,
+          color: AppColors.orange,
+          soft: AppColors.warningSoft,
+        ),
+        MiniStat(
+          label: 'Monthly Budget',
+          value: formatMoney(_income, currency: currency),
+          icon: Icons.savings_rounded,
+          color: AppColors.primary,
+          soft: AppColors.primarySoft,
+        ),
+        MiniStat(
+          label: negative ? 'Over Budget' : 'Remaining',
+          value: formatMoney(_profit, currency: currency),
+          icon: Icons.account_balance_wallet_rounded,
+          color: negative ? AppColors.danger : AppColors.success,
+          soft: negative ? AppColors.dangerSoft : AppColors.mintSoft,
+        ),
+      ];
+    }
+    return [
+      MiniStat(
+        label: 'Income',
+        value: formatMoney(_income, currency: currency),
+        icon: Icons.trending_up_rounded,
+        color: AppColors.success,
+        soft: AppColors.mintSoft,
+      ),
+      MiniStat(
+        label: 'Clinic Expenses',
+        value: formatMoney(_expenses, currency: currency),
+        icon: Icons.trending_down_rounded,
+        color: AppColors.orange,
+        soft: AppColors.warningSoft,
+      ),
+      MiniStat(
+        label: 'Lab Charges',
+        value: formatMoney(_labCharges, currency: currency),
+        icon: Icons.science_rounded,
+        color: AppColors.violet,
+        soft: AppColors.violetSoft,
+      ),
+      MiniStat(
+        label: negative ? 'Loss' : 'Profit',
+        value: formatMoney(_profit, currency: currency),
+        icon: Icons.account_balance_wallet_rounded,
+        color: negative ? AppColors.danger : AppColors.primary,
+        soft: negative ? AppColors.dangerSoft : AppColors.primarySoft,
+        caption: 'After lab',
+      ),
+    ];
+  }
+
+  List<Widget> _breakdowns(String currency) {
+    final timeline = _panel(
+      title: 'Timeline',
+      subtitle: 'Daily totals in this period',
+      icon: Icons.timeline_rounded,
+      color: AppColors.primary,
+      soft: AppColors.primarySoft,
+      items: _timeline,
+      currency: currency,
+      empty: 'No daily totals yet.',
+      bars: false,
+    );
+    if (_isHome) {
+      return [
+        _panel(
+          title: 'Expenses by category',
+          subtitle: 'Where household money went',
+          icon: Icons.category_rounded,
+          color: AppColors.aqua,
+          soft: AppColors.aquaSoft,
+          items: _expenseBreakdown,
+          currency: currency,
+          empty: 'No household spending in this range.',
+        ),
+        const SizedBox(height: 20),
+        timeline,
+      ];
+    }
+    final income = _panel(
+      title: 'Income by treatment',
+      subtitle: 'Fees collected per treatment',
+      icon: Icons.medical_services_rounded,
+      color: AppColors.success,
+      soft: AppColors.mintSoft,
+      items: _incomeBreakdown,
+      currency: currency,
+      empty: 'No income in this range.',
+    );
+    final expenses = _panel(
+      title: 'Expenses by category',
+      subtitle: 'Clinic running costs',
+      icon: Icons.receipt_long_rounded,
+      color: AppColors.orange,
+      soft: AppColors.warningSoft,
+      items: _expenseBreakdown,
+      currency: currency,
+      empty: 'No activity in this range.',
+    );
+    final labs = _panel(
+      title: 'Lab charges by lab',
+      subtitle: 'Lab work costs per lab',
+      icon: Icons.science_rounded,
+      color: AppColors.violet,
+      soft: AppColors.violetSoft,
+      items: _labBreakdown,
+      currency: currency,
+      empty: 'No lab charges in this range.',
+    );
+    return [
+      AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: income, secondary: expenses),
+      const SizedBox(height: 20),
+      AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: labs, secondary: timeline),
+    ];
+  }
+
+  Widget _panel({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required Color soft,
+    required List<NamedAmount> items,
+    required String currency,
+    required String empty,
+    bool bars = true,
+  }) {
+    final total = items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    return TablePanel(
+      header: PanelTitle(
+        title: title,
+        subtitle: subtitle,
+        icon: icon,
+        color: color,
+        soft: soft,
+        trailing: items.isEmpty ? null : StatusPill(label: '${items.length}', color: color, soft: soft),
+      ),
+      footer: items.isEmpty
+          ? null
+          : Row(
+              children: [
+                const Expanded(child: Text('Total', style: TextStyle(fontWeight: FontWeight.w700))),
+                MoneyText(
+                  formatMoney(moneyFromDouble(total), currency: currency),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+                  color: color,
+                ),
+              ],
+            ),
       child: items.isEmpty
           ? EmptyState(message: empty)
-          : Column(children: [for (final item in items) _row(item, currency, color: color)]),
+          : Column(
+              children: [
+                for (var i = 0; i < items.length; i++) ...[
+                  if (i > 0) const Divider(height: 1, indent: 20, endIndent: 20),
+                  _row(items[i], currency, color: color, share: bars && total > 0 ? moneyToDouble(items[i].amount) / total : null),
+                ],
+              ],
+            ),
     );
   }
 
-  Widget _row(NamedAmount item, String currency, {Color? color}) {
-    return ListTile(
-      title: Text(formatDisplayDateLabel(item.name), maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 140),
-        child: MoneyText(
-          formatMoney(item.amount, currency: currency),
-          style: Theme.of(context).textTheme.titleSmall,
-          color: color,
-        ),
+  Widget _row(NamedAmount item, String currency, {required Color color, double? share}) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  formatDisplayDateLabel(item.name),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (share != null) ...[
+                Text('${(share * 100).toStringAsFixed(share >= 0.1 ? 0 : 1)}%', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+                const SizedBox(width: 12),
+              ],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: MoneyText(formatMoney(item.amount, currency: currency), style: theme.textTheme.titleSmall),
+              ),
+            ],
+          ),
+          if (share != null) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.full),
+              child: LinearProgressIndicator(
+                value: share.clamp(0, 1).toDouble(),
+                minHeight: 6,
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.12),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
