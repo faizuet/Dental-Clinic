@@ -47,8 +47,8 @@ SessionController _session() {
     );
 }
 
-Future<void> _pumpPatients(WidgetTester tester, _Finance finance) async {
-  tester.view.physicalSize = const Size(1200, 900);
+Future<void> _pumpPatients(WidgetTester tester, _Finance finance, {Size size = const Size(1200, 900)}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -444,5 +444,38 @@ void main() {
 
     verify(() => finance.updatePatient(any(), name: 'Amina Noor', phone: '03123456789')).called(1);
     expect(find.text('Patient updated.'), findsOneWidget);
+  });
+
+  testWidgets('patients list pages ten records at a time', (tester) async {
+    final finance = _Finance();
+    when(() => finance.patients()).thenAnswer(
+      (_) async => [
+        for (var index = 1; index <= 13; index++)
+          PatientRecord(id: '$index', name: 'Patient $index', createdAt: '2026-11-${index.toString().padLeft(2, '0')}T10:00:00Z'),
+      ],
+    );
+    when(() => finance.incomeHistory()).thenAnswer((_) async => const []);
+    when(() => finance.refresh(force: any(named: 'force'))).thenAnswer((_) async => true);
+
+    await _pumpPatients(tester, finance, size: const Size(1200, 1600));
+
+    expect(find.text('Showing 1–10 of 13 patients'), findsOneWidget);
+    expect(find.text('Patient 1'), findsOneWidget);
+    expect(find.text('Patient 10'), findsOneWidget);
+    expect(find.text('Patient 11'), findsNothing);
+
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Showing 11–13 of 13 patients'), findsOneWidget);
+    expect(find.text('Patient 11'), findsOneWidget);
+    expect(find.text('Patient 13'), findsOneWidget);
+    expect(find.text('Patient 1'), findsNothing);
+
+    await tester.tap(find.byTooltip('Page 1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Showing 1–10 of 13 patients'), findsOneWidget);
+    expect(find.text('Patient 1'), findsOneWidget);
   });
 }

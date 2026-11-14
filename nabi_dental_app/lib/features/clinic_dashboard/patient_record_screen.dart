@@ -16,6 +16,7 @@ import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_memory_image.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/page_kit.dart';
+import '../../core/widgets/record_pager.dart';
 import 'patient_form_dialog.dart';
 
 class PatientRecordScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,7 @@ class PatientRecordScreen extends ConsumerStatefulWidget {
 class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   PatientRecord? _patient;
   List<MoneyEntry> _treatments = [];
+  int _page = 0;
   final _images = <String, List<int>>{};
   bool _loading = true;
   bool _opening = false;
@@ -64,7 +66,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
       if (mounted) {
         setState(() {
           _patient = patient;
-          _treatments = treatments;
+          _showTreatments(treatments);
           _loading = false;
         });
       }
@@ -76,7 +78,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
       if (mounted) {
         setState(() {
           _patient = patient;
-          _treatments = treatments;
+          _showTreatments(treatments);
         });
       }
       await _loadImages(treatments);
@@ -102,10 +104,15 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
     }
     setState(() {
       _patient = patient;
-      _treatments = treatments;
+      _showTreatments(treatments);
       _loading = false;
       _error = null;
     });
+  }
+
+  void _showTreatments(List<MoneyEntry> treatments) {
+    _page = settleRecordPage(page: _page, previousCount: _treatments.length, nextCount: treatments.length);
+    _treatments = treatments;
   }
 
   String _latestVisitDate() {
@@ -380,6 +387,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   }
 
   Widget _historySection(String currency) {
+    final page = RecordPage.of(_treatments, _page);
     return TablePanel(
       header: PanelTitle(
         title: 'Treatment history',
@@ -391,6 +399,13 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
           label: const Text('Add treatment'),
         ),
       ),
+      footer: _treatments.isEmpty
+          ? null
+          : RecordPageBar<MoneyEntry>(
+              page: page,
+              noun: _treatments.length == 1 ? 'treatment' : 'treatments',
+              onPage: (value) => setState(() => _page = value),
+            ),
       child: _treatments.isEmpty
           ? Padding(
               padding: const EdgeInsets.all(20),
@@ -401,9 +416,9 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
             )
           : Column(
               children: [
-                for (var index = 0; index < _treatments.length; index++) ...[
+                for (var index = 0; index < page.items.length; index++) ...[
                   if (index > 0) const Divider(height: 1, indent: 20, endIndent: 20),
-                  AppReveal(index: index, child: _treatmentTile(_treatments[index], currency)),
+                  AppReveal(index: index, child: _treatmentTile(page.items[index], currency)),
                 ],
               ],
             ),
