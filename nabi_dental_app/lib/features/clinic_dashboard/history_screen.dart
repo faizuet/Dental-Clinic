@@ -21,6 +21,7 @@ import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/page_kit.dart';
+import '../../core/widgets/record_pager.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({
@@ -70,6 +71,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   List<MoneyEntry> _items = [];
+  int _page = 0;
   final _search = TextEditingController();
   DateTime? _from;
   DateTime? _to;
@@ -110,7 +112,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final local = await widget.loader(repo, range: range, search: _search.text);
       if (mounted) {
         setState(() {
-          _items = local;
+          _showItems(local);
           _loading = false;
           _syncing = network;
           _loadError = null;
@@ -123,7 +125,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final items = await widget.loader(repo, range: range, search: _search.text);
       if (mounted) {
         setState(() {
-          _items = items;
+          _showItems(items);
           _loading = false;
           _syncing = false;
         });
@@ -157,6 +159,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     setState(() {
       _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
       _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
+      _page = 0;
     });
     await _load();
   }
@@ -225,7 +228,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       return;
     }
     setState(() {
-      _items = [for (final item in _items) if (item.id != entry.id) item];
+      _showItems([for (final item in _items) if (item.id != entry.id) item]);
     });
     showAppSnack(context, copy.success);
   }
@@ -458,7 +461,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _desktopTable(String currency) {
+  void _showItems(List<MoneyEntry> next) {
+    _page = settleRecordPage(page: _page, previousCount: _items.length, nextCount: next.length);
+    _items = next;
+  }
+
+  Widget _desktopTable(String currency, RecordPage<MoneyEntry> page) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -476,23 +484,23 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 const DataColumn(label: Text('Actions')),
               ],
               rows: [
-                for (var index = 0; index < _items.length; index++)
+                for (var index = 0; index < page.items.length; index++)
                   DataRow(
-                    onSelectChanged: widget.onOpen == null ? null : (_) => _open(_items[index]),
+                    onSelectChanged: widget.onOpen == null ? null : (_) => _open(page.items[index]),
                     cells: [
-                      DataCell(Text('${index + 1}')),
-                      DataCell(IconText(icon: Icons.event_note_rounded, text: formatDisplayDate(_items[index].date))),
+                      DataCell(Text('${page.start + index + 1}')),
+                      DataCell(IconText(icon: Icons.event_note_rounded, text: formatDisplayDate(page.items[index].date))),
                       if (widget.showPatient)
                         DataCell(
                           SizedBox(
                             width: 200,
                             child: Row(
                               children: [
-                                InitialsAvatar(name: _items[index].displayPatientName, size: 32),
+                                InitialsAvatar(name: page.items[index].displayPatientName, size: 32),
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    _items[index].displayPatientName,
+                                    page.items[index].displayPatientName,
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(fontWeight: FontWeight.w700),
@@ -510,14 +518,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                widget.showPatient ? _recordLabel(_items[index]) : _items[index].catalogName,
+                                widget.showPatient ? _recordLabel(page.items[index]) : page.items[index].catalogName,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontWeight: FontWeight.w600),
                               ),
-                              if (_items[index].notes != null && _items[index].notes!.isNotEmpty)
+                              if (page.items[index].notes != null && page.items[index].notes!.isNotEmpty)
                                 Text(
-                                  _items[index].notes!,
+                                  page.items[index].notes!,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
@@ -528,12 +536,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                       DataCell(
                         MoneyText(
-                          formatMoney(_items[index].amount, currency: currency),
+                          formatMoney(page.items[index].amount, currency: currency),
                           style: Theme.of(context).textTheme.titleSmall,
                           color: widget.accent,
                         ),
                       ),
-                      DataCell(Row(mainAxisSize: MainAxisSize.min, children: _rowActions(_items[index]))),
+                      DataCell(Row(mainAxisSize: MainAxisSize.min, children: _rowActions(page.items[index]))),
                     ],
                   ),
               ],
@@ -586,7 +594,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
-  Widget _records(String currency) {
+  Widget _records(String currency, RecordPage<MoneyEntry> page) {
     if (_loading && _items.isEmpty) {
       return const SkeletonTable(key: ValueKey('history-loading'));
     }
@@ -611,14 +619,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       );
     }
     if (AppLayout.isDesktop(context)) {
-      return KeyedSubtree(key: const ValueKey('history-table'), child: _desktopTable(currency));
+      return KeyedSubtree(key: const ValueKey('history-table'), child: _desktopTable(currency, page));
     }
     return Column(
       key: const ValueKey('history-list'),
       children: [
-        for (var index = 0; index < _items.length; index++) ...[
+        for (var index = 0; index < page.items.length; index++) ...[
           if (index > 0) const Divider(height: 1),
-          AppReveal(index: index, child: _historyCard(_items[index], currency)),
+          AppReveal(index: index, child: _historyCard(page.items[index], currency)),
         ],
       ],
     );
@@ -628,6 +636,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     final ranged = _from != null && _to != null;
+    final page = RecordPage.of(_items, _page);
     return Scaffold(
       appBar: buildAppBar(context: context, title: widget.title, fallback: widget.backTo),
       body: PageScaffoldBody(
@@ -672,6 +681,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       setState(() {
                         _from = null;
                         _to = null;
+                        _page = 0;
                       });
                       _load();
                     },
@@ -679,11 +689,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 FilterSearch(
                   controller: _search,
                   hint: widget.showPatient ? 'Search by patient, phone, or record...' : 'Search records...',
-                  onSubmitted: (_) => _load(network: false),
+                  onSubmitted: (_) {
+                    setState(() => _page = 0);
+                    _load(network: false);
+                  },
                   onChanged: (_) {
                     _searchDebounce?.cancel();
                     _searchDebounce = Timer(const Duration(milliseconds: 160), () {
                       if (mounted) {
+                        setState(() => _page = 0);
                         _load(silent: true, network: false);
                       }
                     });
@@ -698,10 +712,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 ),
               ],
             ),
-            footer: TableFooterText(
-              shown: _items.length,
-              total: _items.length,
+            footer: RecordPageBar<MoneyEntry>(
+              page: page,
               noun: widget.recordNoun,
+              onPage: (value) => setState(() => _page = value),
               trailing: _items.isEmpty
                   ? null
                   : Row(
@@ -719,7 +733,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ],
                     ),
             ),
-            child: AppStateSwitch(child: _records(currency)),
+            child: AppStateSwitch(child: _records(currency, page)),
           ),
         ],
       ),

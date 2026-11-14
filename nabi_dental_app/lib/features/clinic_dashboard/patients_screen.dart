@@ -16,6 +16,7 @@ import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
 import '../../core/widgets/page_kit.dart';
+import '../../core/widgets/record_pager.dart';
 
 enum _RegisteredRange { allTime, thisMonth, thisYear }
 
@@ -30,8 +31,6 @@ class PatientsScreen extends ConsumerStatefulWidget {
 }
 
 class _PatientsScreenState extends ConsumerState<PatientsScreen> {
-  static const _pageSize = 25;
-
   final _search = TextEditingController();
   List<PatientRecord> _patients = [];
   Map<String, String> _lastVisit = const {};
@@ -133,7 +132,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
       final visits = await _visits(repo);
       if (mounted) {
         setState(() {
-          _patients = local;
+          _rememberPatients(local);
           _lastVisit = visits;
           _loading = false;
           _syncing = !localOnly;
@@ -148,7 +147,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
       final latest = await _visits(repo);
       if (mounted) {
         setState(() {
-          _patients = items;
+          _rememberPatients(items);
           _lastVisit = latest;
           _loading = false;
           _syncing = false;
@@ -263,13 +262,19 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
         return;
       }
       setState(() {
-        _patients = [for (final item in _patients) if (item.id != patient.id) item];
+        _rememberPatients([for (final item in _patients) if (item.id != patient.id) item]);
         _message = null;
       });
       showAppSnack(context, 'Patient deleted successfully.');
     } finally {
       _deleting = false;
     }
+  }
+
+  void _rememberPatients(List<PatientRecord> next) {
+    final before = _visible.length;
+    _patients = next;
+    _page = settleRecordPage(page: _page, previousCount: before, nextCount: _visible.length);
   }
 
   List<Widget> _actions(PatientRecord patient) {
@@ -426,10 +431,8 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   }
 
   Widget _tableSection(List<PatientRecord> items) {
-    final pages = math.max(1, (items.length / _pageSize).ceil());
-    final page = math.min(_page, pages - 1);
-    final start = page * _pageSize;
-    final slice = items.skip(start).take(_pageSize).toList();
+    final page = RecordPage.of(items, _page);
+    final slice = page.items;
     return TablePanel(
       header: FilterBar(
         filters: [
@@ -455,31 +458,10 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
           ),
         ],
       ),
-      footer: TableFooterText(
-        shown: start + slice.length,
-        total: items.length,
+      footer: RecordPageBar<PatientRecord>(
+        page: page,
         noun: items.length == 1 ? 'patient' : 'patients',
-        trailing: pages > 1
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RowAction(
-                    icon: Icons.chevron_left_rounded,
-                    tooltip: 'Previous page',
-                    onPressed: page == 0 ? null : () => setState(() => _page = page - 1),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text('${page + 1} / $pages', style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                  RowAction(
-                    icon: Icons.chevron_right_rounded,
-                    tooltip: 'Next page',
-                    onPressed: page >= pages - 1 ? null : () => setState(() => _page = page + 1),
-                  ),
-                ],
-              )
-            : null,
+        onPage: (value) => setState(() => _page = value),
       ),
       child: AppStateSwitch(
         child: _loading && _patients.isEmpty
@@ -506,7 +488,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                       )
                     : KeyedSubtree(
                         key: const ValueKey('patients-table'),
-                        child: AppLayout.isDesktop(context) ? _desktopTable(slice, start) : _mobileList(slice),
+                        child: AppLayout.isDesktop(context) ? _desktopTable(slice, page.start) : _mobileList(slice),
                       ),
       ),
     );
