@@ -128,3 +128,45 @@ async def test_version_conflict(client):
     )
     assert conflict.status_code == 409
     assert conflict.json()["error"]["code"] == "VERSION_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_clinic_expense_keeps_the_entered_category_name(client):
+    tokens = await login(client)
+    headers = auth_header(tokens)
+    category_id = await _materials_id(client, headers)
+    created = await client.post(
+        "/api/v1/clinic-expenses",
+        headers=headers,
+        json={
+            "category_id": category_id,
+            "expense_date": "2026-11-14",
+            "amount": "2000.00",
+            "notes": "Dental Materials",
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["category_name"] == "Materials"
+    assert body["notes"] == "Dental Materials"
+    assert body["amount"] == "2000.00"
+
+    listed = await client.get("/api/v1/clinic-expenses", headers=headers, params={"page_size": 100})
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json()["items"] if item["id"] == body["id"])
+    assert row["category_name"] == "Materials"
+    assert row["notes"] == "Dental Materials"
+    assert row["amount"] == "2000.00"
+
+    report = await client.get(
+        "/api/v1/reports/clinic",
+        headers=headers,
+        params={"from_date": "2026-11-14", "to_date": "2026-11-14"},
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["expenses_by_category"] == [
+        {"id": category_id, "name": "Materials", "amount": "2000.00"},
+    ]
+    assert report.json()["expense_lines"][0]["name"] == "Materials"
+    assert report.json()["expense_lines"][0]["detail"] == "Dental Materials"
+    assert report.json()["total_expenses"] == "2000.00"

@@ -1,10 +1,10 @@
 import uuid
 from datetime import date
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.core.config import settings
-from app.schemas.common import VersionedRead
+from app.schemas.common import VersionedRead, loaded_relation_name
 from app.utils.money import MoneyPositive
 from app.utils.pagination import APIModel
 
@@ -51,3 +51,13 @@ class HomeExpenseRead(VersionedRead):
     expense_date: date
     amount: MoneyPositive
     notes: str | None
+    category_name: str | None = None
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def keep_category_name(cls, value, handler):
+        parsed = handler(value)
+        name = loaded_relation_name(value, "category")
+        if name:
+            parsed.category_name = name
+        return parsed

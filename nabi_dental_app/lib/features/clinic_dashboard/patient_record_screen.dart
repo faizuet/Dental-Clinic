@@ -39,6 +39,11 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(financeEpochProvider, (previous, next) {
+      if (previous != next) {
+        _reloadLocal();
+      }
+    });
     _load();
   }
 
@@ -83,6 +88,34 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
         });
       }
     }
+  }
+
+  Future<void> _reloadLocal() async {
+    final repo = ref.read(financeRepositoryProvider);
+    final patient = await repo.patientById(widget.patientId);
+    if (!mounted || patient == null) {
+      return;
+    }
+    final treatments = await repo.patientTreatments(patient.id);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _patient = patient;
+      _treatments = treatments;
+      _loading = false;
+      _error = null;
+    });
+  }
+
+  String _latestVisitDate() {
+    var latest = _treatments.first.date;
+    for (final item in _treatments.skip(1)) {
+      if (item.date.compareTo(latest) > 0) {
+        latest = item.date;
+      }
+    }
+    return latest;
   }
 
   Future<void> _loadImages(List<MoneyEntry> treatments) async {
@@ -331,7 +364,7 @@ class _PatientRecordScreenState extends ConsumerState<PatientRecordScreen> {
       ),
       MiniStat(
         label: 'Latest Visit',
-        value: _treatments.isEmpty ? 'No treatments yet' : formatDisplayDate(_treatments.first.date),
+        value: _treatments.isEmpty ? 'No treatments yet' : formatDisplayDate(_latestVisitDate()),
         icon: Icons.event_rounded,
         color: AppColors.violet,
         soft: AppColors.violetSoft,

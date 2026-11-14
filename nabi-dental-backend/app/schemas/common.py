@@ -7,6 +7,25 @@ from app.utils.dates import serialize_datetime
 from app.utils.pagination import APIModel
 
 
+def loaded_relation_name(value: object, relation: str) -> str | None:
+    """Read a related record's name only when SQLAlchemy has already loaded it."""
+    if not hasattr(value, relation):
+        return None
+    try:
+        from sqlalchemy import inspect as sa_inspect
+
+        if relation in sa_inspect(value).unloaded:
+            return None
+    except Exception:
+        return None
+    related = getattr(value, relation)
+    name = getattr(related, "name", None)
+    if not isinstance(name, str):
+        return None
+    cleaned = name.strip()
+    return cleaned or None
+
+
 class VersionedRead(APIModel):
     model_config = ConfigDict(from_attributes=True)
 

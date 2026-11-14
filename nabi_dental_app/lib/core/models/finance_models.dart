@@ -19,6 +19,26 @@ String? jsonText(Object? value) {
   return text;
 }
 
+const _placeholderCatalogNames = {'item', 'category'};
+
+String? usefulCatalogName(Object? value) {
+  final text = jsonText(value);
+  if (text == null || _placeholderCatalogNames.contains(text.toLowerCase())) {
+    return null;
+  }
+  return text;
+}
+
+String _catalogName(Map<String, dynamic> json) {
+  final stored = usefulCatalogName(json['catalog_name']) ?? usefulCatalogName(json['treatment_name']);
+  final category = usefulCatalogName(json['category_name']);
+  final isExpense = json['expense_date'] != null && json['treatment_id'] == null;
+  if (isExpense && stored == null && category != null) {
+    return category;
+  }
+  return stored ?? category ?? jsonText(json['catalog_name']) ?? 'Item';
+}
+
 class CatalogItem {
   const CatalogItem({
     required this.id,
@@ -253,6 +273,7 @@ class MoneyEntry {
     this.details = const {},
     this.detailsText,
     this.attachments = const [],
+    this.createdAt,
   });
 
   final String id;
@@ -272,6 +293,7 @@ class MoneyEntry {
   final Map<String, dynamic> details;
   final String? detailsText;
   final List<TreatmentAttachment> attachments;
+  final String? createdAt;
 
   String get displayPatientName {
     final name = patientName?.trim();
@@ -285,7 +307,7 @@ class MoneyEntry {
     return MoneyEntry(
       id: json['id'].toString(),
       catalogId: (json['treatment_id'] ?? json['category_id']).toString(),
-      catalogName: (json['catalog_name'] ?? json['treatment_name'] ?? json['category_name'] ?? 'Item').toString(),
+      catalogName: _catalogName(json),
       date: (json['transaction_date'] ?? json['expense_date']).toString(),
       amount: json['amount'].toString(),
       quantity: jsonInt(json['quantity'], fallback: 1),
@@ -302,6 +324,7 @@ class MoneyEntry {
       attachments: [
         for (final item in jsonMapList(json['attachments'])) TreatmentAttachment.fromJson(item),
       ],
+      createdAt: jsonText(json['created_at']),
     );
   }
 
@@ -325,6 +348,7 @@ class MoneyEntry {
         'details': details,
         'details_text': detailsText,
         'attachments': [for (final item in attachments) item.toJson()],
+        'created_at': createdAt,
       };
 }
 
@@ -345,6 +369,7 @@ class LabCharge {
     this.patientName,
     this.patientPhone,
     this.visitLabel,
+    this.createdAt,
   });
 
   final String id;
@@ -358,6 +383,7 @@ class LabCharge {
   final String? patientName;
   final String? patientPhone;
   final String? visitLabel;
+  final String? createdAt;
 
   String get displayLab => labName ?? 'Lab charge';
 
@@ -375,6 +401,7 @@ class LabCharge {
       patientName: jsonText(json['patient_name']),
       patientPhone: jsonText(json['patient_phone']),
       visitLabel: jsonText(json['visit_label']),
+      createdAt: jsonText(json['created_at']),
     );
   }
 
@@ -387,6 +414,7 @@ class LabCharge {
         'lab_name': labName,
         'notes': notes,
         'version': version,
+        'created_at': createdAt,
       };
 
   MoneyEntry toEntry() => MoneyEntry(
@@ -401,6 +429,7 @@ class LabCharge {
         patientName: patientName ?? 'No patient linked',
         patientPhone: patientPhone,
         subTreatment: visitLabel,
+        createdAt: createdAt,
         detailsText: visitLabel == null ? null : 'Visit $visitLabel',
       );
 }
