@@ -54,12 +54,40 @@ ThemeData buildAppTheme() {
     ),
     cardTheme: CardThemeData(
       color: AppColors.card,
-      elevation: 2,
+      elevation: 1.5,
       margin: const EdgeInsets.only(bottom: AppSpacing.md),
       shadowColor: AppColors.shadow,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.lg)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadii.lg),
+        side: const BorderSide(color: AppColors.border),
+      ),
       clipBehavior: Clip.antiAlias,
+    ),
+    dataTableTheme: DataTableThemeData(
+      headingRowColor: WidgetStateProperty.all(AppColors.tableHeader),
+      headingTextStyle: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700, fontSize: 13.5),
+      dataTextStyle: const TextStyle(color: AppColors.text, fontSize: 14),
+      headingRowHeight: 50,
+      dataRowMinHeight: 56,
+      dataRowMaxHeight: 64,
+      horizontalMargin: 20,
+      columnSpacing: 28,
+      dividerThickness: 1,
+      dataRowColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return AppColors.primarySoft;
+        }
+        if (states.contains(WidgetState.hovered)) {
+          return AppColors.background;
+        }
+        return null;
+      }),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(color: AppColors.navy, borderRadius: BorderRadius.circular(8)),
+      textStyle: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+      waitDuration: const Duration(milliseconds: 350),
     ),
     dividerTheme: const DividerThemeData(color: AppColors.border, space: 1),
     iconButtonTheme: IconButtonThemeData(
@@ -71,16 +99,22 @@ ThemeData buildAppTheme() {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.inputFill,
+      hoverColor: AppColors.primarySoft.withValues(alpha: 0.5),
       hintStyle: const TextStyle(color: AppColors.muted),
       labelStyle: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
+      prefixIconColor: AppColors.muted,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadii.md),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: AppColors.border),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadii.md),
-        borderSide: BorderSide.none,
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        borderSide: BorderSide(color: AppColors.border.withValues(alpha: 0.6)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadii.md),
@@ -109,8 +143,9 @@ ThemeData buildAppTheme() {
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(64, 44),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        foregroundColor: AppColors.primary,
-        side: const BorderSide(color: AppColors.primarySoft, width: 1.5),
+        foregroundColor: AppColors.text,
+        backgroundColor: AppColors.card,
+        side: const BorderSide(color: AppColors.border, width: 1.2),
         animationDuration: AppMotion.fast,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.full)),
         textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
@@ -133,15 +168,19 @@ ThemeData buildAppTheme() {
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.card,
-      elevation: 0,
+      surfaceTintColor: Colors.transparent,
+      elevation: 12,
+      shadowColor: AppColors.shadow,
+      titleTextStyle: const TextStyle(color: AppColors.text, fontSize: 19, fontWeight: FontWeight.w700, height: 1.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.xl)),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      backgroundColor: AppColors.text,
-      contentTextStyle: const TextStyle(color: Colors.white),
+      backgroundColor: AppColors.navy,
+      elevation: 6,
+      contentTextStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.md)),
     ),
     tabBarTheme: const TabBarThemeData(

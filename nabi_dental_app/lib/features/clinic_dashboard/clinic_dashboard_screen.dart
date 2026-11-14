@@ -11,15 +11,15 @@ import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/period.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/app_page.dart';
+import '../../core/widgets/dashboard_tiles.dart';
 import '../../core/widgets/empty_state.dart';
-import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
-import '../../core/widgets/summary_card.dart';
 import '../../core/widgets/welcome_header.dart';
 
 class ClinicDashboardScreen extends ConsumerStatefulWidget {
@@ -36,6 +36,7 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
   ClinicTotals? _totals;
   int _patientCount = 0;
   List<RecentClinicPatient> _recent = const [];
+  List<ClinicActivity> _activity = const [];
   bool _loading = true;
   bool _syncing = false;
   bool _online = true;
@@ -66,12 +67,14 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       final local = await repo.clinicTotals(range);
       final localCounts = await _counts(repo);
       final localRecent = await repo.recentClinicPatients();
+      final localActivity = await repo.recentClinicActivity();
       final backup = await repo.backupStatus();
       if (mounted) {
         setState(() {
           _totals = local;
           _patientCount = localCounts;
           _recent = localRecent;
+          _activity = localActivity;
           _backup = backup;
           _loading = false;
           _syncing = true;
@@ -82,12 +85,14 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
       final totals = await repo.clinicTotals(range);
       final counts = await _counts(repo);
       final recent = await repo.recentClinicPatients();
+      final activity = await repo.recentClinicActivity();
       if (mounted) {
         setState(() {
           _online = online;
           _totals = totals;
           _patientCount = counts;
           _recent = recent;
+          _activity = activity;
           _loading = false;
           _syncing = false;
         });
@@ -103,11 +108,12 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
     }
   }
 
+  Future<void> _open(String path) => appPushAndRefresh(context, path, () => _load(silent: true));
+
   @override
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     final totals = _totals;
-    final desktop = AppLayout.isDesktop(context);
     final session = ref.watch(sessionProvider);
     return Scaffold(
       appBar: buildAppBar(
@@ -132,9 +138,9 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
             padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
             children: [
               WelcomeHeader(
-                title: 'Hello, ${session.user?.fullName ?? 'there'}',
-                subtitle: '${session.clinic?.name ?? 'Nabi Dental Clinic'}  ·  Clinic overview',
-                icon: Icons.local_hospital_rounded,
+                title: 'Hello, ${session.clinic?.name ?? 'Nabi Dental Clinic'}',
+                subtitle: 'Manage your clinic efficiently and provide the best care',
+                icon: Icons.health_and_safety_rounded,
               ),
               const SizedBox(height: 20),
               PeriodSelector(
@@ -183,122 +189,65 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
                         ? const EmptyState(key: ValueKey('clinic-empty'), message: 'No clinic totals yet.')
                         : AppReveal(
                             child: Column(
-                            key: const ValueKey('clinic-totals'),
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                formatDisplayDateRange(totals.range.from, totals.range.to),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 12),
-                              ResponsiveGrid(
-                                minItemWidth: 240,
-                                children: [
-                                  SummaryCard(
-                                    label: 'Total patients',
-                                    value: '$_patientCount',
-                                    color: AppColors.primary,
-                                    background: AppColors.lavenderSoft,
-                                    icon: Icons.people_outline_rounded,
-                                  ),
-                                  SummaryCard(
-                                    label: 'Treatment fees',
-                                    value: formatMoney(totals.income, currency: currency),
-                                    color: AppColors.success,
-                                    background: AppColors.mintSoft,
-                                    icon: Icons.payments_outlined,
-                                  ),
-                                  SummaryCard(
-                                    label: 'Total clinic expenses',
-                                    value: formatMoney(totals.expenses, currency: currency),
-                                    color: AppColors.warning,
-                                    background: AppColors.warningSoft,
-                                    icon: Icons.receipt_long_outlined,
-                                  ),
-                                  SummaryCard(
-                                    label: 'Total lab charges',
-                                    value: formatMoney(totals.labCharges, currency: currency),
-                                    color: AppColors.violet,
-                                    background: AppColors.violetSoft,
-                                    icon: Icons.science_outlined,
-                                  ),
-                                  SummaryCard(
-                                    label: moneyToDouble(totals.profit) < 0 ? 'Loss' : 'Profit',
-                                    value: formatMoney(totals.profit, currency: currency),
-                                    color: moneyToDouble(totals.profit) < 0 ? AppColors.danger : AppColors.primary,
-                                    background: moneyToDouble(totals.profit) < 0 ? AppColors.dangerSoft : AppColors.tealSoft,
-                                    icon: Icons.account_balance_wallet_outlined,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                              key: const ValueKey('clinic-totals'),
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  formatDisplayDateRange(totals.range.from, totals.range.to),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(height: 12),
+                                _statCards(totals, currency),
+                              ],
+                            ),
                           ),
               ),
-              const SectionHeader('Quick actions'),
-              if (desktop)
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: _primaryActionStyle,
-                        onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: _expenseActionStyle,
-                        onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: _labActionStyle,
-                        onPressed: () => appPushAndRefresh(context, '/clinic/lab-charges/new', () => _load(silent: true)),
-                        icon: const Icon(Icons.science_outlined),
-                        label: const Text('Lab charge', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  ],
-                )
-              else ...[
-                Stretch(
-                  child: FilledButton.icon(
-                    style: _primaryActionStyle,
-                    onPressed: () => appPushAndRefresh(context, '/clinic/income', () => _load(silent: true)),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add treatment', maxLines: 1, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 12),
+              _sectionTitle(Icons.bolt_rounded, 'Quick Actions'),
+              ResponsiveGrid(
+                minItemWidth: 230,
+                runSpacing: 12,
+                children: [
+                  QuickActionTile(
+                    title: 'Add Treatment',
+                    subtitle: 'Record new treatment',
+                    icon: Icons.add_rounded,
+                    colors: const [AppColors.secondary, AppColors.primaryDark],
+                    onTap: () => _open('/clinic/income'),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Stretch(
-                  child: FilledButton.icon(
-                    style: _expenseActionStyle,
-                    onPressed: () => appPushAndRefresh(context, '/clinic/expenses', () => _load(silent: true)),
-                    icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Clinic expense', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  QuickActionTile(
+                    title: 'Add Patient',
+                    subtitle: 'Register new patient',
+                    icon: Icons.person_add_alt_1_rounded,
+                    colors: const [Color(0xFF3DB87E), AppColors.success],
+                    onTap: () => _open('/clinic/patients?add=1'),
                   ),
-                ),
-                const SizedBox(height: 10),
-                Stretch(
-                  child: FilledButton.icon(
-                    style: _labActionStyle,
-                    onPressed: () => appPushAndRefresh(context, '/clinic/lab-charges/new', () => _load(silent: true)),
-                    icon: const Icon(Icons.science_outlined),
-                    label: const Text('Lab charge', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  QuickActionTile(
+                    title: 'Add Lab Charge',
+                    subtitle: 'Record lab charges',
+                    icon: Icons.science_rounded,
+                    colors: const [Color(0xFF9479E0), AppColors.violet],
+                    onTap: () => _open('/clinic/lab-charges/new'),
                   ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              _recentPatients(),
+                  QuickActionTile(
+                    title: 'Add Expense',
+                    subtitle: 'Record clinic expense',
+                    icon: Icons.receipt_long_rounded,
+                    colors: const [Color(0xFFF7AE5C), AppColors.orange],
+                    onTap: () => _open('/clinic/expenses'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              AppSplit(
+                breakpoint: 900,
+                primaryFlex: 3,
+                secondaryFlex: 2,
+                primary: _recentPatients(),
+                secondary: _recentActivity(currency),
+              ),
             ],
           ),
         ),
@@ -306,130 +255,251 @@ class _ClinicDashboardScreenState extends ConsumerState<ClinicDashboardScreen> {
     );
   }
 
-  Widget _recentPatients() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget _statCards(ClinicTotals totals, String currency) {
+    final loss = moneyToDouble(totals.profit) < 0;
+    return ResponsiveGrid(
+      minItemWidth: 196,
+      runSpacing: 12,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Recent patients', style: Theme.of(context).textTheme.titleMedium),
-            ),
-            TextButton(
-              onPressed: () => appPushAndRefresh(context, '/clinic/patients', () => _load(silent: true)),
-              child: const Text('All patients'),
-            ),
-          ],
+        StatCard(
+          label: 'Total Patients',
+          value: '$_patientCount',
+          color: AppColors.primary,
+          background: AppColors.primarySoft,
+          icon: Icons.groups_rounded,
+          actionLabel: 'View all',
+          onTap: () => _open('/clinic/patients'),
         ),
-        if (_recent.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Patients you treat will show up here.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-            ),
-          )
-        else
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var index = 0; index < _recent.length; index++) ...[
-                  if (index > 0) const Divider(height: 1),
-                  _recentTile(_recent[index], index),
-                ],
-              ],
-            ),
-          ),
+        StatCard(
+          label: 'Treatment Fees',
+          value: formatMoney(totals.income, currency: currency),
+          color: AppColors.success,
+          background: AppColors.mintSoft,
+          icon: Icons.account_balance_wallet_rounded,
+          onTap: () => _open('/clinic/income/history'),
+        ),
+        StatCard(
+          label: 'Clinic Expenses',
+          value: formatMoney(totals.expenses, currency: currency),
+          color: AppColors.orange,
+          background: AppColors.warningSoft,
+          icon: Icons.calculate_rounded,
+          onTap: () => _open('/clinic/expenses/history'),
+        ),
+        StatCard(
+          label: 'Lab Charges',
+          value: formatMoney(totals.labCharges, currency: currency),
+          color: AppColors.violet,
+          background: AppColors.violetSoft,
+          icon: Icons.science_rounded,
+          onTap: () => _open('/clinic/lab-charges'),
+        ),
+        StatCard(
+          label: loss ? 'Loss' : 'Profit',
+          value: formatMoney(totals.profit, currency: currency),
+          color: loss ? AppColors.danger : AppColors.aqua,
+          background: loss ? AppColors.dangerSoft : AppColors.aquaSoft,
+          icon: Icons.insights_rounded,
+          onTap: () => _open('/clinic/reports'),
+        ),
       ],
     );
   }
 
-  Widget _recentTile(RecentClinicPatient item, int index) {
-    final patient = item.patient;
-    final details = [
-      if (patient.phone != null && patient.phone!.isNotEmpty) patient.phone,
-      if (item.lastVisitDate != null) 'Last visit ${formatDisplayDate(item.lastVisitDate)}',
-      if (item.lastTreatment != null && item.lastTreatment!.isNotEmpty) item.lastTreatment,
-      if (item.lastVisitDate == null) 'No treatments yet',
-    ].join(' · ');
-    return ListTile(
-      onTap: () => appPushAndRefresh(context, '/clinic/patients/${patient.id}', () => _load(silent: true)),
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primarySoft,
-        foregroundColor: AppColors.primary,
-        child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-      title: Text(patient.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: IconButton(
-        tooltip: 'Add treatment',
-        onPressed: () => appPushAndRefresh(
-          context,
-          '/clinic/income?patientId=${Uri.encodeQueryComponent(patient.id)}',
-          () => _load(silent: true),
-        ),
-        icon: const Icon(Icons.add_rounded),
+  Widget _sectionTitle(IconData icon, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.warning, size: 22),
+          const SizedBox(width: 6),
+          Text(label, style: Theme.of(context).textTheme.titleMedium),
+        ],
       ),
     );
+  }
+
+  Widget _recentPatients() {
+    final theme = Theme.of(context);
+    final header = theme.textTheme.bodySmall?.copyWith(color: AppColors.muted, fontWeight: FontWeight.w700);
+    return DashboardPanel(
+      title: 'Recent Patients',
+      actionLabel: 'View all',
+      onAction: () => _open('/clinic/patients'),
+      child: _recent.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+              child: Text(
+                'Patients you treat will show up here.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+              ),
+            )
+          : Column(
+              children: [
+                Container(
+                  color: AppColors.background,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  child: Row(
+                    children: [
+                      Expanded(flex: 4, child: Text('Patient Name', style: header)),
+                      Expanded(flex: 3, child: Text('Phone', style: header)),
+                      Expanded(flex: 3, child: Text('Last Visit', style: header)),
+                      const SizedBox(width: 40),
+                    ],
+                  ),
+                ),
+                for (var index = 0; index < _recent.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  _recentRow(_recent[index]),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _recentRow(RecentClinicPatient item) {
+    final patient = item.patient;
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => _open('/clinic/patients/${patient.id}'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 4,
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.primarySoft,
+                    foregroundColor: AppColors.primary,
+                    child: Text(_initials(patient.name), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(patient.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                        if (item.lastTreatment != null && item.lastTreatment!.isNotEmpty)
+                          Text(
+                            item.lastTreatment!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(patient.phone ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            Expanded(
+              flex: 3,
+              child: Text(
+                item.lastVisitDate == null ? 'No visits yet' : formatDisplayDate(item.lastVisitDate),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: item.lastVisitDate == null ? theme.textTheme.bodySmall?.copyWith(color: AppColors.muted) : null,
+              ),
+            ),
+            SizedBox(
+              width: 40,
+              child: IconButton(
+                tooltip: 'Add treatment',
+                onPressed: () => _open('/clinic/income?patientId=${Uri.encodeQueryComponent(patient.id)}'),
+                icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _recentActivity(String currency) {
+    final theme = Theme.of(context);
+    return DashboardPanel(
+      title: 'Recent Activities',
+      actionLabel: 'View all',
+      onAction: () => _open('/clinic/income/history'),
+      child: _activity.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+              child: Text(
+                'New treatments, expenses, and lab charges will show up here.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+              ),
+            )
+          : Column(
+              children: [
+                for (var index = 0; index < _activity.length; index++) ...[
+                  if (index > 0) const Divider(height: 1, indent: 18, endIndent: 18),
+                  _activityRow(_activity[index], currency),
+                ],
+                const SizedBox(height: 6),
+              ],
+            ),
+    );
+  }
+
+  Widget _activityRow(ClinicActivity item, String currency) {
+    final theme = Theme.of(context);
+    final (icon, color, soft) = switch (item.kind) {
+      ClinicActivityKind.treatment => (Icons.medical_services_rounded, AppColors.primary, AppColors.primarySoft),
+      ClinicActivityKind.expense => (Icons.receipt_long_rounded, AppColors.orange, AppColors.warningSoft),
+      ClinicActivityKind.labCharge => (Icons.science_rounded, AppColors.violet, AppColors.violetSoft),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(color: soft, borderRadius: BorderRadius.circular(AppRadii.sm)),
+            child: Icon(icon, size: 18, color: color),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  formatMoney(item.amount, currency: currency),
+                  maxLines: 1,
+                  style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(formatDisplayDate(item.date), style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) {
+      return '?';
+    }
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
 
   Future<int> _counts(FinanceRepository repo) async {
     final patients = await repo.patients();
     return patients.length;
   }
-
-  static final ButtonStyle _primaryActionStyle = FilledButton.styleFrom(
-    minimumSize: const Size(64, 48),
-    backgroundColor: AppColors.primary,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: AppColors.primarySoft,
-    disabledForegroundColor: AppColors.muted,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.pressed)) {
-        return Colors.white.withValues(alpha: 0.18);
-      }
-      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
-        return Colors.white.withValues(alpha: 0.10);
-      }
-      return null;
-    }),
-  );
-
-  static final ButtonStyle _labActionStyle = FilledButton.styleFrom(
-    minimumSize: const Size(64, 48),
-    backgroundColor: AppColors.violet,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: AppColors.violetSoft,
-    disabledForegroundColor: AppColors.muted,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.pressed)) {
-        return Colors.white.withValues(alpha: 0.18);
-      }
-      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
-        return Colors.white.withValues(alpha: 0.12);
-      }
-      return null;
-    }),
-  );
-
-  static final ButtonStyle _expenseActionStyle = FilledButton.styleFrom(
-    minimumSize: const Size(64, 48),
-    backgroundColor: AppColors.primaryDark,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: AppColors.primarySoft,
-    disabledForegroundColor: AppColors.muted,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.pressed)) {
-        return Colors.white.withValues(alpha: 0.18);
-      }
-      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
-        return Colors.white.withValues(alpha: 0.12);
-      }
-      return null;
-    }),
-  );
 }

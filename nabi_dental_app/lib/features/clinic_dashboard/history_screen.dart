@@ -20,6 +20,7 @@ import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/page_kit.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({
@@ -37,6 +38,11 @@ class HistoryScreen extends ConsumerStatefulWidget {
     this.addLabel,
     this.showPatient = false,
     this.totalLabel,
+    this.icon = Icons.receipt_long_rounded,
+    this.subtitle = 'Search, review, and manage saved records',
+    this.accent = AppColors.primary,
+    this.accentSoft = AppColors.primarySoft,
+    this.recordNoun = 'records',
   });
 
   final String title;
@@ -52,6 +58,11 @@ class HistoryScreen extends ConsumerStatefulWidget {
   final String? addLabel;
   final bool showPatient;
   final String? totalLabel;
+  final IconData icon;
+  final String subtitle;
+  final Color accent;
+  final Color accentSoft;
+  final String recordNoun;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -364,87 +375,80 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return '${item.catalogName} · $extra';
   }
 
+  List<Widget> _rowActions(MoneyEntry item) {
+    return [
+      if (widget.onOpen != null) RowAction(icon: Icons.visibility_rounded, tooltip: 'View', onPressed: () => _open(item)),
+      RowAction(icon: Icons.edit_rounded, tooltip: 'Edit', onPressed: () => _edit(item)),
+      RowAction.danger(icon: Icons.delete_outline_rounded, tooltip: 'Delete', onPressed: () => _delete(item)),
+    ];
+  }
+
   Widget _historyCard(MoneyEntry item, String currency) {
-    return Card(
-      child: InkWell(
-        onTap: widget.onOpen == null ? null : () => _open(item),
-        borderRadius: BorderRadius.circular(AppRadii.lg),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 8, 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (widget.showPatient) ...[
-                          Text(
-                            item.displayPatientName,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 4),
-                        ],
+    return InkWell(
+      onTap: widget.onOpen == null ? null : () => _open(item),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.showPatient) ...[
+                  InitialsAvatar(name: item.displayPatientName, size: 40),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.showPatient) ...[
                         Text(
-                          visitMainLabel(
-                            catalogName: item.catalogName,
-                            categoryName: item.categoryName,
-                            details: item.details,
-                          ),
-                          maxLines: 2,
+                          item.displayPatientName,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: widget.showPatient
-                              ? Theme.of(context).textTheme.bodyMedium
-                              : Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          _subtitle(item),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
-                        ),
                       ],
-                    ),
+                      Text(
+                        visitMainLabel(
+                          catalogName: item.catalogName,
+                          categoryName: item.categoryName,
+                          details: item.details,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: widget.showPatient
+                            ? Theme.of(context).textTheme.bodyMedium
+                            : Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _subtitle(item),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 128, minWidth: 72),
-                    child: MoneyText(
-                      formatMoney(item.amount, currency: currency),
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
+                ),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 128, minWidth: 72),
+                  child: MoneyText(
+                    formatMoney(item.amount, currency: currency),
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                ],
-              ),
-              OverflowBar(
-                alignment: MainAxisAlignment.end,
-                children: [
-                  if (widget.onOpen != null)
-                    TextButton.icon(
-                      onPressed: () => _open(item),
-                      icon: const Icon(Icons.visibility_outlined, size: 18),
-                      label: const Text('View'),
-                    ),
-                  TextButton.icon(
-                    onPressed: () => _edit(item),
-                    icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _delete(item),
-                    icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.danger),
-                    label: const Text('Delete', style: TextStyle(color: AppColors.danger)),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(mainAxisSize: MainAxisSize.min, children: _rowActions(item)),
+            ),
+          ],
         ),
       ),
     );
@@ -454,89 +458,81 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            AppLayout.horizontalPadding(context),
-            8,
-            AppLayout.horizontalPadding(context),
-            24,
-          ),
-          child: Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: math.max(720, constraints.maxWidth - AppLayout.horizontalPadding(context) * 2)),
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(AppColors.primarySoft),
-                  columns: [
-                    const DataColumn(label: Text('#')),
-                    const DataColumn(label: Text('Date')),
-                    if (widget.showPatient) const DataColumn(label: Text('Patient')),
-                    const DataColumn(label: Text('Record')),
-                    const DataColumn(label: Text('Amount'), numeric: true),
-                    const DataColumn(label: Text('Actions')),
-                  ],
-                  rows: [
-                    for (var index = 0; index < _items.length; index++)
-                      DataRow(
-                        cells: [
-                          DataCell(Text('${index + 1}')),
-                          DataCell(Text(formatDisplayDate(_items[index].date))),
-                          if (widget.showPatient)
-                            DataCell(
-                              SizedBox(
-                                width: 180,
-                                child: Text(
-                                  _items[index].displayPatientName,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                            ),
-                          DataCell(
-                            SizedBox(
-                              width: 280,
-                              child: Text(
-                                widget.showPatient ? _recordLabel(_items[index]) : _items[index].catalogName,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                          DataCell(
-                            MoneyText(
-                              formatMoney(_items[index].amount, currency: currency),
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
-                          ),
-                          DataCell(
-                            Row(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: math.max(760, constraints.maxWidth)),
+            child: DataTable(
+              showCheckboxColumn: false,
+              columns: [
+                const DataColumn(label: Text('#')),
+                const DataColumn(label: Text('Date')),
+                if (widget.showPatient) const DataColumn(label: Text('Patient')),
+                const DataColumn(label: Text('Record')),
+                const DataColumn(label: Text('Amount'), numeric: true),
+                const DataColumn(label: Text('Actions')),
+              ],
+              rows: [
+                for (var index = 0; index < _items.length; index++)
+                  DataRow(
+                    onSelectChanged: widget.onOpen == null ? null : (_) => _open(_items[index]),
+                    cells: [
+                      DataCell(Text('${index + 1}')),
+                      DataCell(IconText(icon: Icons.event_note_rounded, text: formatDisplayDate(_items[index].date))),
+                      if (widget.showPatient)
+                        DataCell(
+                          SizedBox(
+                            width: 200,
+                            child: Row(
                               children: [
-                                if (widget.onOpen != null)
-                                  IconButton(
-                                    tooltip: 'View',
-                                    onPressed: () => _open(_items[index]),
-                                    icon: const Icon(Icons.visibility_outlined),
+                                InitialsAvatar(name: _items[index].displayPatientName, size: 32),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _items[index].displayPatientName,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w700),
                                   ),
-                                IconButton(
-                                  tooltip: 'Edit',
-                                  onPressed: () => _edit(_items[index]),
-                                  icon: const Icon(Icons.edit_outlined),
-                                ),
-                                IconButton(
-                                  tooltip: 'Delete',
-                                  onPressed: () => _delete(_items[index]),
-                                  icon: const Icon(Icons.delete_outline, color: AppColors.danger),
                                 ),
                               ],
                             ),
                           ),
-                        ],
+                        ),
+                      DataCell(
+                        SizedBox(
+                          width: 280,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.showPatient ? _recordLabel(_items[index]) : _items[index].catalogName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              if (_items[index].notes != null && _items[index].notes!.isNotEmpty)
+                                Text(
+                                  _items[index].notes!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                  ],
-                ),
-              ),
+                      DataCell(
+                        MoneyText(
+                          formatMoney(_items[index].amount, currency: currency),
+                          style: Theme.of(context).textTheme.titleSmall,
+                          color: widget.accent,
+                        ),
+                      ),
+                      DataCell(Row(mainAxisSize: MainAxisSize.min, children: _rowActions(_items[index]))),
+                    ],
+                  ),
+              ],
             ),
           ),
         );
@@ -544,44 +540,141 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     );
   }
 
+  Widget _stats(String currency) {
+    final total = _items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    final now = DateTime.now();
+    final month = _items.where((item) {
+      final date = parseFlexibleDate(item.date);
+      return date != null && date.year == now.year && date.month == now.month;
+    }).fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount));
+    final average = _items.isEmpty ? 0.0 : total / _items.length;
+    return StatStrip(
+      items: [
+        MiniStat(
+          label: widget.totalLabel ?? 'Total amount',
+          value: formatMoney(moneyFromDouble(total), currency: currency),
+          icon: widget.icon,
+          color: widget.accent,
+          soft: widget.accentSoft,
+        ),
+        MiniStat(
+          label: 'Entries',
+          value: '${_items.length}',
+          icon: Icons.format_list_numbered_rounded,
+          color: AppColors.primary,
+          soft: AppColors.primarySoft,
+        ),
+        MiniStat(
+          label: 'This Month',
+          value: formatMoney(moneyFromDouble(month), currency: currency),
+          icon: Icons.calendar_month_rounded,
+          color: AppColors.success,
+          soft: AppColors.mintSoft,
+        ),
+        MiniStat(
+          label: 'Average Entry',
+          value: formatMoney(moneyFromDouble(average), currency: currency),
+          icon: Icons.analytics_rounded,
+          color: AppColors.orange,
+          soft: AppColors.warningSoft,
+        ),
+      ],
+    );
+  }
+
+  Widget _records(String currency) {
+    if (_loading && _items.isEmpty) {
+      return const SkeletonTable(key: ValueKey('history-loading'));
+    }
+    if (_items.isEmpty && _loadError != null) {
+      return EmptyState(
+        key: const ValueKey('history-error'),
+        message: _loadError!,
+        title: 'Could not load records',
+        icon: Icons.wifi_off_rounded,
+        actionLabel: 'Retry',
+        onAction: _load,
+      );
+    }
+    if (_items.isEmpty) {
+      return EmptyState(
+        key: const ValueKey('history-empty'),
+        message: 'No records for this filter yet.',
+        title: 'Nothing here',
+        icon: widget.icon,
+        actionLabel: widget.addLabel,
+        onAction: widget.onAdd == null ? null : _addRecord,
+      );
+    }
+    if (AppLayout.isDesktop(context)) {
+      return KeyedSubtree(key: const ValueKey('history-table'), child: _desktopTable(currency));
+    }
+    return Column(
+      key: const ValueKey('history-list'),
+      children: [
+        for (var index = 0; index < _items.length; index++) ...[
+          if (index > 0) const Divider(height: 1),
+          AppReveal(index: index, child: _historyCard(_items[index], currency)),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
+    final ranged = _from != null && _to != null;
     return Scaffold(
-      appBar: buildAppBar(
-        context: context,
-        title: widget.title,
-        fallback: widget.backTo,
-        actions: [
-          if (widget.onAdd != null)
-            IconButton(
-              tooltip: widget.addLabel ?? 'Add',
-              onPressed: _addRecord,
-              icon: const Icon(Icons.add_rounded),
-            ),
-          IconButton(tooltip: 'Filter dates', onPressed: _pickRange, icon: const Icon(Icons.filter_alt_outlined)),
-        ],
-      ),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: AppLayout.maxContent(context)),
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 8, AppLayout.horizontalPadding(context), 8),
-                child: TextField(
-                  controller: _search,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    labelText: 'Search',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: IconButton(
-                      tooltip: 'Search',
-                      onPressed: () => _load(network: false),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                    ),
+      appBar: buildAppBar(context: context, title: widget.title, fallback: widget.backTo),
+      body: PageScaffoldBody(
+        onRefresh: () => _load(force: true),
+        children: [
+          PageHeader(
+            icon: widget.icon,
+            title: widget.title,
+            subtitle: widget.subtitle,
+            color: widget.accent,
+            soft: widget.accentSoft,
+            actions: [
+              if (widget.onAdd != null)
+                Tooltip(
+                  message: widget.addLabel ?? 'Add',
+                  child: PrimaryAction(label: widget.addLabel ?? 'Add', icon: Icons.add_rounded, onPressed: _addRecord),
+                ),
+            ],
+          ),
+          _stats(currency),
+          if (_syncing) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 8),
+          ],
+          TablePanel(
+            header: FilterBar(
+              filters: [
+                Tooltip(
+                  message: 'Filter dates',
+                  child: FilterButton(
+                    label: ranged ? formatDisplayDateRange(_from, _to, separator: ' → ') : 'All Time',
+                    icon: Icons.calendar_month_rounded,
+                    trailingIcon: Icons.expand_more_rounded,
+                    onPressed: _pickRange,
                   ),
+                ),
+                if (ranged)
+                  FilterButton(
+                    label: 'Clear',
+                    icon: Icons.close_rounded,
+                    onPressed: () {
+                      setState(() {
+                        _from = null;
+                        _to = null;
+                      });
+                      _load();
+                    },
+                  ),
+                FilterSearch(
+                  controller: _search,
+                  hint: widget.showPatient ? 'Search by patient, phone, or record...' : 'Search records...',
                   onSubmitted: (_) => _load(network: false),
                   onChanged: (_) {
                     _searchDebounce?.cancel();
@@ -592,104 +685,39 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     });
                   },
                 ),
-              ),
-              if (_syncing) const LinearProgressIndicator(minHeight: 2),
-              if (widget.totalLabel != null && _items.isNotEmpty)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 4, AppLayout.horizontalPadding(context), 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '${widget.totalLabel} · ${_items.length} ${_items.length == 1 ? 'entry' : 'entries'}',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-                        ),
-                      ),
-                      MoneyText(
-                        formatMoney(
-                          moneyFromDouble(_items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount))),
-                          currency: currency,
-                        ),
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ],
-                  ),
+              ],
+              trailing: [
+                FilterButton(
+                  label: 'Refresh',
+                  icon: Icons.refresh_rounded,
+                  onPressed: _syncing ? null : () => _load(force: true),
                 ),
-              if (_from != null && _to != null)
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: AppLayout.horizontalPadding(context)),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: ActionChip(
-                      avatar: const Icon(Icons.close_rounded, size: 18),
-                      label: Text(
-                        formatDisplayDateRange(_from, _to, separator: ' → '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _from = null;
-                          _to = null;
-                        });
-                        _load();
-                      },
-                    ),
-                  ),
-                ),
-              Expanded(
-                child: AppStateSwitch(
-                  child: _loading && _items.isEmpty
-                    ? const Center(key: ValueKey('history-loading'), child: SkeletonCards())
-                    : _items.isEmpty && _loadError != null
-                        ? Center(
-                            key: const ValueKey('history-error'),
-                            child: EmptyState(
-                              message: _loadError!,
-                              title: 'Could not load records',
-                              icon: Icons.wifi_off_rounded,
-                              actionLabel: 'Retry',
-                              onAction: _load,
-                            ),
-                          )
-                    : _items.isEmpty
-                        ? Center(
-                            key: const ValueKey('history-empty'),
-                            child: EmptyState(
-                              message: 'No records for this filter yet.',
-                              title: 'Nothing here',
-                              icon: Icons.receipt_long_outlined,
-                              actionLabel: widget.addLabel,
-                              onAction: widget.onAdd == null ? null : _addRecord,
-                            ),
-                          )
-                        : RefreshIndicator(
-                            onRefresh: () => _load(force: true),
-                            child: AppLayout.isDesktop(context)
-                                ? _desktopTable(currency)
-                                : ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              padding: EdgeInsets.fromLTRB(
-                                AppLayout.horizontalPadding(context),
-                                8,
-                                AppLayout.horizontalPadding(context),
-                                24,
-                              ),
-                              itemCount: _items.length,
-                              itemBuilder: (context, index) {
-                                final item = _items[index];
-                                return AppReveal(
-                                  index: index,
-                                  child: _historyCard(item, currency),
-                                );
-                              },
-                            ),
+              ],
+            ),
+            footer: TableFooterText(
+              shown: _items.length,
+              total: _items.length,
+              noun: widget.recordNoun,
+              trailing: _items.isEmpty
+                  ? null
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Total  ', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted)),
+                        MoneyText(
+                          formatMoney(
+                            moneyFromDouble(_items.fold<double>(0, (sum, item) => sum + moneyToDouble(item.amount))),
+                            currency: currency,
                           ),
-                ),
-              ),
-            ],
+                          style: Theme.of(context).textTheme.titleMedium,
+                          color: widget.accent,
+                        ),
+                      ],
+                    ),
+            ),
+            child: AppStateSwitch(child: _records(currency)),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -709,6 +737,12 @@ class TreatmentHistoryScreen extends StatelessWidget {
       updatePath: (id) => '/api/v1/treatment-transactions/$id',
       loader: (repo, {range, search}) => repo.incomeHistory(range: range, search: search),
       showPatient: true,
+      icon: Icons.medical_services_rounded,
+      subtitle: 'Every treatment visit, fee, and patient in one place',
+      accent: AppColors.success,
+      accentSoft: AppColors.mintSoft,
+      totalLabel: 'Treatment Fees',
+      recordNoun: 'treatments',
       addLabel: 'Add treatment',
       onAdd: () => context.push('/clinic/income'),
       onOpen: (context, entry) async {
@@ -734,6 +768,12 @@ class ClinicExpenseHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/clinic-expenses/$id',
       updatePath: (id) => '/api/v1/clinic-expenses/$id',
       loader: (repo, {range, search}) => repo.clinicExpenseHistory(range: range, search: search),
+      icon: Icons.receipt_long_rounded,
+      subtitle: 'Track clinic spending by category, separate from lab charges',
+      accent: AppColors.orange,
+      accentSoft: AppColors.warningSoft,
+      totalLabel: 'Clinic Expenses',
+      recordNoun: 'expenses',
       addLabel: 'Add expense',
       onAdd: () => context.push('/clinic/expenses'),
     );
@@ -754,7 +794,12 @@ class LabChargeHistoryScreen extends StatelessWidget {
       updatePath: (id) => '/api/v1/lab-charges/$id',
       loader: (repo, {range, search}) => repo.labChargeHistory(range: range, search: search),
       showPatient: true,
-      totalLabel: 'Total lab charges',
+      icon: Icons.science_rounded,
+      subtitle: 'Lab work costs, linked to patients and visits where needed',
+      accent: AppColors.violet,
+      accentSoft: AppColors.violetSoft,
+      totalLabel: 'Total Lab Charges',
+      recordNoun: 'lab charges',
       addLabel: 'Add lab charge',
       onAdd: () => context.push('/clinic/lab-charges/new'),
       onEdit: (context, entry) async {
@@ -777,6 +822,12 @@ class HomeExpenseHistoryScreen extends StatelessWidget {
       deletePath: (id) => '/api/v1/home-expenses/$id',
       updatePath: (id) => '/api/v1/home-expenses/$id',
       loader: (repo, {range, search}) => repo.homeExpenseHistory(range: range, search: search),
+      icon: Icons.shopping_bag_rounded,
+      subtitle: 'Household grocery spending, kept separate from the clinic',
+      accent: AppColors.aqua,
+      accentSoft: AppColors.aquaSoft,
+      totalLabel: 'Home Spending',
+      recordNoun: 'expenses',
       addLabel: 'Add expense',
       onAdd: () => context.push('/home/expenses'),
     );

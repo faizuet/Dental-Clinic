@@ -189,6 +189,17 @@ class RecentClinicPatient {
   final String? lastTreatment;
 }
 
+enum ClinicActivityKind { treatment, expense, labCharge }
+
+class ClinicActivity {
+  const ClinicActivity({required this.kind, required this.title, required this.date, required this.amount});
+
+  final ClinicActivityKind kind;
+  final String title;
+  final String date;
+  final String amount;
+}
+
 class TreatmentAttachment {
   const TreatmentAttachment({
     required this.id,

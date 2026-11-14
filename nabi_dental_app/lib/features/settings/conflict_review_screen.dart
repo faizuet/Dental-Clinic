@@ -5,6 +5,7 @@ import '../../app/theme/app_colors.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
@@ -74,29 +75,25 @@ class _ConflictReviewScreenState extends ConsumerState<ConflictReviewScreen> {
                   itemCount: _items.length,
                   itemBuilder: (context, index) {
                     final item = _items[index];
-                    return Card(
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: TablePanel(
+                      header: PanelTitle(
+                        title: item.entityType.replaceAll('_', ' '),
+                        subtitle: 'The saved values differ. Choose which one to keep.',
+                        icon: Icons.merge_type_rounded,
+                        color: AppColors.orange,
+                        soft: AppColors.warningSoft,
+                      ),
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              item.entityType.replaceAll('_', ' '),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'This device: ${_preview(item.local)}',
-                              style: const TextStyle(color: AppColors.muted),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Server: ${_preview(item.server)}',
-                              style: const TextStyle(color: AppColors.muted),
-                            ),
-                            const SizedBox(height: 12),
+                            _valueBox(Icons.computer_rounded, 'This device', _preview(item.local), AppColors.primarySoft),
+                            const SizedBox(height: 10),
+                            _valueBox(Icons.dns_rounded, 'Server', _preview(item.server), AppColors.aquaSoft),
+                            const SizedBox(height: 16),
                             OverflowBar(
                               spacing: 8,
                               overflowSpacing: 8,
@@ -120,11 +117,37 @@ class _ConflictReviewScreenState extends ConsumerState<ConflictReviewScreen> {
                           ],
                         ),
                       ),
+                    ),
                     );
                   },
                 ),
                   ),
                 ),
+    );
+  }
+
+  Widget _valueBox(IconData icon, String label, String value, Color background) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppRadii.md)),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppColors.muted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

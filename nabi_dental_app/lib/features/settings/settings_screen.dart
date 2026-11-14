@@ -11,9 +11,8 @@ import '../../core/errors/friendly_error.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
-import '../../core/widgets/app_page.dart';
-import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
+import '../../core/widgets/page_kit.dart';
 import 'change_password_dialog.dart';
 import 'profile_avatar.dart';
 
@@ -187,7 +186,104 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final session = ref.watch(sessionProvider);
     final pending = ref.watch(pendingCountProvider);
     final pendingCount = pending.asData?.value;
-    final theme = Theme.of(context);
+    final conflicts = _sync?.conflicts ?? 0;
+
+    final backup = _section(
+      title: 'Backup & Restore',
+      subtitle: 'Keep a copy of clinic data on a USB drive',
+      icon: Icons.backup_rounded,
+      color: AppColors.success,
+      soft: AppColors.mintSoft,
+      tiles: [
+        _SettingsTile(
+          icon: Icons.save_alt_rounded,
+          title: 'Save clinic backup',
+          subtitle: _backup.subtitle,
+          iconColor: AppColors.success,
+          badge: _backup.isOverdue ? const StatusPill(label: 'Due', color: AppColors.orange, soft: AppColors.warningSoft) : null,
+          onTap: _busy ? null : _exportBackup,
+        ),
+        _SettingsTile(
+          icon: Icons.settings_backup_restore_rounded,
+          title: 'Restore from backup',
+          subtitle: 'Replace this computer with a saved zip',
+          iconColor: AppColors.orange,
+          onTap: _busy ? null : _restoreBackup,
+        ),
+      ],
+    );
+    final clinic = _section(
+      title: 'Clinic Data',
+      subtitle: 'Catalogs and sync for this computer',
+      icon: Icons.local_hospital_rounded,
+      color: AppColors.primary,
+      soft: AppColors.primarySoft,
+      tiles: [
+        _SettingsTile(
+          icon: Icons.category_rounded,
+          title: 'Catalogs',
+          subtitle: 'Treatments and expense categories',
+          onTap: () => appPush(context, '/settings/catalogs'),
+        ),
+        _SettingsTile(
+          icon: Icons.sync_rounded,
+          title: 'Retry sync',
+          subtitle: _syncSubtitle(pendingCount),
+          iconColor: AppColors.aqua,
+          badge: (pendingCount ?? 0) > 0 ? StatusPill(label: '$pendingCount', color: AppColors.aqua, soft: AppColors.aquaSoft) : null,
+          onTap: _busy ? null : _retrySync,
+        ),
+        _SettingsTile(
+          icon: Icons.merge_type_rounded,
+          title: 'Conflict review',
+          subtitle: conflicts > 0 ? '$conflicts items need a choice' : 'Choose local or server values when they differ',
+          iconColor: AppColors.violet,
+          badge: conflicts > 0 ? StatusPill(label: '$conflicts', color: AppColors.danger, soft: AppColors.dangerSoft) : null,
+          onTap: () => appPush(context, '/settings/conflicts'),
+        ),
+      ],
+    );
+    final security = _section(
+      title: 'Security',
+      subtitle: 'Protect the owner account',
+      icon: Icons.shield_rounded,
+      color: AppColors.violet,
+      soft: AppColors.violetSoft,
+      tiles: [
+        _SettingsTile(
+          icon: Icons.lock_reset_rounded,
+          title: 'Change password',
+          subtitle: 'Updates the owner password on the server',
+          iconColor: AppColors.violet,
+          onTap: _busy ? null : _changePassword,
+        ),
+      ],
+    );
+    final account = _section(
+      title: 'Account',
+      subtitle: 'Sign out of the app',
+      icon: Icons.manage_accounts_rounded,
+      color: AppColors.danger,
+      soft: AppColors.dangerSoft,
+      tiles: [
+        _SettingsTile(
+          icon: Icons.logout_rounded,
+          title: 'Sign out this device',
+          subtitle: 'Return to the sign-in screen',
+          iconColor: AppColors.danger,
+          titleColor: AppColors.danger,
+          onTap: () => _confirmLogout(allDevices: false),
+        ),
+        _SettingsTile(
+          icon: Icons.phonelink_erase_rounded,
+          title: 'Sign out all devices',
+          subtitle: 'Revoke access on every signed-in device',
+          iconColor: AppColors.danger,
+          titleColor: AppColors.danger,
+          onTap: () => _confirmLogout(allDevices: true),
+        ),
+      ],
+    );
 
     return Scaffold(
       appBar: buildAppBar(
@@ -196,143 +292,91 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         isRoot: true,
         fallback: '/clinic',
       ),
-      body: AppPageBody(
-        padding: AppLayout.pagePadding(context, top: 8, bottom: 8),
-        child: ListView(
-          padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
-          children: [
-            if (_busy) const LinearProgressIndicator(minHeight: 2),
-            if (_message != null) ...[
-              ErrorBanner(message: _message!),
-              const SizedBox(height: 16),
-            ],
-            AppReveal(
-              child: Card(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(AppRadii.lg),
-                onTap: () => appPush(context, '/settings/profile'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-                  child: Row(
-                    children: [
-                      const SessionAvatar(size: 64),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              session.user?.fullName ?? 'Owner',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              session.user?.email ?? '',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'View profile and photo',
-                              style: theme.textTheme.bodySmall?.copyWith(color: AppColors.purple),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
-                    ],
-                  ),
+      body: PageScaffoldBody(
+        children: [
+          const PageHeader(
+            icon: Icons.settings_rounded,
+            title: 'Settings',
+            subtitle: 'Manage your profile, backups, sync, and security',
+          ),
+          const SizedBox(height: 20),
+          if (_busy) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 12),
+          ],
+          if (_message != null) ...[
+            ErrorBanner(message: _message!),
+            const SizedBox(height: 16),
+          ],
+          AppReveal(child: _profileCard(session.user?.fullName ?? 'Owner', session.user?.email ?? '')),
+          const SizedBox(height: 20),
+          AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: backup, secondary: clinic),
+          const SizedBox(height: 20),
+          AppSplit(breakpoint: 900, primaryFlex: 1, secondaryFlex: 1, primary: security, secondary: account),
+        ],
+      ),
+    );
+  }
+
+  Widget _profileCard(String name, String email) {
+    final theme = Theme.of(context);
+    return TablePanel(
+      child: InkWell(
+        onTap: () => appPush(context, '/settings/profile'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+          child: Row(
+            children: [
+              const SessionAvatar(size: 64),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                        const StatusPill(label: 'Owner', color: AppColors.primary, soft: AppColors.primarySoft),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    IconText(icon: Icons.mail_outline_rounded, text: email, muted: true),
+                    const SizedBox(height: 6),
+                    Text(
+                      'View profile and photo',
+                      style: theme.textTheme.bodySmall?.copyWith(color: AppColors.primary, fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            ),
-            const SectionHeader('Backup'),
-            Card(
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.save_alt_rounded,
-                    title: 'Save clinic backup',
-                    subtitle: _backup.subtitle,
-                    onTap: _busy ? null : _exportBackup,
-                  ),
-                  const Divider(indent: 68),
-                  _SettingsTile(
-                    icon: Icons.settings_backup_restore_rounded,
-                    title: 'Restore from backup',
-                    subtitle: 'Replace this computer with a saved zip',
-                    onTap: _busy ? null : _restoreBackup,
-                  ),
-                ],
-              ),
-            ),
-            const SectionHeader('Clinic'),
-            Card(
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.category_outlined,
-                    title: 'Catalogs',
-                    subtitle: 'Treatments and expense categories',
-                    onTap: () => appPush(context, '/settings/catalogs'),
-                  ),
-                  const Divider(indent: 68),
-                  _SettingsTile(
-                    icon: Icons.sync_rounded,
-                    title: 'Retry sync',
-                    subtitle: _syncSubtitle(pendingCount),
-                    onTap: _busy ? null : _retrySync,
-                  ),
-                  const Divider(indent: 68),
-                  _SettingsTile(
-                    icon: Icons.merge_type_rounded,
-                    title: 'Conflict review',
-                    subtitle: (_sync?.conflicts ?? 0) > 0
-                        ? '${_sync!.conflicts} items need a choice'
-                        : 'Choose local or server values when they differ',
-                    onTap: () => appPush(context, '/settings/conflicts'),
-                  ),
-                ],
-              ),
-            ),
-            const SectionHeader('Security'),
-            Card(
-              child: _SettingsTile(
-                icon: Icons.lock_reset_rounded,
-                title: 'Change password',
-                subtitle: 'Updates the owner password on the server',
-                onTap: _busy ? null : _changePassword,
-              ),
-            ),
-            const SectionHeader('Account'),
-            Card(
-              child: Column(
-                children: [
-                  _SettingsTile(
-                    icon: Icons.logout_rounded,
-                    title: 'Sign out this device',
-                    subtitle: 'Return to the sign-in screen',
-                    iconColor: AppColors.danger,
-                    titleColor: AppColors.danger,
-                    onTap: () => _confirmLogout(allDevices: false),
-                  ),
-                  const Divider(indent: 68),
-                  _SettingsTile(
-                    icon: Icons.phonelink_erase_rounded,
-                    title: 'Sign out all devices',
-                    subtitle: 'Revoke access on every signed-in device',
-                    iconColor: AppColors.danger,
-                    titleColor: AppColors.danger,
-                    onTap: () => _confirmLogout(allDevices: true),
-                  ),
-                ],
-              ),
-            ),
-          ],
+              const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _section({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required Color soft,
+    required List<Widget> tiles,
+  }) {
+    return TablePanel(
+      header: PanelTitle(title: title, subtitle: subtitle, icon: icon, color: color, soft: soft),
+      child: Column(
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 72),
+            tiles[i],
+          ],
+        ],
       ),
     );
   }
@@ -346,6 +390,7 @@ class _SettingsTile extends StatelessWidget {
     required this.onTap,
     this.iconColor,
     this.titleColor,
+    this.badge,
   });
 
   final IconData icon;
@@ -354,28 +399,37 @@ class _SettingsTile extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? iconColor;
   final Color? titleColor;
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
+    final color = iconColor ?? AppColors.primary;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      enabled: onTap != null,
       leading: Container(
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: (iconColor ?? AppColors.primary).withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(AppRadii.sm),
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, color: iconColor ?? AppColors.primary, size: 22),
+        child: Icon(icon, color: color, size: 21),
       ),
       title: Text(
         title,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: titleColor == null ? null : TextStyle(color: titleColor, fontWeight: FontWeight.w600),
+        style: TextStyle(color: titleColor, fontWeight: FontWeight.w700),
       ),
       subtitle: Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badge != null) ...[badge!, const SizedBox(width: 8)],
+          const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
+        ],
+      ),
       onTap: onTap,
     );
   }

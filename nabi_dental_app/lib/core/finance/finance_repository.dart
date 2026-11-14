@@ -495,6 +495,33 @@ class FinanceRepository {
     return recent;
   }
 
+  Future<List<ClinicActivity>> recentClinicActivity({int limit = 6}) async {
+    final items = [
+      for (final visit in await incomeHistory())
+        ClinicActivity(
+          kind: ClinicActivityKind.treatment,
+          title: '${visit.subTreatment?.trim().isNotEmpty == true ? visit.subTreatment : visit.catalogName} for ${visit.displayPatientName}',
+          date: visit.date,
+          amount: visit.amount,
+        ),
+      for (final expense in await clinicExpenseHistory())
+        ClinicActivity(
+          kind: ClinicActivityKind.expense,
+          title: '${expense.catalogName} expense',
+          date: expense.date,
+          amount: expense.amount,
+        ),
+      for (final charge in await labCharges())
+        ClinicActivity(
+          kind: ClinicActivityKind.labCharge,
+          title: charge.patientName == null ? '${charge.displayLab} lab charge' : '${charge.displayLab} for ${charge.patientName}',
+          date: charge.date,
+          amount: charge.amount,
+        ),
+    ]..sort((a, b) => b.date.compareTo(a.date));
+    return items.take(limit).toList();
+  }
+
   Future<List<PatientRecord>> patients({String? search, bool remote = false}) async {
     final needle = search?.trim();
     if (!remote) {

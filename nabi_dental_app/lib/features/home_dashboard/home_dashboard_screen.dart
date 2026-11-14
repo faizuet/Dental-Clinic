@@ -17,7 +17,8 @@ import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/period_selector.dart';
 import '../../core/widgets/status_banner.dart';
-import '../../core/widgets/summary_card.dart';
+import '../../core/widgets/dashboard_tiles.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/welcome_header.dart';
 
 class HomeDashboardScreen extends ConsumerStatefulWidget {
@@ -98,7 +99,6 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
   Widget build(BuildContext context) {
     final currency = ref.watch(sessionProvider).clinic?.currency ?? 'PKR';
     final totals = _totals;
-    final desktop = AppLayout.isDesktop(context);
     final session = ref.watch(sessionProvider);
     return Scaffold(
       appBar: buildAppBar(
@@ -165,94 +165,64 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
                               key: const ValueKey('home-totals'),
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  formatDisplayDateRange(totals.range.from, totals.range.to),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w500),
+                                IconText(
+                                  icon: Icons.calendar_month_rounded,
+                                  text: formatDisplayDateRange(totals.range.from, totals.range.to),
+                                  muted: true,
                                 ),
                                 const SizedBox(height: 12),
-                                ResponsiveGrid(
-                                  minItemWidth: 240,
-                                  children: [
-                                    SummaryCard(
-                                      label: 'Spending',
-                                      value: formatMoney(totals.spent, currency: currency),
-                                      color: AppColors.warning,
-                                      background: AppColors.warningSoft,
-                                      icon: Icons.shopping_bag_outlined,
-                                    ),
-                                    SummaryCard(
-                                      label: 'Monthly budget',
-                                      value: formatMoney(totals.budget, currency: currency),
-                                      color: AppColors.primary,
-                                      background: AppColors.lavenderSoft,
-                                      icon: Icons.savings_outlined,
-                                    ),
-                                    SummaryCard(
-                                      label: moneyToDouble(totals.remaining) < 0 ? 'Over budget' : 'Remaining',
-                                      value: formatMoney(totals.remaining, currency: currency),
-                                      color: moneyToDouble(totals.remaining) < 0 ? AppColors.danger : AppColors.success,
-                                      background: moneyToDouble(totals.remaining) < 0 ? AppColors.dangerSoft : AppColors.mintSoft,
-                                      icon: Icons.account_balance_wallet_outlined,
-                                    ),
-                                    SummaryCard(
-                                      label: 'Budget used',
-                                      value: totals.percentageUsed == null ? '—' : '${totals.percentageUsed}%',
-                                      color: AppColors.primary,
-                                      background: AppColors.tealSoft,
-                                      icon: Icons.pie_chart_outline_rounded,
-                                    ),
-                                  ],
-                                ),
+                                _statCards(totals, currency),
                               ],
                             ),
                           ),
               ),
-              const SectionHeader('Quick actions'),
-              if (desktop)
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: _primaryActionStyle,
-                        onPressed: () => appPushAndRefresh(context, '/home/expenses', () => _load(silent: true)),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('Add home expense', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: _budgetActionStyle,
-                        onPressed: () => appPushAndRefresh(context, '/home/budget', () => _load(silent: true)),
-                        icon: const Icon(Icons.savings_outlined),
-                        label: const Text('Set monthly budget', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 12),
+              _sectionTitle(Icons.bolt_rounded, 'Quick Actions'),
+              ResponsiveGrid(
+                minItemWidth: 230,
+                runSpacing: 12,
+                children: [
+                  QuickActionTile(
+                    title: 'Add Home Expense',
+                    subtitle: 'Record grocery spending',
+                    icon: Icons.add_shopping_cart_rounded,
+                    colors: const [Color(0xFF2DBFA6), AppColors.aqua],
+                    onTap: () => _open('/home/expenses'),
+                  ),
+                  QuickActionTile(
+                    title: 'Set Monthly Budget',
+                    subtitle: 'Plan household spending',
+                    icon: Icons.savings_rounded,
+                    colors: const [AppColors.secondary, AppColors.primaryDark],
+                    onTap: () => _open('/home/budget'),
+                  ),
+                  QuickActionTile(
+                    title: 'All Expenses',
+                    subtitle: 'Search and edit records',
+                    icon: Icons.receipt_long_rounded,
+                    colors: const [Color(0xFFF7AE5C), AppColors.orange],
+                    onTap: () => _open('/home/expenses/history'),
+                  ),
+                  QuickActionTile(
+                    title: 'Home Reports',
+                    subtitle: 'Spending by category',
+                    icon: Icons.pie_chart_rounded,
+                    colors: const [Color(0xFF9479E0), AppColors.violet],
+                    onTap: () => _open('/home/reports'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (totals != null)
+                AppSplit(
+                  breakpoint: 900,
+                  primaryFlex: 3,
+                  secondaryFlex: 2,
+                  primary: _recentExpenses(currency),
+                  secondary: _budgetPanel(totals, currency),
                 )
-              else ...[
-                Stretch(
-                  child: FilledButton.icon(
-                    style: _primaryActionStyle,
-                    onPressed: () => appPushAndRefresh(context, '/home/expenses', () => _load(silent: true)),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add home expense', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Stretch(
-                  child: FilledButton.icon(
-                    style: _budgetActionStyle,
-                    onPressed: () => appPushAndRefresh(context, '/home/budget', () => _load(silent: true)),
-                    icon: const Icon(Icons.savings_outlined),
-                    label: const Text('Set monthly budget', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 8),
-              _recentExpenses(currency),
+              else
+                _recentExpenses(currency),
             ],
           ),
         ),
@@ -260,99 +230,204 @@ class _HomeDashboardScreenState extends ConsumerState<HomeDashboardScreen> {
     );
   }
 
-  Widget _recentExpenses(String currency) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  void _open(String path) => appPushAndRefresh(context, path, () => _load(silent: true));
+
+  Widget _statCards(HomeTotals totals, String currency) {
+    final over = moneyToDouble(totals.remaining) < 0;
+    return ResponsiveGrid(
+      minItemWidth: 220,
+      runSpacing: 12,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text('Recent home expenses', style: Theme.of(context).textTheme.titleMedium),
-            ),
-            TextButton(
-              onPressed: () => appPushAndRefresh(context, '/home/expenses/history', () => _load(silent: true)),
-              child: const Text('All expenses'),
-            ),
-          ],
+        StatCard(
+          label: 'Spending',
+          value: formatMoney(totals.spent, currency: currency),
+          color: AppColors.orange,
+          background: AppColors.warningSoft,
+          icon: Icons.shopping_bag_rounded,
+          onTap: () => _open('/home/expenses/history'),
         ),
-        if (_recent.isEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Grocery and household spending will show up here.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
-            ),
-          )
-        else
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var index = 0; index < _recent.length; index++) ...[
-                  if (index > 0) const Divider(height: 1),
-                  _recentTile(_recent[index], index, currency),
-                ],
-              ],
-            ),
-          ),
+        StatCard(
+          label: 'Monthly Budget',
+          value: formatMoney(totals.budget, currency: currency),
+          color: AppColors.primary,
+          background: AppColors.primarySoft,
+          icon: Icons.savings_rounded,
+          actionLabel: 'Change',
+          onTap: () => _open('/home/budget'),
+        ),
+        StatCard(
+          label: over ? 'Over Budget' : 'Remaining',
+          value: formatMoney(totals.remaining, currency: currency),
+          color: over ? AppColors.danger : AppColors.success,
+          background: over ? AppColors.dangerSoft : AppColors.mintSoft,
+          icon: Icons.account_balance_wallet_rounded,
+          onTap: () => _open('/home/reports'),
+        ),
+        StatCard(
+          label: 'Budget Used',
+          value: totals.percentageUsed == null ? '—' : '${totals.percentageUsed}%',
+          color: AppColors.aqua,
+          background: AppColors.aquaSoft,
+          icon: Icons.donut_large_rounded,
+          onTap: () => _open('/home/reports'),
+        ),
       ],
     );
   }
 
-  Widget _recentTile(MoneyEntry item, int index, String currency) {
-    final details = [
-      if (item.catalogName.isNotEmpty) item.catalogName,
-      formatDisplayDate(item.date),
-    ].join(' · ');
-    return ListTile(
-      onTap: () => appPushAndRefresh(context, '/home/expenses/history', () => _load(silent: true)),
-      leading: CircleAvatar(
-        backgroundColor: AppColors.primarySoft,
-        foregroundColor: AppColors.primary,
-        child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
-      ),
-      title: Text(item.catalogName, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(details, maxLines: 2, overflow: TextOverflow.ellipsis),
-      trailing: Text(
-        formatMoney(item.amount, currency: currency),
-        style: Theme.of(context).textTheme.titleSmall,
+  Widget _sectionTitle(IconData icon, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.warning, size: 22),
+          const SizedBox(width: 6),
+          Text(label, style: Theme.of(context).textTheme.titleMedium),
+        ],
       ),
     );
   }
 
-  static final ButtonStyle _primaryActionStyle = FilledButton.styleFrom(
-    minimumSize: const Size(64, 48),
-    backgroundColor: AppColors.primary,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: AppColors.primarySoft,
-    disabledForegroundColor: AppColors.muted,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.pressed)) {
-        return Colors.white.withValues(alpha: 0.18);
-      }
-      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
-        return Colors.white.withValues(alpha: 0.10);
-      }
-      return null;
-    }),
-  );
+  Widget _budgetPanel(HomeTotals totals, String currency) {
+    final theme = Theme.of(context);
+    final used = double.tryParse(totals.percentageUsed ?? '');
+    final over = moneyToDouble(totals.remaining) < 0;
+    final color = over ? AppColors.danger : (used != null && used >= 80 ? AppColors.orange : AppColors.success);
+    return DashboardPanel(
+      title: 'Budget Overview',
+      actionLabel: 'Change',
+      onAction: () => _open('/home/budget'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    used == null ? 'No budget set' : '${totals.percentageUsed}% used',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: color),
+                  ),
+                ),
+                StatusPill(
+                  label: over ? 'Over budget' : 'On track',
+                  color: over ? AppColors.danger : AppColors.success,
+                  soft: over ? AppColors.dangerSoft : AppColors.successSoft,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.full),
+              child: LinearProgressIndicator(
+                value: ((used ?? 0) / 100).clamp(0, 1).toDouble(),
+                minHeight: 10,
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.12),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _budgetLine('Spent', formatMoney(totals.spent, currency: currency), AppColors.orange),
+            const Divider(height: 20),
+            _budgetLine('Budget', formatMoney(totals.budget, currency: currency), AppColors.primary),
+            const Divider(height: 20),
+            _budgetLine(over ? 'Over by' : 'Remaining', formatMoney(totals.remaining, currency: currency), over ? AppColors.danger : AppColors.success),
+          ],
+        ),
+      ),
+    );
+  }
 
-  static final ButtonStyle _budgetActionStyle = FilledButton.styleFrom(
-    minimumSize: const Size(64, 48),
-    backgroundColor: AppColors.primaryDark,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: AppColors.primarySoft,
-    disabledForegroundColor: AppColors.muted,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.pressed)) {
-        return Colors.white.withValues(alpha: 0.18);
-      }
-      if (states.contains(WidgetState.hovered) || states.contains(WidgetState.focused)) {
-        return Colors.white.withValues(alpha: 0.12);
-      }
-      return null;
-    }),
-  );
+  Widget _budgetLine(String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(label, style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600))),
+        MoneyText(value, style: Theme.of(context).textTheme.titleSmall),
+      ],
+    );
+  }
+
+  Widget _recentExpenses(String currency) {
+    final theme = Theme.of(context);
+    final header = theme.textTheme.bodySmall?.copyWith(color: AppColors.muted, fontWeight: FontWeight.w700);
+    return DashboardPanel(
+      title: 'Recent Home Expenses',
+      actionLabel: 'All expenses',
+      onAction: () => _open('/home/expenses/history'),
+      child: _recent.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
+              child: Text(
+                'Grocery and household spending will show up here.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+              ),
+            )
+          : Column(
+              children: [
+                Container(
+                  color: AppColors.tableHeader,
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  child: Row(
+                    children: [
+                      Expanded(flex: 5, child: Text('Item', style: header)),
+                      Expanded(flex: 3, child: Text('Date', style: header)),
+                      Expanded(flex: 3, child: Text('Amount', style: header, textAlign: TextAlign.right)),
+                    ],
+                  ),
+                ),
+                for (var index = 0; index < _recent.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  _recentRow(_recent[index], currency),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _recentRow(MoneyEntry item, String currency) {
+    final theme = Theme.of(context);
+    final name = item.catalogName.isEmpty ? 'Home expense' : item.catalogName;
+    return InkWell(
+      onTap: () => _open('/home/expenses/history'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        child: Row(
+          children: [
+            Expanded(
+              flex: 5,
+              child: Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(color: AppColors.aquaSoft, borderRadius: BorderRadius.circular(10)),
+                    child: const Icon(Icons.shopping_basket_rounded, size: 18, color: AppColors.aqua),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                        if ((item.notes ?? '').isNotEmpty)
+                          Text(item.notes!, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(flex: 3, child: Text(formatDisplayDate(item.date), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            Expanded(
+              flex: 3,
+              child: MoneyText(formatMoney(item.amount, currency: currency), style: theme.textTheme.titleSmall, color: AppColors.aqua),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

@@ -6,6 +6,7 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -238,11 +239,22 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
   Widget _list(List<CatalogItem> items, {required VoidCallback onAdd}) {
     return Column(
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 4, AppLayout.horizontalPadding(context), 4),
-            child: TextButton.icon(onPressed: onAdd, icon: const Icon(Icons.add), label: const Text('Add')),
+        Padding(
+          padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 16, AppLayout.horizontalPadding(context), 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text('Catalog items', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                    StatusPill(label: '${items.length}', color: AppColors.primary, soft: AppColors.primarySoft),
+                  ],
+                ),
+              ),
+              FilledButton.icon(onPressed: onAdd, icon: const Icon(Icons.add_rounded), label: const Text('Add')),
+            ],
           ),
         ),
         Expanded(
@@ -272,17 +284,17 @@ class _CatalogsScreenState extends ConsumerState<CatalogsScreen> with SingleTick
                     ].whereType<String>().join(' · ');
                     return AppReveal(
                       index: index,
-                      child: Card(
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: AppColors.primarySoft,
-                          foregroundColor: AppColors.primary,
-                          child: Text(item.name.isEmpty ? '?' : item.name[0].toUpperCase()),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: TablePanel(
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            leading: InitialsAvatar(name: item.name.isEmpty ? '?' : item.name, size: 40),
+                            title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            subtitle: subtitle.isEmpty ? null : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          ),
                         ),
-                        title: Text(item.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: subtitle.isEmpty ? null : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
                       ),
-                    ),
                     );
                   },
                 ),

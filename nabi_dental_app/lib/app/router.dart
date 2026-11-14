@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -67,7 +68,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/clinic/patients',
-                pageBuilder: (context, state) => buildAppPage(state, const PatientsScreen()),
+                pageBuilder: (context, state) => buildAppPage(
+                  state,
+                  PatientsScreen(
+                    key: ValueKey('patients-${state.uri.queryParameters['q'] ?? ''}'),
+                    openAdd: state.uri.queryParameters['add'] == '1',
+                    initialQuery: state.uri.queryParameters['q'],
+                  ),
+                ),
                 routes: [
                   GoRoute(
                     path: ':id',

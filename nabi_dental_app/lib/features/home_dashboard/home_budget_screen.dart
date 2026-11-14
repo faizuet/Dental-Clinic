@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../app/theme/app_colors.dart';
 import '../../core/auth/session_controller.dart';
 import '../../core/finance/finance_repository.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -126,13 +128,34 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
                 children: [
+                  const PageHeader(
+                    icon: Icons.savings_rounded,
+                    title: 'Monthly Budget',
+                    subtitle: 'Set how much the household plans to spend each month',
+                    color: AppColors.aqua,
+                    soft: AppColors.aquaSoft,
+                  ),
+                  const SizedBox(height: 20),
+                  TablePanel(
+                    header: const PanelTitle(
+                      title: 'Budget for the month',
+                      subtitle: 'Pick a month, then enter the amount',
+                      icon: Icons.calendar_month_rounded,
+                      color: AppColors.aqua,
+                      soft: AppColors.aquaSoft,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                   Row(
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<int>(
                           initialValue: _month,
                           isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Month'),
+                          decoration: const InputDecoration(labelText: 'Month', prefixIcon: Icon(Icons.event_rounded)),
                           items: [
                             for (var month = 1; month <= 12; month++)
                               DropdownMenuItem(
@@ -156,7 +179,7 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
                         child: DropdownButtonFormField<int>(
                           initialValue: _year,
                           isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Year'),
+                          decoration: const InputDecoration(labelText: 'Year', prefixIcon: Icon(Icons.date_range_rounded)),
                           items: [
                             for (var year = DateTime.now().year - 2; year <= DateTime.now().year + 1; year++)
                               DropdownMenuItem(value: year, child: Text('$year')),
@@ -182,16 +205,15 @@ class _HomeBudgetScreenState extends ConsumerState<HomeBudgetScreen> {
                       message: _error!,
                       onRetry: _busy ? null : (_loadFailed ? _load : _save),
                     ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: TextField(
-                        controller: _amount,
-                        enabled: !_busy,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _busy ? null : _save(),
-                        decoration: const InputDecoration(labelText: 'Budget amount', prefixIcon: Icon(Icons.payments_outlined)),
+                  TextField(
+                    controller: _amount,
+                    enabled: !_busy,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _busy ? null : _save(),
+                    decoration: const InputDecoration(labelText: 'Budget amount', prefixIcon: Icon(Icons.payments_outlined)),
+                  ),
+                        ],
                       ),
                     ),
                   ),

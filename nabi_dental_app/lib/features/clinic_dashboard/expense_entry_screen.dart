@@ -8,6 +8,7 @@ import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/errors/friendly_error.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_motion.dart';
@@ -162,6 +163,8 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
         (row) => row.categoryId != null || row.amount.text.trim().isNotEmpty || row.notes.text.trim().isNotEmpty,
       );
 
+  bool get _home => widget.backTo == '/home';
+
   @override
   Widget build(BuildContext context) {
     return AppDiscardScope(
@@ -179,6 +182,16 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
           children: [
+          PageHeader(
+            icon: _home ? Icons.shopping_bag_rounded : Icons.receipt_long_rounded,
+            title: _home ? 'Add Home Expense' : 'Add Clinic Expense',
+            subtitle: _home
+                ? 'Record grocery and household spending in one go'
+                : 'Record clinic running costs. Lab work goes under Lab charges.',
+            color: _home ? AppColors.aqua : AppColors.orange,
+            soft: _home ? AppColors.aquaSoft : AppColors.warningSoft,
+          ),
+          const SizedBox(height: 20),
           DatePickerTile(
             label: 'Date',
             value: formatDisplayDate(_date),
@@ -195,10 +208,25 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
             child: Column(
               children: [
           for (var i = 0; i < _rows.length; i++)
-            Card(
-              margin: const EdgeInsets.only(bottom: 12),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TablePanel(
+              header: PanelTitle(
+                title: 'Expense ${i + 1}',
+                subtitle: 'Category, amount, and an optional note',
+                icon: Icons.edit_note_rounded,
+                color: _home ? AppColors.aqua : AppColors.orange,
+                soft: _home ? AppColors.aquaSoft : AppColors.warningSoft,
+                trailing: _rows.length > 1
+                    ? RowAction.danger(
+                        icon: Icons.delete_outline_rounded,
+                        tooltip: 'Remove',
+                        onPressed: () => setState(() => _rows.removeAt(i)),
+                      )
+                    : null,
+              ),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   children: [
                     if (AppLayout.isDesktop(context))
@@ -278,25 +306,21 @@ class _ExpenseEntryScreenState extends ConsumerState<ExpenseEntryScreen> {
                       decoration: const InputDecoration(labelText: 'Notes (optional)', prefixIcon: Icon(Icons.notes_rounded)),
                     ),
                     ],
-                    if (_rows.length > 1)
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => setState(() => _rows.removeAt(i)),
-                          child: const Text('Remove', style: TextStyle(color: AppColors.danger)),
-                        ),
-                      ),
                   ],
                 ),
               ),
             ),
+            ),
               ],
             ),
           ),
-          TextButton.icon(
-            onPressed: () => setState(() => _rows.add(_Row())),
-            icon: const Icon(Icons.add),
-            label: const Text('Add another row'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () => setState(() => _rows.add(_Row())),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add another row'),
+            ),
           ),
           const SizedBox(height: 8),
           TotalBar(label: 'Total', value: formatMoney(moneyFromDouble(_total))),

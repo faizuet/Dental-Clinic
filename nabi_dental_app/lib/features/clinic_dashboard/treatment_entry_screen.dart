@@ -15,6 +15,7 @@ import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
 import '../../core/utils/phone.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -501,6 +502,14 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: EdgeInsets.only(bottom: AppLayout.pagePadding(context).bottom),
                   children: [
+                    PageHeader(
+                      icon: Icons.medical_services_rounded,
+                      title: _editing ? 'Edit Treatment' : 'Add Treatment',
+                      subtitle: 'Choose the patient, then add every treatment from this visit',
+                      color: AppColors.success,
+                      soft: AppColors.mintSoft,
+                    ),
+                    const SizedBox(height: 20),
                     AppSplit(
                       primary: _patientCard(),
                       secondary: DatePickerTile(
@@ -519,14 +528,31 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                         },
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Text('Treatments', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Add every treatment from this visit. Details stay with that tooth and treatment.',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(color: AppColors.mintSoft, borderRadius: BorderRadius.circular(10)),
+                          child: const Icon(Icons.healing_rounded, size: 19, color: AppColors.success),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Treatments', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                              Text(
+                                'Add every treatment from this visit. Details stay with that tooth and treatment.',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     for (var index = 0; index < _lines.length; index++) ...[
                       TreatmentLineCard(
                         key: _keyFor(_lines[index].id),
@@ -576,14 +602,17 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
         : _patients
             .where((item) => item.name.toLowerCase().contains(needle) || (item.phone ?? '').contains(needle))
             .toList();
-    return Card(
+    return TablePanel(
+      header: const PanelTitle(
+        title: 'Patient',
+        subtitle: 'Every treatment in this record is saved under this patient',
+        icon: Icons.person_rounded,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Patient', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
             if (_patient != null)
               Chip(
                 label: Text(

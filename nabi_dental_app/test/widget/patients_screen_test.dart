@@ -151,7 +151,7 @@ void main() {
     expect(find.text('Sara Ahmed'), findsOneWidget);
     expect(find.text('1'), findsWidgets);
     expect(find.text('2'), findsWidgets);
-    expect(find.text('Patient'), findsWidgets);
+    expect(find.text('Patient Name'), findsWidgets);
   });
 
   testWidgets('clicking a patient name opens that patient record', (tester) async {

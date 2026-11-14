@@ -10,6 +10,7 @@ import '../../core/finance/finance_repository.dart';
 import '../../core/models/finance_models.dart';
 import '../../core/utils/dates.dart';
 import '../../core/utils/money.dart';
+import '../../core/widgets/page_kit.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
 import '../../core/widgets/app_navigation.dart';
@@ -161,7 +162,9 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                     : ListView(
                         key: const ValueKey('detail-body'),
                         children: [
-                          _section('Patient information', [
+                          _summary(entry, currency),
+                          const SizedBox(height: 16),
+                          _section('Patient information', icon: Icons.person_rounded, [
                             _row('Sr. No.', entry.serialNo?.toString() ?? '—'),
                             _row('Patient', entry.displayPatientName),
                             if (entry.patientPhone != null) _row('Phone', entry.patientPhone!),
@@ -187,7 +190,7 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
                             ),
                             _row('Total fee', formatMoney(entry.amount, currency: currency)),
                           ]),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 16),
                           ..._treatmentSections(entry, currency),
                         ],
                       ),
@@ -267,14 +270,19 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
   }
 
   Widget _xraySection(MoneyEntry entry, List<TreatmentAttachment> attachments) {
-    return Card(
+    return TablePanel(
+      header: const PanelTitle(
+        title: 'X-ray images',
+        subtitle: 'Tap an image to preview it',
+        icon: Icons.image_rounded,
+        color: AppColors.aqua,
+        soft: AppColors.aquaSoft,
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('X-ray images', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
             if (attachments.isEmpty)
               Text(
                 'No X-ray attached to this treatment.',
@@ -380,16 +388,70 @@ class _TreatmentDetailScreenState extends ConsumerState<TreatmentDetailScreen> {
     );
   }
 
-  Widget _section(String title, List<Widget> children) {
-    return Card(
+  Widget _section(String title, List<Widget> children, {IconData icon = Icons.healing_rounded}) {
+    return TablePanel(
+      header: PanelTitle(title: title, icon: icon),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      ),
+    );
+  }
+
+  Widget _summary(MoneyEntry entry, String currency) {
+    final theme = Theme.of(context);
+    return TablePanel(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Wrap(
+          spacing: 20,
+          runSpacing: 16,
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ...children,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                InitialsAvatar(name: entry.displayPatientName, size: 60),
+                const SizedBox(width: 16),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(entry.displayPatientName, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 18,
+                        runSpacing: 6,
+                        children: [
+                          IconText(icon: Icons.event_rounded, text: formatDisplayDate(entry.date), muted: true),
+                          if (entry.serialNo != null) IconText(icon: Icons.tag_rounded, text: 'Sr. No. ${entry.serialNo}', muted: true),
+                          if (entry.patientPhone != null) IconText(icon: Icons.call_rounded, text: entry.patientPhone!, muted: true),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              decoration: BoxDecoration(color: AppColors.mintSoft, borderRadius: BorderRadius.circular(AppRadii.md)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Total fee', style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted, fontWeight: FontWeight.w700)),
+                  Text(
+                    formatMoney(entry.amount, currency: currency),
+                    style: theme.textTheme.titleLarge?.copyWith(color: AppColors.success, fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

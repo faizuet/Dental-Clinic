@@ -12,21 +12,35 @@ import '../../core/utils/dates.dart';
 import '../../core/utils/phone.dart';
 import '../../core/widgets/app_controls.dart';
 import '../../core/widgets/app_layout.dart';
-import '../../core/widgets/app_motion.dart';
 import '../../core/widgets/app_navigation.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/error_banner.dart';
+import '../../core/widgets/page_kit.dart';
+
+enum _PatientFilter { all, active, inactive }
+
+enum _RegisteredRange { allTime, thisMonth, thisYear }
 
 class PatientsScreen extends ConsumerStatefulWidget {
-  const PatientsScreen({super.key});
+  const PatientsScreen({super.key, this.openAdd = false, this.initialQuery});
+
+  final bool openAdd;
+  final String? initialQuery;
 
   @override
   ConsumerState<PatientsScreen> createState() => _PatientsScreenState();
 }
 
 class _PatientsScreenState extends ConsumerState<PatientsScreen> {
+  static const _pageSize = 25;
+  static const _activeDays = 180;
+
   final _search = TextEditingController();
   List<PatientRecord> _patients = [];
+  Map<String, String> _lastVisit = const {};
+  _PatientFilter _filter = _PatientFilter.all;
+  _RegisteredRange _range = _RegisteredRange.allTime;
+  int _page = 0;
   bool _loading = true;
   bool _syncing = false;
   bool _busy = false;
@@ -39,7 +53,15 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   @override
   void initState() {
     super.initState();
+    _search.text = widget.initialQuery ?? '';
     _load();
+    if (widget.openAdd) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _savePatient();
+        }
+      });
+    }
   }
 
   @override
@@ -49,16 +71,66 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     super.dispose();
   }
 
+  bool _isActive(PatientRecord patient) {
+    final last = parseFlexibleDate(_lastVisit[patient.id]);
+    if (last == null) {
+      return false;
+    }
+    return DateTime.now().difference(last).inDays <= _activeDays;
+  }
+
+  bool _registeredIn(PatientRecord patient, _RegisteredRange range) {
+    if (range == _RegisteredRange.allTime) {
+      return true;
+    }
+    final created = DateTime.tryParse(patient.createdAt ?? '')?.toLocal();
+    if (created == null) {
+      return false;
+    }
+    final now = DateTime.now();
+    if (range == _RegisteredRange.thisYear) {
+      return created.year == now.year;
+    }
+    return created.year == now.year && created.month == now.month;
+  }
+
   List<PatientRecord> get _visible {
     final needle = _search.text.trim().toLowerCase();
-    if (needle.isEmpty) {
-      return _patients;
+    return _patients.where((item) {
+      if (needle.isNotEmpty &&
+          !item.name.toLowerCase().contains(needle) &&
+          !(item.phone ?? '').toLowerCase().contains(needle)) {
+        return false;
+      }
+      if (_filter == _PatientFilter.active && !_isActive(item)) {
+        return false;
+      }
+      if (_filter == _PatientFilter.inactive && _isActive(item)) {
+        return false;
+      }
+      return _registeredIn(item, _range);
+    }).toList();
+  }
+
+  Future<Map<String, String>> _visits(FinanceRepository repo) async {
+    final latest = <String, String>{};
+    final List<MoneyEntry> visits;
+    try {
+      visits = await repo.incomeHistory();
+    } catch (_) {
+      return latest;
     }
-    return _patients
-        .where(
-          (item) => item.name.toLowerCase().contains(needle) || (item.phone ?? '').toLowerCase().contains(needle),
-        )
-        .toList();
+    for (final visit in visits) {
+      final id = visit.patientId;
+      if (id == null || id.isEmpty) {
+        continue;
+      }
+      final current = latest[id];
+      if (current == null || visit.date.compareTo(current) > 0) {
+        latest[id] = visit.date;
+      }
+    }
+    return latest;
   }
 
   Future<void> _load({bool silent = false, bool force = false}) async {
@@ -71,9 +143,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     final repo = ref.read(financeRepositoryProvider);
     try {
       final local = await repo.patients();
+      final visits = await _visits(repo);
       if (mounted) {
         setState(() {
           _patients = local;
+          _lastVisit = visits;
           _loading = false;
           _syncing = true;
           _loadError = null;
@@ -81,9 +155,11 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
       }
       await repo.refresh(force: force);
       final items = await repo.patients();
+      final latest = await _visits(repo);
       if (mounted) {
         setState(() {
           _patients = items;
+          _lastVisit = latest;
           _loading = false;
           _syncing = false;
         });
@@ -130,7 +206,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
             patient.name,
             maxLines: maxLines ?? 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary),
+            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
           ),
         ),
       ),
@@ -207,71 +283,70 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
     }
   }
 
-  Widget _desktopTable(List<PatientRecord> items) {
+  Widget _status(PatientRecord patient) {
+    final active = _isActive(patient);
+    return Tooltip(
+      message: active ? 'Visited in the last 6 months' : 'No visit in the last 6 months',
+      child: active
+          ? const StatusPill(label: 'Active')
+          : const StatusPill(label: 'Inactive', color: AppColors.muted, soft: AppColors.background),
+    );
+  }
+
+  List<Widget> _actions(PatientRecord patient) {
+    return [
+      RowAction(icon: Icons.visibility_rounded, tooltip: 'Open', onPressed: _busy ? null : () => _openRecord(patient)),
+      RowAction(icon: Icons.edit_rounded, tooltip: 'Edit', onPressed: _busy ? null : () => _savePatient(existing: patient)),
+      RowAction.danger(icon: Icons.delete_outline_rounded, tooltip: 'Delete', onPressed: _busy ? null : () => _delete(patient)),
+    ];
+  }
+
+  Widget _desktopTable(List<PatientRecord> items, int offset) {
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(
-            AppLayout.horizontalPadding(context),
-            8,
-            AppLayout.horizontalPadding(context),
-            24,
-          ),
-          child: Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: math.max(720, constraints.maxWidth - AppLayout.horizontalPadding(context) * 2)),
-                child: DataTable(
-                  headingRowColor: WidgetStateProperty.all(AppColors.primarySoft),
-                  columns: const [
-                    DataColumn(label: Text('#')),
-                    DataColumn(label: Text('Patient')),
-                    DataColumn(label: Text('Phone')),
-                    DataColumn(label: Text('Registered')),
-                    DataColumn(label: Text('Actions')),
-                  ],
-                  rows: [
-                    for (var index = 0; index < items.length; index++)
-                      DataRow(
-                        cells: [
-                          DataCell(Text('${index + 1}')),
-                          DataCell(
-                            SizedBox(
-                              width: 240,
-                              child: _patientName(items[index]),
-                            ),
-                            onTap: _busy ? null : () => _openRecord(items[index]),
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: math.max(760, constraints.maxWidth)),
+            child: DataTable(
+              columns: const [
+                DataColumn(label: Text('#')),
+                DataColumn(label: Text('Patient Name')),
+                DataColumn(label: Text('Phone')),
+                DataColumn(label: Text('Registered On')),
+                DataColumn(label: Text('Status')),
+                DataColumn(label: Text('Actions')),
+              ],
+              rows: [
+                for (var index = 0; index < items.length; index++)
+                  DataRow(
+                    cells: [
+                      DataCell(Text('${offset + index + 1}')),
+                      DataCell(
+                        SizedBox(
+                          width: 240,
+                          child: Row(
+                            children: [
+                              InitialsAvatar(name: items[index].name),
+                              const SizedBox(width: 12),
+                              Expanded(child: _patientName(items[index], maxLines: 1)),
+                            ],
                           ),
-                          DataCell(Text(items[index].phone ?? '—')),
-                          DataCell(Text(items[index].createdAt == null ? '—' : formatDisplayDate(items[index].createdAt))),
-                          DataCell(
-                            Row(
-                              children: [
-                                IconButton(
-                                  tooltip: 'Open',
-                                  onPressed: _busy ? null : () => _openRecord(items[index]),
-                                  icon: const Icon(Icons.folder_open_outlined),
-                                ),
-                                IconButton(
-                                  tooltip: 'Edit',
-                                  onPressed: _busy ? null : () => _savePatient(existing: items[index]),
-                                  icon: const Icon(Icons.edit_outlined),
-                                ),
-                                IconButton(
-                                  tooltip: 'Delete',
-                                  onPressed: _busy ? null : () => _delete(items[index]),
-                                  icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        ),
+                        onTap: _busy ? null : () => _openRecord(items[index]),
                       ),
-                  ],
-                ),
-              ),
+                      DataCell(IconText(icon: Icons.call_rounded, text: items[index].phone ?? '—')),
+                      DataCell(
+                        IconText(
+                          icon: Icons.event_note_rounded,
+                          text: items[index].createdAt == null ? '—' : formatDisplayDate(items[index].createdAt),
+                        ),
+                      ),
+                      DataCell(_status(items[index])),
+                      DataCell(Row(mainAxisSize: MainAxisSize.min, children: _actions(items[index]))),
+                    ],
+                  ),
+              ],
             ),
           ),
         );
@@ -280,58 +355,199 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   }
 
   Widget _mobileList(List<PatientRecord> items) {
-    return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        AppLayout.horizontalPadding(context),
-        8,
-        AppLayout.horizontalPadding(context),
-        24,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        return AppReveal(
-          index: index,
-          child: Card(
-            child: ListTile(
-              onTap: _busy ? null : () => _openRecord(item),
-              leading: CircleAvatar(
-                backgroundColor: AppColors.primarySoft,
-                foregroundColor: AppColors.primary,
-                child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700)),
-              ),
-              title: _patientName(item, maxLines: 1),
-              subtitle: Text(
-                [
-                  if (item.phone != null) item.phone,
-                  if (item.createdAt != null) formatDisplayDate(item.createdAt),
-                ].join(' · '),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+    return Column(
+      children: [
+        for (var index = 0; index < items.length; index++) ...[
+          if (index > 0) const Divider(height: 1),
+          ListTile(
+            onTap: _busy ? null : () => _openRecord(items[index]),
+            leading: InitialsAvatar(name: items[index].name, size: 40),
+            title: _patientName(items[index], maxLines: 1),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  IconButton(
-                    tooltip: 'Open',
-                    onPressed: _busy ? null : () => _openRecord(item),
-                    icon: const Icon(Icons.folder_open_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Edit',
-                    onPressed: _busy ? null : () => _savePatient(existing: item),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
-                    tooltip: 'Delete',
-                    onPressed: _busy ? null : () => _delete(item),
-                    icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-                  ),
+                  if (items[index].phone != null) Text(items[index].phone!),
+                  _status(items[index]),
                 ],
               ),
             ),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: _actions(items[index])),
           ),
-        );
-      },
+        ],
+      ],
+    );
+  }
+
+  Widget _stats() {
+    final now = DateTime.now();
+    final thisMonth = _patients.where((item) => _registeredIn(item, _RegisteredRange.thisMonth)).length;
+    final treatedThisMonth = {
+      for (final entry in _lastVisit.entries)
+        if (parseFlexibleDate(entry.value)?.year == now.year && parseFlexibleDate(entry.value)?.month == now.month) entry.key,
+    }.where((id) => _patients.any((item) => item.id == id)).length;
+    final active = _patients.where(_isActive).length;
+    return StatStrip(
+      items: [
+        MiniStat(
+          label: 'Total Patients',
+          value: '${_patients.length}',
+          icon: Icons.groups_rounded,
+          color: AppColors.primary,
+          soft: AppColors.primarySoft,
+        ),
+        MiniStat(
+          label: 'New This Month',
+          value: '$thisMonth',
+          icon: Icons.person_add_alt_1_rounded,
+          color: AppColors.success,
+          soft: AppColors.mintSoft,
+        ),
+        MiniStat(
+          label: 'Treated This Month',
+          value: '$treatedThisMonth',
+          icon: Icons.medical_services_rounded,
+          color: AppColors.violet,
+          soft: AppColors.violetSoft,
+        ),
+        MiniStat(
+          label: 'Active Patients',
+          value: '$active',
+          icon: Icons.verified_rounded,
+          color: AppColors.orange,
+          soft: AppColors.warningSoft,
+          caption: '6 months',
+        ),
+      ],
+    );
+  }
+
+  Widget _rangeMenu() {
+    const labels = {
+      _RegisteredRange.allTime: 'All Time',
+      _RegisteredRange.thisMonth: 'This Month',
+      _RegisteredRange.thisYear: 'This Year',
+    };
+    return PopupMenuButton<_RegisteredRange>(
+      tooltip: 'Registered date',
+      initialValue: _range,
+      onSelected: (value) => setState(() {
+        _range = value;
+        _page = 0;
+      }),
+      itemBuilder: (context) => [
+        for (final entry in labels.entries) PopupMenuItem(value: entry.key, child: Text(entry.value)),
+      ],
+      child: IgnorePointer(
+        child: FilterButton(
+          label: labels[_range]!,
+          icon: Icons.calendar_month_rounded,
+          trailingIcon: Icons.expand_more_rounded,
+          onPressed: () {},
+        ),
+      ),
+    );
+  }
+
+  Widget _tableSection(List<PatientRecord> items) {
+    final pages = math.max(1, (items.length / _pageSize).ceil());
+    final page = math.min(_page, pages - 1);
+    final start = page * _pageSize;
+    final slice = items.skip(start).take(_pageSize).toList();
+    return TablePanel(
+      header: FilterBar(
+        filters: [
+          SegmentPills<_PatientFilter>(
+            value: _filter,
+            options: const [
+              (value: _PatientFilter.all, label: 'All Patients'),
+              (value: _PatientFilter.active, label: 'Active'),
+              (value: _PatientFilter.inactive, label: 'Inactive'),
+            ],
+            onChanged: (value) => setState(() {
+              _filter = value;
+              _page = 0;
+            }),
+          ),
+          _rangeMenu(),
+          FilterSearch(
+            controller: _search,
+            hint: 'Search by name or phone...',
+            onChanged: (_) {
+              _searchDebounce?.cancel();
+              _searchDebounce = Timer(const Duration(milliseconds: 160), () {
+                if (mounted) {
+                  setState(() => _page = 0);
+                }
+              });
+            },
+          ),
+        ],
+        trailing: [
+          FilterButton(
+            label: 'Refresh',
+            icon: Icons.refresh_rounded,
+            onPressed: _syncing ? null : () => _load(force: true),
+          ),
+        ],
+      ),
+      footer: TableFooterText(
+        shown: start + slice.length,
+        total: items.length,
+        noun: items.length == 1 ? 'patient' : 'patients',
+        trailing: pages > 1
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RowAction(
+                    icon: Icons.chevron_left_rounded,
+                    tooltip: 'Previous page',
+                    onPressed: page == 0 ? null : () => setState(() => _page = page - 1),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('${page + 1} / $pages', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  RowAction(
+                    icon: Icons.chevron_right_rounded,
+                    tooltip: 'Next page',
+                    onPressed: page >= pages - 1 ? null : () => setState(() => _page = page + 1),
+                  ),
+                ],
+              )
+            : null,
+      ),
+      child: AppStateSwitch(
+        child: _loading && _patients.isEmpty
+            ? const SkeletonTable(key: ValueKey('patients-loading'))
+            : _patients.isEmpty && _loadError != null
+                ? EmptyState(
+                    key: const ValueKey('patients-error'),
+                    message: _loadError!,
+                    title: 'Unable to load patients',
+                    icon: Icons.people_outline_rounded,
+                    actionLabel: 'Retry',
+                    onAction: _load,
+                  )
+                : items.isEmpty
+                    ? EmptyState(
+                        key: const ValueKey('patients-empty'),
+                        message: _patients.isEmpty
+                            ? 'Add a patient to keep treatment records attached to the right name.'
+                            : 'No patient matches these filters.',
+                        title: 'No patients',
+                        icon: Icons.people_outline_rounded,
+                        actionLabel: _patients.isEmpty ? 'Add patient' : null,
+                        onAction: _busy || _patients.isNotEmpty ? null : () => _savePatient(),
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey('patients-table'),
+                        child: AppLayout.isDesktop(context) ? _desktopTable(slice, start) : _mobileList(slice),
+                      ),
+      ),
     );
   }
 
@@ -339,92 +555,36 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
   Widget build(BuildContext context) {
     final items = _visible;
     return Scaffold(
-      appBar: buildAppBar(
-        context: context,
-        title: 'Patients',
-        fallback: '/clinic',
-        actions: [
-          IconButton(
-            tooltip: 'Add patient',
-            onPressed: _busy ? null : () => _savePatient(),
-            icon: const Icon(Icons.person_add_alt_1_rounded),
-          ),
-        ],
-      ),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: AppLayout.maxContent(context)),
-          child: Column(
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 8, AppLayout.horizontalPadding(context), 8),
-                child: TextField(
-                  controller: _search,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    labelText: 'Search patients',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: IconButton(
-                      tooltip: 'Search',
-                      onPressed: () => setState(() {}),
-                      icon: const Icon(Icons.arrow_forward_rounded),
-                    ),
-                  ),
-                  onChanged: (_) {
-                    _searchDebounce?.cancel();
-                    _searchDebounce = Timer(const Duration(milliseconds: 160), () {
-                      if (mounted) {
-                        setState(() {});
-                      }
-                    });
-                  },
-                ),
-              ),
-              if (_message != null)
-                Padding(
-                  padding: EdgeInsets.fromLTRB(AppLayout.horizontalPadding(context), 0, AppLayout.horizontalPadding(context), 8),
-                  child: ErrorBanner(message: _message!),
-                ),
-              if (_busy || _syncing)
-                const LinearProgressIndicator(minHeight: 2),
-              Expanded(
-                child: AppStateSwitch(
-                  child: _loading && _patients.isEmpty
-                      ? const Center(key: ValueKey('patients-loading'), child: SkeletonCards())
-                      : _patients.isEmpty && _loadError != null
-                          ? Center(
-                              key: const ValueKey('patients-error'),
-                              child: EmptyState(
-                                message: _loadError!,
-                                title: 'Unable to load patients',
-                                icon: Icons.people_outline_rounded,
-                                actionLabel: 'Retry',
-                                onAction: _load,
-                              ),
-                            )
-                          : items.isEmpty
-                              ? Center(
-                                  key: const ValueKey('patients-empty'),
-                                  child: EmptyState(
-                                    message: _search.text.trim().isEmpty
-                                        ? 'Add a patient to keep treatment records attached to the right name.'
-                                        : 'No patient matches this search.',
-                                    title: 'No patients',
-                                    icon: Icons.people_outline_rounded,
-                                    actionLabel: 'Add patient',
-                                    onAction: _busy ? null : () => _savePatient(),
-                                  ),
-                                )
-                              : RefreshIndicator(
-                                  onRefresh: _load,
-                                  child: AppLayout.isDesktop(context) ? _desktopTable(items) : _mobileList(items),
-                                ),
+      appBar: buildAppBar(context: context, title: 'Patients', fallback: '/clinic'),
+      body: PageScaffoldBody(
+        onRefresh: () => _load(force: true),
+        children: [
+          PageHeader(
+            icon: Icons.groups_rounded,
+            title: 'Patients',
+            subtitle: 'Manage your clinic patients efficiently',
+            actions: [
+              Tooltip(
+                message: 'Add patient',
+                child: PrimaryAction(
+                  label: 'Add New Patient',
+                  icon: Icons.add_rounded,
+                  onPressed: _busy ? null : () => _savePatient(),
                 ),
               ),
             ],
           ),
-        ),
+          _stats(),
+          if (_message != null) ...[
+            ErrorBanner(message: _message!),
+            const SizedBox(height: 12),
+          ],
+          if (_busy || _syncing) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const SizedBox(height: 8),
+          ],
+          _tableSection(items),
+        ],
       ),
     );
   }
@@ -476,20 +636,30 @@ class _PatientFormDialogState extends State<_PatientFormDialog> {
       contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
       actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      title: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(color: AppColors.purpleSoft, borderRadius: BorderRadius.circular(AppRadii.md)),
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(color: AppColors.primarySoft, borderRadius: BorderRadius.circular(AppRadii.md)),
             child: Icon(
               adding ? Icons.person_add_alt_1_rounded : Icons.person_outline_rounded,
-              color: AppColors.purple,
+              color: AppColors.primary,
             ),
           ),
-          const SizedBox(height: 14),
-          Text(adding ? 'Add patient' : 'Edit patient', maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(adding ? 'Add patient' : 'Edit patient', maxLines: 2, overflow: TextOverflow.ellipsis),
+                Text(
+                  adding ? 'Register a new patient for this clinic' : 'Update the patient name or phone',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
       content: SizedBox(
@@ -503,7 +673,7 @@ class _PatientFormDialogState extends State<_PatientFormDialog> {
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
                 autofocus: true,
-                decoration: const InputDecoration(labelText: 'Patient name'),
+                decoration: const InputDecoration(labelText: 'Patient name', prefixIcon: Icon(Icons.person_outline_rounded)),
                 validator: (value) {
                   if (value == null || value.trim().length < 2) {
                     return 'Enter the patient name.';
@@ -523,6 +693,7 @@ class _PatientFormDialogState extends State<_PatientFormDialog> {
                   labelText: 'Phone number',
                   hintText: '03XXXXXXXXX',
                   counterText: '',
+                  prefixIcon: Icon(Icons.call_outlined),
                 ),
                 validator: (value) {
                   return validateOptionalPakistaniMobile(value) ??
