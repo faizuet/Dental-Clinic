@@ -95,6 +95,8 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
   String _arch = 'upper';
   String _scope = 'full mouth';
   final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  bool _pickerOpen = true;
   final _amount = TextEditingController();
   final _notes = TextEditingController();
   final _length = TextEditingController();
@@ -111,11 +113,13 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
   void initState() {
     super.initState();
     _hydrate(widget.seed);
+    _pickerOpen = _treatment == null;
   }
 
   @override
   void dispose() {
     _search.dispose();
+    _searchFocus.dispose();
     _amount.dispose();
     _notes.dispose();
     _length.dispose();
@@ -213,9 +217,23 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
     setState(() {
       _treatment = value;
       _search.clear();
+      _pickerOpen = false;
       _applyTreatmentDefaults();
     });
+    _searchFocus.unfocus();
     _notify();
+  }
+
+  void _openPicker() {
+    setState(() {
+      _pickerOpen = true;
+      _search.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _searchFocus.requestFocus();
+      }
+    });
   }
 
   void _applyTreatmentDefaults() {
@@ -432,18 +450,32 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
   }
 
   Widget _treatmentPicker() {
+    if (_treatment != null && !_pickerOpen) {
+      return _selectedTreatment();
+    }
     final filtered = _filteredTreatments;
     final query = _search.text.trim();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
+          focusNode: _searchFocus,
           controller: _search,
           textInputAction: TextInputAction.search,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Search treatments',
             hintText: 'RCT, Braces, Filling…',
-            prefixIcon: Icon(Icons.search_rounded),
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: _treatment == null
+                ? null
+                : IconButton(
+                    tooltip: 'Close treatment list',
+                    onPressed: () {
+                      _searchFocus.unfocus();
+                      setState(() => _pickerOpen = false);
+                    },
+                    icon: const Icon(Icons.expand_less_rounded),
+                  ),
           ),
           onChanged: (_) => setState(() {}),
         ),
@@ -494,6 +526,41 @@ class TreatmentLineCardState extends State<TreatmentLineCard> with AutomaticKeep
             ),
           ),
       ],
+    );
+  }
+
+  Widget _selectedTreatment() {
+    final name = _treatment?.name ?? '';
+    return Material(
+      color: AppColors.inputFill,
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        onTap: _openPicker,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+          child: Row(
+            children: [
+              const Icon(Icons.medical_services_outlined, color: AppColors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Treatment', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Change treatment',
+                onPressed: _openPicker,
+                icon: const Icon(Icons.expand_more_rounded),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
