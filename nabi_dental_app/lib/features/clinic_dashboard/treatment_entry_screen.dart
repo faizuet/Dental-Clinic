@@ -603,10 +603,18 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
             .where((item) => item.name.toLowerCase().contains(needle) || (item.phone ?? '').contains(needle))
             .toList();
     return TablePanel(
-      header: const PanelTitle(
+      header: PanelTitle(
         title: 'Patient',
         subtitle: 'Every treatment in this record is saved under this patient',
         icon: Icons.person_rounded,
+        trailing: Tooltip(
+          message: 'Add patient',
+          child: PrimaryAction(
+            label: _patientBusy ? 'Saving…' : 'Add patient',
+            icon: Icons.person_add_alt_1_rounded,
+            onPressed: _patientBusy ? null : () => _addPatient(presetName: _patientSearch.text.trim()),
+          ),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -676,14 +684,6 @@ class _TreatmentEntryScreenState extends ConsumerState<TreatmentEntryScreen> {
                   ),
                 ),
             ],
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _patientBusy ? null : () => _addPatient(presetName: _patientSearch.text.trim()),
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: Text(_patientBusy ? 'Saving patient…' : 'Add patient'),
-              ),
-            ),
           ],
         ),
       ),

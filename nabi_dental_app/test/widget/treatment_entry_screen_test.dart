@@ -91,5 +91,115 @@ void main() {
 
     expect(find.text('faiz khan  ·  03189253385'), findsOneWidget);
     expect(find.text('Sara Ahmed'), findsNothing);
+    expect(find.text('Add patient'), findsOneWidget);
+  });
+
+  testWidgets('choosing a treatment closes the list on every treatment line', (tester) async {
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final finance = _Finance();
+    when(() => finance.treatments()).thenAnswer(
+      (_) async => const [
+        CatalogItem(id: 't1', name: 'Check Up / Consultation', defaultPrice: '1000.00'),
+        CatalogItem(id: 't2', name: 'Scaling', defaultPrice: '2000.00'),
+      ],
+    );
+    when(() => finance.patients()).thenAnswer((_) async => const []);
+    when(() => finance.refresh(force: any(named: 'force'))).thenAnswer((_) async => true);
+
+    final controller = SessionController(
+      auth: _Auth(),
+      tokens: _Tokens(),
+      database: _Db(),
+    )..state = const SessionState(
+        initialized: true,
+        hasTokens: true,
+        user: UserProfile(
+          id: '1',
+          fullName: 'Dr Owner',
+          email: 'nabidentalclinic@gmail.com',
+          role: 'owner',
+          defaultHomeBudget: '50000.00',
+        ),
+        clinic: ClinicProfile(
+          id: '1',
+          name: 'Nabi Dental',
+          currency: 'PKR',
+          timezone: 'Asia/Karachi',
+        ),
+      );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith((ref) => controller),
+          financeRepositoryProvider.overrideWithValue(finance),
+        ],
+        child: MaterialApp.router(
+          theme: buildAppTheme(),
+          routerConfig: GoRouter(
+            initialLocation: '/clinic/income',
+            routes: [
+              GoRoute(path: '/clinic', builder: (_, __) => const SizedBox()),
+              GoRoute(path: '/clinic/income', builder: (_, __) => const TreatmentEntryScreen()),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Check Up / Consultation'), findsOneWidget);
+    expect(find.text('Scaling'), findsOneWidget);
+
+    final search = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.labelText == 'Search treatments',
+    );
+    await tester.enterText(search, 'scal');
+    await tester.pump();
+
+    expect(find.text('Check Up / Consultation'), findsNothing);
+    expect(find.text('Scaling'), findsOneWidget);
+
+    await tester.tap(find.text('Scaling'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search treatments'), findsNothing);
+    expect(find.text('Check Up / Consultation'), findsNothing);
+    expect(find.text('Scaling'), findsOneWidget);
+    expect(find.text('Treatment fee'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Change treatment'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search treatments'), findsOneWidget);
+    expect(find.text('Check Up / Consultation'), findsOneWidget);
+    expect(find.text('Scaling'), findsWidgets);
+
+    await tester.tap(find.text('Check Up / Consultation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search treatments'), findsNothing);
+    expect(find.text('Scaling'), findsNothing);
+    expect(find.text('Check Up / Consultation'), findsOneWidget);
+
+    await tester.tap(find.text('Add another treatment'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Treatment 2'), findsOneWidget);
+    expect(find.text('Search treatments'), findsOneWidget);
+    expect(find.text('Scaling'), findsOneWidget);
+    expect(find.text('Check Up / Consultation'), findsWidgets);
+
+    await tester.tap(find.text('Scaling'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search treatments'), findsNothing);
+    expect(find.byTooltip('Change treatment'), findsNWidgets(2));
+    expect(find.text('Scaling'), findsOneWidget);
+    expect(find.text('Check Up / Consultation'), findsOneWidget);
   });
 }
