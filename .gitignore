@@ -31,3 +31,6 @@ coverage.xml
 **/local.properties
 **/*.apk
 **/*.aab
+
+# Local Windows release package created by the desktop shortcut build.
+/dist/
