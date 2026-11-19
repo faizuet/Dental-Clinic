@@ -13,8 +13,7 @@ def normalize_database_url(value: str) -> str:
         raise ValueError("DATABASE_URL is empty.")
     if "${{" in url or url.startswith("${"):
         raise ValueError(
-            "DATABASE_URL contains an unresolved template. Set a real Postgres URL "
-            "such as postgresql+asyncpg://postgres:postgres@localhost:5433/nabi_dental."
+            "DATABASE_URL contains an unresolved template. Set DATABASE_URL in the environment file."
         )
 
     if url.startswith("postgres://"):
@@ -58,7 +57,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     LOG_LEVEL: str = "INFO"
 
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/nabi_dental"
+    DATABASE_URL: str = ""
     PORT: int = 8000
 
     JWT_SECRET_KEY: str = "change-me"
@@ -95,6 +94,9 @@ class Settings(BaseSettings):
     XRAY_MIN_PX: int = 64
     XRAY_MAX_PX: int = 8192
     BACKUP_REMINDER_DAYS: int = 7
+    BACKUP_DIR: str = "clinic-backups"
+    BACKUP_RETENTION_COUNT: int = 14
+    BACKUP_INTERVAL_HOURS: int = 24
 
     @field_validator("DEFAULT_CURRENCY")
     @classmethod

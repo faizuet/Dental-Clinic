@@ -10,7 +10,7 @@ from starlette.background import BackgroundTask
 from app.api.deps import CurrentUser, DBSession, DetachedUser
 from app.core.exceptions import ValidationAppError
 from app.db.session import engine
-from app.schemas.backup import BackupRestoreRead, BackupStatusRead
+from app.schemas.backup import BackupCopyRead, BackupRestoreRead, BackupStatusRead
 from app.schemas.settings import SettingsRead, SettingsUpdate
 from app.services.avatar_service import AvatarService
 from app.services.backup_service import MAX_BACKUP_BYTES, BackupService
@@ -69,15 +69,37 @@ async def export_backup(user: CurrentUser):
     )
 
 
+@router.post("/backup/archive", response_model=BackupCopyRead)
+async def archive_backup(user: CurrentUser):
+    _ = user.id
+    copy = await asyncio.to_thread(BackupService().create_archive)
+    return {"filename": copy.filename, "created_at": copy.created_at, "bytes": copy.size}
+
+
+@router.post("/backup/archive/{filename}/restore", response_model=BackupRestoreRead)
+async def restore_archived_backup(
+    filename: str,
+    user: DetachedUser,
+    phrase: str = Query(""),
+):
+    _ = user.id
+    _require_restore_phrase(phrase)
+    service = BackupService()
+    path = service.copy_path(filename)
+    await engine.dispose()
+    return await asyncio.to_thread(service.restore, path)
+
+
 @router.post("/backup/restore", response_model=BackupRestoreRead)
 async def restore_backup(
     user: DetachedUser,
     file: UploadFile = File(...),
     confirm: bool = Query(False),
+    phrase: str = Query(""),
 ):
     _ = user.id
-    if not confirm:
-        raise ValidationAppError("Confirm restore. This replaces all clinic records and X-rays on this computer.")
+    if not confirm or phrase.strip().upper() != "RESTORE":
+        raise ValidationAppError("Type RESTORE to replace the clinic data. A safety copy is saved first.")
     suffix = Path(file.filename or "backup.zip").suffix.lower()
     if suffix != ".zip":
         raise ValidationAppError("Choose a Nabi Dental backup zip file.")
@@ -101,3 +123,8 @@ async def restore_backup(
         return result
     finally:
         shutil.rmtree(work, ignore_errors=True)
+
+
+def _require_restore_phrase(phrase: str) -> None:
+    if phrase.strip().upper() != "RESTORE":
+        raise ValidationAppError("Type RESTORE to replace the clinic data. A safety copy is saved first.")

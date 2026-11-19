@@ -34,3 +34,6 @@ coverage.xml
 
 # Local Windows release package created by the desktop shortcut build.
 /dist/
+
+# Automatic clinic backups kept on the computer, outside Docker volumes.
+nabi-dental-backend/clinic-backups/
