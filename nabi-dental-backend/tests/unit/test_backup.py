@@ -1,5 +1,6 @@
 import json
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -92,6 +93,77 @@ def test_restore_rejects_unknown_zip(tmp_path: Path):
     service = BackupService(upload_dir=tmp_path / "uploads", restore_database=lambda path: None)
     with pytest.raises(ValidationAppError, match="not a Nabi Dental"):
         service.restore(archive)
+
+
+def test_archive_keeps_only_the_retention_count_and_skips_a_recent_copy(tmp_path: Path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    backups = tmp_path / "backups"
+    service = BackupService(
+        upload_dir=uploads,
+        backup_dir=backups,
+        retention_count=2,
+        interval_hours=24,
+        dump_database=lambda dest: dest.write_bytes(b"PGDUMP"),
+    )
+    first = service.create_archive()
+    time.sleep(1.1)
+    second = service.create_archive()
+    time.sleep(1.1)
+    third = service.create_archive()
+    names = {item.filename for item in service.list_copies()}
+    assert names == {second.filename, third.filename}
+    assert first.filename not in names
+    assert service.needs_scheduled_backup() is False
+
+
+def test_restore_saves_a_safety_copy_before_replacing_data(tmp_path: Path):
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    archive = tmp_path / "clinic.zip"
+    _write_zip(archive, uploads={"xrays/keep.jpg": b"ray"})
+    order: list[str] = []
+
+    def dump_database(dest: Path) -> None:
+        order.append("safety")
+        dest.write_bytes(b"SAFETY")
+
+    def restore_database(dump_path: Path) -> None:
+        order.append(dump_path.read_bytes().decode())
+
+    service = BackupService(
+        upload_dir=uploads,
+        backup_dir=tmp_path / "backups",
+        dump_database=dump_database,
+        restore_database=restore_database,
+    )
+    result = service.restore(archive, create_safety_backup=True)
+    assert order == ["safety", "DUMP"]
+    assert result["safety_backup"]
+    assert (uploads / "xrays" / "keep.jpg").read_bytes() == b"ray"
+
+
+def test_restore_stops_when_the_safety_copy_fails(tmp_path: Path):
+    uploads = tmp_path / "uploads"
+    (uploads / "xrays").mkdir(parents=True)
+    (uploads / "xrays" / "keep.jpg").write_bytes(b"keep")
+    archive = tmp_path / "clinic.zip"
+    _write_zip(archive)
+    called = []
+
+    def dump_database(dest: Path) -> None:
+        raise OSError("disk full")
+
+    service = BackupService(
+        upload_dir=uploads,
+        backup_dir=tmp_path / "backups",
+        dump_database=dump_database,
+        restore_database=lambda path: called.append(path),
+    )
+    with pytest.raises(Exception):
+        service.restore(archive, create_safety_backup=True)
+    assert called == []
+    assert (uploads / "xrays" / "keep.jpg").read_bytes() == b"keep"
 
 
 def test_restore_rejects_zip_with_path_escape(tmp_path: Path):

@@ -82,15 +82,20 @@ class ApiClient {
   Future<Response<T>> post<T>(
     String path, {
     Object? data,
+    Map<String, dynamic>? query,
     bool skipAuth = false,
     bool skipRefresh = false,
     ResponseType? responseType,
+    Duration? timeout,
   }) {
     return _wrap(
       () => _dio.post<T>(
         path,
         data: data,
+        queryParameters: _query(query),
         options: Options(
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
           extra: {'skipAuth': skipAuth, 'skipRefresh': skipRefresh},
           responseType: responseType,
         ),

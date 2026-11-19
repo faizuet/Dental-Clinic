@@ -260,6 +260,19 @@ class FinanceRepository {
   }
 
   Future<BackupStatus> backupStatus() async {
+    try {
+      final response = await _api.get<Map<String, dynamic>>('/api/v1/settings/backup');
+      final data = response.data;
+      if (data != null) {
+        final status = BackupStatus.fromJson({...data});
+        if (status.lastBackupAt != null) {
+          await _db.setMeta('last_backup_at', status.lastBackupAt!.toUtc().toIso8601String());
+        }
+        return status;
+      }
+    } catch (_) {
+      // The local reminder still works when the server is starting.
+    }
     final raw = await _db.meta('last_backup_at');
     return BackupStatus(lastBackupAt: DateTime.tryParse(raw ?? ''));
   }
@@ -284,6 +297,13 @@ class FinanceRepository {
     );
   }
 
+  Future<void> createAutomaticBackup() async {
+    await _api.post(
+      '/api/v1/settings/backup/archive',
+      timeout: const Duration(minutes: 5),
+    );
+  }
+
   Future<void> restoreBackup({required String path, required String filename}) async {
     final form = FormData.fromMap({
       'file': await MultipartFile.fromFile(path, filename: filename),
@@ -291,9 +311,22 @@ class FinanceRepository {
     await _api.postMultipart(
       '/api/v1/settings/backup/restore',
       data: form,
-      query: {'confirm': true},
+      query: {'confirm': true, 'phrase': 'RESTORE'},
       timeout: const Duration(minutes: 5),
     );
+    await _reloadAfterRestore();
+  }
+
+  Future<void> restoreAutomaticBackup(String filename) async {
+    await _api.post(
+      '/api/v1/settings/backup/archive/${Uri.encodeComponent(filename)}/restore',
+      query: {'phrase': 'RESTORE'},
+      timeout: const Duration(minutes: 5),
+    );
+    await _reloadAfterRestore();
+  }
+
+  Future<void> _reloadAfterRestore() async {
     for (final collection in _collections.values) {
       await _db.clearCollection(collection);
     }

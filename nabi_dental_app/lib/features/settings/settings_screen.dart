@@ -107,6 +107,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _archiveNow() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await ref.read(financeRepositoryProvider).createAutomaticBackup();
+      await ref.read(financeRepositoryProvider).markBackupSaved();
+      await _loadExtras();
+      if (mounted) {
+        showAppSnack(context, 'Backup saved on this computer.');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<bool> _confirmRestorePhrase() async {
+    final controller = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final ready = controller.text.trim().toUpperCase() == 'RESTORE';
+            return AlertDialog(
+              title: const Text('Replace clinic data?'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This replaces patients, treatments, expenses, lab charges, and X-rays. A safety copy of the current clinic is saved first.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: 'Type RESTORE to continue'),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+                FilledButton(
+                  onPressed: ready ? () => Navigator.pop(dialogContext, true) : null,
+                  child: const Text('Replace data'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+    return accepted == true;
+  }
+
   Future<void> _restoreBackup() async {
     final pending = await ref.read(financeRepositoryProvider).syncStatus();
     if (pending.pending > 0) {
@@ -139,25 +205,72 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) {
       return;
     }
-    final replaced = await showAppDeleteDialog(
-      context: context,
-      title: 'Replace clinic data?',
-      message:
-          'This replaces all patients, treatment records, expenses, and X-rays on this computer with the backup. Current records are not kept unless you already saved a newer backup.',
-      confirmLabel: 'Replace data',
-      onConfirm: () => ref.read(financeRepositoryProvider).restoreBackup(
-            path: path,
-            filename: picked.name.isNotEmpty ? picked.name : 'clinic-backup.zip',
-          ),
-    );
-    if (replaced != true) {
+    final accepted = await _confirmRestorePhrase();
+    if (!accepted || !mounted) {
       return;
     }
-    await ref.read(financeRepositoryProvider).markBackupSaved();
-    ref.read(financeEpochProvider.notifier).state++;
-    await _loadExtras();
-    if (mounted) {
-      showAppSnack(context, 'Clinic data restored from backup.');
+    setState(() => _busy = true);
+    try {
+      await ref.read(financeRepositoryProvider).restoreBackup(
+            path: path,
+            filename: picked.name.isNotEmpty ? picked.name : 'clinic-backup.zip',
+          );
+      await ref.read(financeRepositoryProvider).markBackupSaved();
+      ref.read(financeEpochProvider.notifier).state++;
+      await _loadExtras();
+      if (mounted) {
+        showAppSnack(context, 'Clinic data restored. A safety copy was saved first.');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  Future<void> _restoreCopy(ClinicBackupCopy copy) async {
+    final pending = await ref.read(financeRepositoryProvider).syncStatus();
+    if (pending.pending > 0) {
+      if (!mounted) {
+        return;
+      }
+      await showAppConfirmDialog(
+        context: context,
+        title: 'Sync waiting changes first',
+        message: 'Changes on this computer are still waiting to sync. Retry sync before replacing clinic data.',
+        confirmLabel: 'OK',
+        icon: Icons.sync_problem_rounded,
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final accepted = await _confirmRestorePhrase();
+    if (!accepted || !mounted) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(financeRepositoryProvider).restoreAutomaticBackup(copy.filename);
+      await ref.read(financeRepositoryProvider).markBackupSaved();
+      ref.read(financeEpochProvider.notifier).state++;
+      await _loadExtras();
+      if (mounted) {
+        showAppSnack(context, 'Clinic data restored from ${copy.filename}. A safety copy was saved first.');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyError(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
     }
   }
 
@@ -190,23 +303,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     final backup = _section(
       title: 'Backup & Restore',
-      subtitle: 'Keep a copy of clinic data on a USB drive',
+      subtitle: 'Daily copies stay on this computer, outside Docker',
       icon: Icons.backup_rounded,
       color: AppColors.success,
       soft: AppColors.mintSoft,
       tiles: [
         _SettingsTile(
-          icon: Icons.save_alt_rounded,
-          title: 'Save clinic backup',
+          icon: Icons.backup_rounded,
+          title: 'Back up now',
           subtitle: _backup.subtitle,
           iconColor: AppColors.success,
           badge: _backup.isOverdue ? const StatusPill(label: 'Due', color: AppColors.orange, soft: AppColors.warningSoft) : null,
-          onTap: _busy ? null : _exportBackup,
+          onTap: _busy ? null : _archiveNow,
         ),
         _SettingsTile(
+          icon: Icons.save_alt_rounded,
+          title: 'Save a copy for USB',
+          subtitle: 'Choose a folder outside this computer if you want a second copy',
+          iconColor: AppColors.success,
+          onTap: _busy ? null : _exportBackup,
+        ),
+        for (final copy in _backup.backups.take(7))
+          _SettingsTile(
+            icon: Icons.history_rounded,
+            title: _backupStamp(copy.createdAt),
+            subtitle: '${_backupSize(copy.bytes)} · Restore this copy',
+            iconColor: AppColors.orange,
+            onTap: _busy ? null : () => _restoreCopy(copy),
+          ),
+        _SettingsTile(
           icon: Icons.settings_backup_restore_rounded,
-          title: 'Restore from backup',
-          subtitle: 'Replace this computer with a saved zip',
+          title: 'Restore from a zip file',
+          subtitle: 'Replace this computer with a backup you choose',
           iconColor: AppColors.orange,
           onTap: _busy ? null : _restoreBackup,
         ),
@@ -358,6 +486,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  String _backupStamp(DateTime value) {
+    final local = value.toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}';
+  }
+
+  String _backupSize(int bytes) {
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).ceil()} KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   Widget _section({

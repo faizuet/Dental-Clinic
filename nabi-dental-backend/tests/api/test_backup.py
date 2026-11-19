@@ -79,7 +79,7 @@ async def test_restore_replaces_data_when_confirmed(client):
         restored = await client.post(
             "/api/v1/settings/backup/restore",
             headers=headers,
-            params={"confirm": "true"},
+            params={"confirm": "true", "phrase": "RESTORE"},
             files=files,
         )
     assert restored.status_code == 200, restored.text
@@ -98,7 +98,7 @@ async def test_restore_requires_confirm_and_rejects_invalid_zip(client):
     invalid = await client.post(
         "/api/v1/settings/backup/restore",
         headers=headers,
-        params={"confirm": "true"},
+        params={"confirm": "true", "phrase": "RESTORE"},
         files={"file": ("notes.txt", b"not-a-zip", "text/plain")},
     )
     assert invalid.status_code == 400

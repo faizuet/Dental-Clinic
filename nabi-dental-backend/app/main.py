@@ -17,10 +17,12 @@ from app.core.local_secrets import ensure_jwt_secret
 from app.core.logging import configure_logging, logger
 from app.core.middleware import RequestContextMiddleware
 from app.db.session import engine
+from app.services.backup_scheduler import start_backup_scheduler
 
 configure_logging()
 if settings.APP_ENV != "test":
     ensure_jwt_secret()
+start_backup_scheduler()
 
 app = FastAPI(
     title=settings.APP_NAME,

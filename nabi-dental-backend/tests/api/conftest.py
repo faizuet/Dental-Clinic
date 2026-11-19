@@ -6,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 
-from app.core.config import settings
+from app.core.config import database_target, settings
 from app.core.rate_limit import rate_limiter
 from app.db.seed import seed_database
 from app.db.session import SessionLocal, engine
@@ -17,7 +17,7 @@ from app.main import app
 def setup_database():
     if "nabi_dental_test" not in settings.DATABASE_URL:
         raise RuntimeError(
-            f"API tests must use nabi_dental_test, not the clinic database ({settings.DATABASE_URL})."
+            f"API tests must use nabi_dental_test, not the clinic database ({database_target(settings.DATABASE_URL)})."
         )
     env = os.environ.copy()
     env["DATABASE_URL"] = settings.DATABASE_URL
